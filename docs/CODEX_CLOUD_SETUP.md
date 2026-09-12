@@ -1,19 +1,20 @@
 # Codex cloud setup record
-Status: pending live configuration at bootstrap time.
+Verified in saved cloud UI: 2026-09-12.
 Repository: https://github.com/SMR202/turn-indoor-navigation
-Desired branch: main. Environment name: TURN Research.
-Desired runtime: default universal image; no app dependencies or installation script needed for docs/research.
-Desired agent internet access: enabled for public research, preferably GET/HEAD/OPTIONS.
-Secrets: none required; do not add tokens or device/signing secrets.
-First task: [Acceleration audit](../plans/active/001-acceleration-audit.md).
+Environment: TURN Research
+Environment URL: https://chatgpt.com/codex/cloud/settings/environment/6aa4fa3ec1388191a2c973744f990d09
+Runtime: universal; automatic setup; caching enabled.
+Checkout directory: /workspace/turn-indoor-navigation. Task branch: main.
+Agent internet: ON, Common dependencies preset plus github.com, api.github.com, raw.githubusercontent.com, codeload.github.com, developer.apple.com, developer.android.com, source.android.com, arxiv.org, export.arxiv.org, doi.org, maplibre.org, networkx.org, readthedocs.io, developers.openai.com, learn.chatgpt.com.
+Allowed methods: GET, HEAD, OPTIONS.
+Environment variables and secrets: none configured. No custom setup/maintenance script or production dependencies.
+Automatic code reviews were disabled in the creation form.
+Another same-repository environment was visible in the account; TURN Research at the exact URL above is the intended environment. No other environment was deleted.
 
-## Verification record
-Environment URL/ID: pending
-Saved internet settings: pending
-Setup validation: pending
-First task URL/result: pending
-
+## Verification
+Bootstrap commit dc47d5b88b38329ff3f534bcbc014ef099df5128 cloned successfully: 22 files, no broken internal Markdown links, clean working tree and git diff --check passed.
+Runtime checkout/network execution: pending first task.
+First task: [Acceleration audit](../plans/active/001-acceleration-audit.md); launch pending.
 Official documentation checked 2026-09-12:
 - https://learn.chatgpt.com/docs/environments/cloud-environment
 - https://learn.chatgpt.com/docs/cloud/internet-access
-Cloud settings are configured in the product; this file alone does not provision an environment. A task must show the expected checkout and research connectivity to establish successful setup.
