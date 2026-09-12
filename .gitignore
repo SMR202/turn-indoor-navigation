@@ -1,0 +1,14 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Raw/private research material
+datasets/raw/
+datasets/private/
+datasets/derived/
+# Local scratch
+work/
+.DS_Store
+Thumbs.db
