@@ -43,3 +43,8 @@ The official cloud-configuration references checked at bootstrap were
 and [internet access](https://learn.chatgpt.com/docs/cloud/internet-access).
 The first task, [Acceleration Audit](../plans/completed/001-acceleration-audit.md),
 completed its desk-research scope; physical experiments remain proposed.
+
+## Publication follow-up
+Cloud task: https://chatgpt.com/codex/cloud/tasks/task_e_6aa4fb6dd1348323a283e37c467964f6
+Published review: https://github.com/SMR202/turn-indoor-navigation/pull/1
+Bootstrap clone checks verified 22 files and internal links. Subsequent main-branch setup/status commits through 6f124525183daa2198883737d320c5a1f574163e recorded successful GitHub GET research and the transport limitation; this audit supplies the completed runtime evidence above.

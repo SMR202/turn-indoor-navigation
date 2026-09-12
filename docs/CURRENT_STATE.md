@@ -8,7 +8,7 @@ Phase: first acceleration audit complete; before production implementation.
   and pinned [reuse registry](../research/REUSE_REGISTRY.md) cover mapping, rendering,
   routing, acquisition, PDR, heading, radio/magnetic corrections, fusion, map
   constraints, calibration and evaluation.
-- **DECISION:** shortest proposed baseline is one legal single-floor metric map,
+- **PROPOSED:** shortest baseline is one legal single-floor metric map,
   deterministic cross-platform acquisition/replay, PDR, then map/radio/magnetic
   ablations. Wi-Fi is optional and Android-only; no production stack is selected.
 - **FACT:** official Android/iOS constraints and runtime cloud/connectivity checks are
@@ -59,3 +59,9 @@ the current bottleneck.
 bounded specialist reviews for native acquisition, survey design and statistics when
 their inputs exist. Do not schedule a daily loop now. Consider a recurring replay
 check only after a versioned dataset and one deterministic replay command exist.
+
+## Publication and user handoff
+The cloud audit is published as https://github.com/SMR202/turn-indoor-navigation/pull/1.
+Cloud task: https://chatgpt.com/codex/cloud/tasks/task_e_6aa4fb6dd1348323a283e37c467964f6
+Separate local Android/Expo research apps remain unreviewed and unimported.
+Next user input: available phone models/OS versions and location of existing team code/logs. Engineering must prepare the capture/replay tools before asking the team to run E001; the experiment is not yet ready to execute.
