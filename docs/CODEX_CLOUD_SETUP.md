@@ -14,7 +14,7 @@ Another same-repository environment was visible in the account; TURN Research at
 ## Verification
 Bootstrap commit dc47d5b88b38329ff3f534bcbc014ef099df5128 cloned successfully: 22 files, no broken internal Markdown links, clean working tree and git diff --check passed.
 Runtime checkout/network execution: pending first task.
-First task: [Acceleration audit](../plans/active/001-acceleration-audit.md); launch pending.
+First task: [Run TURN Acceleration Audit](https://chatgpt.com/codex/cloud/tasks/task_e_6aa4fb6dd1348323a283e37c467964f6), launched 2026-09-12; observed Thinking. Findings pending. Execution brief: [active plan](../plans/active/001-acceleration-audit.md).
 Official documentation checked 2026-09-12:
 - https://learn.chatgpt.com/docs/environments/cloud-environment
 - https://learn.chatgpt.com/docs/cloud/internet-access
