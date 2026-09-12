@@ -17,3 +17,6 @@ The repository is the durable project record. Chat memory is not a source of tru
 
 ## Validation
 This phase has no app build or app tests. Check required files, relative Markdown links, git diff --check, source references and consistency of status claims. Report checks actually run. Do not claim a placeholder workflow provides CI.
+
+## User communication
+Always finish with what was completed, what is actually running automatically, and the exact next user action. Do not imply background monitoring without a configured mechanism. Handle routine repository publication and review within the authorized task; give the user device/testing steps only when the required tools are ready.
