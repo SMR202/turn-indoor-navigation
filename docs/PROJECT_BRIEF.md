@@ -17,3 +17,6 @@ A reproducible path from a venue floor plan and smartphone observations to a use
 ## Unknowns
 Target venue, team ownership, phone models, minimum OS versions, accuracy/latency/battery acceptance thresholds, beacon budget, floor-plan formats/rights and deadline remain unconfirmed.
 Existing local Android and Expo research folders were observed, but are not reviewed or imported. Their presence does not establish working capabilities.
+
+## Scope update — 2026-09-12
+The user explicitly requests starting from scratch with this repository. Previous local/team experiments, implementations and logs are excluded from the new baseline and are not required inputs. Retain this repository's knowledge base and acceleration audit, and continue evaluating licensed external reuse. See [device inventory](DEVICE_INVENTORY.md) for user-reported phones; OS versions and hardware behavior are unverified.
