@@ -20,3 +20,6 @@ This phase has no app build or app tests. Check required files, relative Markdow
 
 ## User communication
 Always finish with what was completed, what is actually running automatically, and the exact next user action. Do not imply background monitoring without a configured mechanism. Handle routine repository publication and review within the authorized task; give the user device/testing steps only when the required tools are ready.
+
+## Fresh start — user direction, 2026-09-12
+Start from this repository and its committed audit. Do not inspect, import, or ask for prior local/team code or logs. Historical references are background only. This does not prohibit adopting/adapting licensed external open-source components. Available test phones are recorded in docs/DEVICE_INVENTORY.md; installed OS and sensor capabilities remain unverified.
