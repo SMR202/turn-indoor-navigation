@@ -13,7 +13,7 @@ Another same-repository environment was visible in the account; TURN Research at
 
 ## Verification
 Bootstrap commit dc47d5b88b38329ff3f534bcbc014ef099df5128 cloned successfully: 22 files, no broken internal Markdown links, clean working tree and git diff --check passed.
-Runtime checkout/network execution: pending first task.
+Runtime: first task reached repository research and successfully retrieved GitHub README/license metadata via GET. Git smart-HTTP clone attempts returned 403 under the read-only methods policy; the task recovered using GitHub API reads. This is a transport limitation, not evidence against candidates. Official platform connectivity and final audit checks remain for the task to record.
 First task: [Run TURN Acceleration Audit](https://chatgpt.com/codex/cloud/tasks/task_e_6aa4fb6dd1348323a283e37c467964f6), launched 2026-09-12; observed Thinking. Findings pending. Execution brief: [active plan](../plans/active/001-acceleration-audit.md).
 Official documentation checked 2026-09-12:
 - https://learn.chatgpt.com/docs/environments/cloud-environment
