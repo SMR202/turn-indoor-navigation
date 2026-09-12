@@ -33,7 +33,7 @@ Phase: first acceleration audit complete; before production implementation.
 ## Exact next steps
 
 1. Team selects a legal, non-sensitive floor plan; records scale/checkpoints/rights;
-   supplies device/OS inventory and provisional accuracy, latency, battery and survey
+   confirms installed OS versions from [device inventory](DEVICE_INVENTORY.md) and provisional accuracy, latency, battery and survey
    effort targets.
 2. Team runs **E001** on at least one Android phone and one iPhone using a reviewed
    session manifest; raw captures stay immutable outside Git and are referenced by
@@ -46,12 +46,10 @@ Phase: first acceleration audit complete; before production implementation.
 
 ## Blockers / unknowns
 
-Target venue and floor-plan rights/format, team owners, phone models/minimum OS,
+Target venue and floor-plan rights/format, team owners, exact team-phone variants/installed OS/minimum supported OS,
 background-navigation promise, initial-position UX, accessibility rules, offline
 requirement, beacon budget, deadline and numeric acceptance thresholds remain
-unconfirmed. Team-reported prior mapping/PDR/magnetic/Wi-Fi work has not been supplied
-or verified. These missing physical inputs—not a lack of unattended web research—are
-the current bottleneck.
+unconfirmed. The user explicitly directed a fresh start with this repository. Previous local/team implementations and logs are excluded; do not request, inspect or import them. Physical device measurements and venue inputs are still pending.
 
 ## Execution model recommendation
 
@@ -63,5 +61,5 @@ check only after a versioned dataset and one deterministic replay command exist.
 ## Publication and user handoff
 The cloud audit is published as https://github.com/SMR202/turn-indoor-navigation/pull/1.
 Cloud task: https://chatgpt.com/codex/cloud/tasks/task_e_6aa4fb6dd1348323a283e37c467964f6
-Separate local Android/Expo research apps remain unreviewed and unimported.
-Next user input: available phone models/OS versions and location of existing team code/logs. Engineering must prepare the capture/replay tools before asking the team to run E001; the experiment is not yet ready to execute.
+Fresh-start instruction (2026-09-12): build from this repository's committed knowledge base and audit; exclude prior implementations and logs. Reuse of suitable licensed external components remains in scope.
+User-reported phones are recorded in [device inventory](DEVICE_INVENTORY.md). Next user input: installed OS versions for the three user-owned phones. Engineering must prepare the capture/replay tools before asking the team to run E001; the experiment is not yet ready to execute.
