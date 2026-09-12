@@ -1,5 +1,5 @@
 # Plan 001 — TURN Acceleration Audit
-Status: READY
+Status: COMPLETE (2026-09-12)
 Scope: research and documentation only; no production scaffolding.
 
 1. Read AGENTS.md and all canonical docs. Preserve unknowns.
@@ -13,3 +13,13 @@ Scope: research and documentation only; no production scaffolding.
 9. Move this plan to completed only when findings are recorded. Update links when moving.
 
 Done: sourced recommendations and actionable experiment protocols committed; no invented measurements, no app scaffold.
+
+## Completion record
+
+- Sourced findings and pinned candidates: [audit](../../research/ACCELERATION_AUDIT.md)
+  and [reuse registry](../../research/REUSE_REGISTRY.md).
+- Official mobile constraints: [platform constraints](../../docs/PLATFORM_CONSTRAINTS.md).
+- Proposed (not executed) experiments: [experiment log](../../experiments/EXPERIMENT_LOG.md).
+- Runtime checkout/network evidence: [cloud setup](../../docs/CODEX_CLOUD_SETUP.md).
+- No architecture decision was accepted: the replay-first path and component choices
+  remain proposals until team inputs and measurements exist, so no new ADR was needed.
