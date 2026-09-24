@@ -26,3 +26,7 @@ After substantial work update the affected STATUS with current state, changes, a
 Preserve historical research and clearly supersede old restrictions. Do not commit raw chats, secrets, sensitive partner material, private plans or identifiable movement traces. Raw captures stay immutable outside Git with hashes/manifests. Prior team code/logs remain excluded; licensed external reuse is welcome.
 
 Finish with completed work, validation/limitations, what is actually automated and the next action. Never imply monitoring or physical tests that did not happen.
+
+## Phone-test handoff preference (2026-09-24)
+
+Keep mobile on Expo SDK 57 until the user requests an upgrade. At the end of app implementation work, start/verify the Expo development server and include a scannable connection QR image plus its URL and network instructions. Distinguish the Expo launch QR from TURN location-anchor QRs. Never substitute a localhost web URL for a phone-test link or claim the phone loaded it without evidence.

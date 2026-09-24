@@ -1,0 +1,14 @@
+{
+  "name": "@turn/positioning-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@turn/contracts": "0.1.0",
+    "@turn/venue-model": "0.1.0",
+    "@turn/pdr": "0.1.0",
+    "zod": "4.6.5"
+  }
+}

@@ -110,6 +110,15 @@ export const sampleVenue = parseVenuePackage({
   ],
   anchors: [
     {
+      id: 'junction-qr',
+      venueId: 'turn-demo',
+      floorId: 'ground',
+      kind: 'qr',
+      position: { x: 15, y: 10 },
+      label: 'Crossroads',
+      nodeId: 'junction',
+    },
+    {
       id: 'entry-qr',
       venueId: 'turn-demo',
       floorId: 'ground',

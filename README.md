@@ -8,7 +8,7 @@ TURN powers its own reference app and future venue apps/SDK integrations. Centau
 
 ## Setup
 
-Until this foundation is merged, check out the published `codex/product-foundation` branch after cloning (or clone with `--branch codex/product-foundation`).
+Until these changes are merged, check out `codex/anchored-pdr` after cloning (or clone with `--branch codex/anchored-pdr`).
 
 Use Node **24.19.0** (.nvmrc), npm 10/11 and Git. No secrets/database/services required.
 
@@ -31,7 +31,7 @@ Existing checkout: pull your working branch, then `npm ci`. Commit the root lock
 | `npm test`           | UI-independent contracts/venue/routing tests      |
 | `npm run format`     | Format active code/docs                           |
 
-The app bundles a fictional metric floor and three POIs. Choose a destination to display a local route from a fixed entrance. The marker is a demo start, not live tracking. QR/PDR are not implemented.
+The SDK 57 app bundles a fictional metric floor and three POIs. Scan a versioned location marker or select a known demo start to route locally. Experimental calibrated step/yaw tracking, recording export and deterministic replay are implemented; physical accuracy is unmeasured. Follow [phone testing](docs/PHONE_TESTING.md) for launch/location QRs and measured walks.
 
 ## Structure
 

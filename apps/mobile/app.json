@@ -22,6 +22,22 @@
       "favicon": "./assets/favicon.png"
     },
     "scheme": "turn",
-    "plugins": ["expo-router"]
+    "plugins": [
+      "expo-router",
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TURN to scan indoor location markers.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow TURN to measure walking motion for indoor navigation."
+        }
+      ]
+    ]
   }
 }

@@ -12,6 +12,8 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "phone:qr": "tsx scripts/phone-qr.mjs",
+    "replay": "tsx scripts/replay.mjs",
     "mobile": "npm run start --workspace @turn/mobile",
     "web": "npm run web --workspace @turn/mobile",
     "export:web": "npm run export:web --workspace @turn/mobile",
@@ -28,6 +30,8 @@
     "eslint": "10.11.0",
     "globals": "^16.5.0",
     "prettier": "^3.6.2",
+    "qrcode": "1.5.4",
+    "tsx": "4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.46.0",
     "vitest": "^5.0.1"

@@ -47,6 +47,12 @@ repository activity and upstream demos do not constitute TURN measurements.
 
 ## Gaps with no reusable selection
 
+### 2026-09-24 implementation update
+
+See [PDR candidate review](PDR_IMPLEMENTATION_REVIEW.md) for exact SmartPDR, Fusion and RoNIN revisions inspected before the baseline. ADOPT Expo SDK 57 DeviceMotion/camera/file-sharing modules; IMPLEMENT the small experimental step/yaw baseline and TURN anchor/replay semantics. No third-party PDR source/model was copied. Fusion remains an experiment, not an integrated dependency. Device accuracy is unmeasured.
+
+SDK-compatible dependency audit now reports 14 moderate transitive findings (no high/critical), including the existing decode-uri-component/query-string and uuid/xcode trees, propagated through Expo sharing as well. npm's suggested major downgrades conflict with the requested SDK 57. The newly introduced tsx dependency was updated to remove its low esbuild finding. No forced downgrade or unsupported override applied.
+
 **IMPLEMENT:** TURN venue-map schema/topology, monotonic observation envelope, native
 capability adapters, deterministic replay, mobile routing boundary, and integration
 contracts. These encode project semantics or platform lifecycles.

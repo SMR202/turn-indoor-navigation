@@ -1,27 +1,17 @@
-# mobile workstream
+# Mobile workstream
 
-Last meaningful update: 2026-09-24
+Updated: 2026-09-24.
 
-## Objective
+## Current state / decisions
 
-Reference consumer of TURN platform, Android/iOS.
+Expo 57.0.24 reference client adds camera QR scan with permission/retry/cancel, manual known demo anchors, marker-driven routes, calibrated live PDR controls and local OS-share recording export. Camera/sensor/sharing/file modules use SDK 57 versions. Launch and location QRs are separate; generator is `npm run phone:qr -- exp://HOST:PORT`. User preference for QR handoff persists in AGENTS.
 
-## Current state / what changed
+## Validation / limitations
 
-apps/mobile renders synthetic floor/POIs and local destination routes. Fixed demo start is clearly labeled. No acquisition logic in screens.
+Root checks pass including 23 tests. Expo Doctor 21/21; Android, iOS and web exports pass. Browser verifies entrance→Reading Room 19 m, crossroads→Reading Room 7 m, invalid calibration feedback, valid 10/14 calibration and phone-only live testing message. LAN manifest reports exposdk:57.0.0 and PC host. Camera/motion/OS-share physical execution remains untested. Audit has 14 moderate transitive findings, no high/critical.
 
-## Validation performed
-
-Browser boot and all destination selections verified (24 m cafe, 19 m reading room/help desk); route clearing, geometry and phone-width layout inspected. No console errors/warnings observed. Expo Doctor passed 21/21. Web/Android/iOS bundle exports passed; see [foundation status](../foundation/STATUS.md). Physical native execution is untested.
-
-## Important decisions / dependencies
-
-[Architecture](../../ARCHITECTURE.md), [roadmap](../../ROADMAP.md), [reuse registry](../../../research/REUSE_REGISTRY.md), [platform ADR](../../../decisions/0002-product-platform-foundation.md), [venue ADR](../../../decisions/0003-venue-contracts-and-offline-navigation.md).
-
-## Known issues / attempted approaches
-
-Web preview/bundling does not prove native behavior. QR, live marker and motion are absent.
+No background tracking, pocket/bag mode or measured accuracy. Current map is fictional, and routes remain from the last anchor. Native binaries have not been built.
 
 ## Next action
 
-Smoke-test same screen on Android/iOS, then add QR camera permission/scan flow and anchored pose UI.
+Follow [phone testing](../../PHONE_TESTING.md), including permission denial/recovery, scan identity errors, background/resume and held-out measured walks. Keep the Expo server running for each phone handoff.

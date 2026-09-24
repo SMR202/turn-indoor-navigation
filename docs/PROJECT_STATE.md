@@ -4,26 +4,24 @@ Updated: 2026-09-24.
 
 ## Current milestone
 
-M0 foundation and initial synthetic M1 slice implemented and locally checked. Browser demo works; physical native smoke remains pending. No pilot deployment or measured localization.
+M0/M1 foundation and M2 anchor slice implemented. Experimental PDR capture/replay baseline added on `codex/anchored-pdr`. No measured localization accuracy or physical native validation.
 
 ## Capabilities
 
-npm/TypeScript monorepo; Expo reference app; versioned runtime contracts; synthetic metric floor/POIs/graph/anchors; local destination routing from a fixed entrance; durable workstream context.
+Expo SDK 57 reference app; validated metric synthetic venue; camera/manual known-anchor selection; anchor-based destination routing; calibrated step-length and relative-yaw motion tracking; local recording export; deterministic replay with input SHA-256 and optional endpoint error; reusable Expo launch/location QR generator.
 
 ## Active workstreams
 
-[Foundation](workstreams/foundation/STATUS.md), [mobile](workstreams/mobile/STATUS.md), [venue packages](workstreams/venue-packages/STATUS.md), [routing](workstreams/routing/STATUS.md).
-[Mapping](workstreams/mapping/STATUS.md), [positioning](workstreams/positioning/STATUS.md), [PDR](workstreams/pdr/STATUS.md), [backend/admin](workstreams/backend-admin/STATUS.md) and [Centaurus](workstreams/centaurus-integration/STATUS.md) have explicit dependencies and next actions.
+[Mobile](workstreams/mobile/STATUS.md), [positioning](workstreams/positioning/STATUS.md), [PDR](workstreams/pdr/STATUS.md), [routing](workstreams/routing/STATUS.md), [venue packages](workstreams/venue-packages/STATUS.md). Other scope remains in the [workstream index](workstreams/README.md).
 
 ## Gaps
 
-No QR scanning, live acquisition, PDR/fusion, replay command, package updater, real venue, native binary validation, backend/admin or published SDK. Phone OS/capabilities, floor rights, partner app access and numerical targets remain unknown.
-Dependency audit: 13 moderate transitive findings, no high/critical; see [reuse registry](../research/REUSE_REGISTRY.md). Compatible remediation is required before shipping/external-input expansion.
+Accuracy unmeasured. No map matching, continuous rerouting, floor detection, real venue, package updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. Dependency audit reports 14 moderate transitive findings, no high/critical; forced downgrade recommendations are incompatible with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
 
-## Next goal
+## Next action
 
-Validate M1 on Android/iOS; implement M2: scan a versioned QR anchor ID, resolve against loaded venue/revision, produce anchored pose and reroute. Handle wrong/stale/unknown codes and camera denial. Sensor-integrity work proceeds independently.
+Run the [phone protocol](PHONE_TESTING.md): independent calibration, held-out straight/turn walks, native timestamp/heading verification, immutable recordings and per-device drift results. Proposed targets are not results. Do not deploy as real-building guidance.
 
 ## Automation
 
-GitHub Actions runs on push/PR; the Linux run passed for implementation commit a68071e. No recurring agent loop, deployment or monitor. Validation and published branch instructions: [foundation handoff](workstreams/foundation/STATUS.md).
+CI runs types, unit tests, lint, formatting, docs links and web export on push/PR. No recurring agent loop or monitor. Phone QR generation is a local command and the development server must remain running.

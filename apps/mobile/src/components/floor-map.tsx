@@ -6,23 +6,22 @@ import Svg, {
   Rect,
   Text as SvgText,
 } from 'react-native-svg';
-import type { Route } from '@turn/contracts';
+import type { Route, Pose } from '@turn/contracts';
 import type { VenuePackage } from '@turn/venue-model';
 
 export function FloorMap({
   venue,
   floorId,
   route,
-  startNodeId,
+  pose,
 }: {
   venue: VenuePackage;
   floorId: string;
   route?: Route;
-  startNodeId: string;
+  pose?: Pose;
 }) {
   const floor = venue.floors.find((item) => item.id === floorId)!;
   const y = (value: number) => floor.heightMetres - value;
-  const start = venue.nodes.find((node) => node.id === startNodeId)!;
   // Split at floor transitions so no artificial line bridges separate floor segments.
   const segments: string[][] = [[]];
   for (const point of route?.geometry ?? []) {
@@ -92,12 +91,12 @@ export function FloorMap({
           </SvgText>
         );
       })}
-      {start.floorId === floorId && (
+      {pose?.floorId === floorId && (
         <Circle
-          cx={start.x}
-          cy={y(start.y)}
+          cx={pose.position.x}
+          cy={y(pose.position.y)}
           r={0.5}
-          fill="#357bb8"
+          fill={pose.status === 'lost' ? '#bb6533' : '#357bb8'}
           stroke="#ffffff"
           strokeWidth={0.2}
         />

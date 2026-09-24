@@ -1,27 +1,17 @@
-# positioning workstream
+# Positioning workstream
 
-Last meaningful update: 2026-09-24
+Updated: 2026-09-24.
 
-## Objective
+## Current state / decisions
 
-One localization engine emits authoritative pose from modular inputs.
+Pure NavigationEngine accepts validated observations and emits authoritative pose. QR identity is resolved against loaded venue/revision. Anchor establishes position; heading alignment is explicit. Experimental PDR poses are degraded with unknown uncertainty. Re-anchor resets detector/heading/history. Stop on timing gaps/reversals, stale heading, tilt, jumps, impacts, lifecycle interruption or 30 m tracking limit.
 
-## Current state / what changed
+Live Expo DeviceMotion and JSON replay share observations/engine. Native seconds are rebased per capture; repeated native fields are deduplicated. UI owns lifecycle/permissions but no navigation math. [ADR-0004](../../../decisions/0004-anchored-pdr-evaluation-baseline.md).
 
-packages/contracts defines Observation/Pose and ObservationSource/LocalizationEngine interfaces. No engine or native adapters yet.
+## Validation / limitations
 
-## Validation performed
-
-Repository/code review only. No physical experiment or subsystem execution claimed.
-
-## Important decisions / dependencies
-
-[Architecture](../../ARCHITECTURE.md), [roadmap](../../ROADMAP.md), [reuse registry](../../../research/REUSE_REGISTRY.md), [platform ADR](../../../decisions/0002-product-platform-foundation.md), [venue ADR](../../../decisions/0003-venue-contracts-and-offline-navigation.md).
-
-## Known issues / attempted approaches
-
-No arbitrary radio fallback chain or UI marker writes. Fusion choice deferred to evidence. E001 acquisition tools pending.
+Unit tests cover QR revision/identity failures, replay equality, stationary/turning behavior, missing heading and failure recovery. Android/iOS exports pass; no phone execution claimed. No fusion, map constraints, radio fallback, floor inference or calibrated covariance.
 
 ## Next action
 
-Implement anchor observation → pose in a pure package, resolving venue/revision/anchor IDs; test wrong-session/stale/unknown cases for M2.
+Verify normalized timestamps/yaw on both platforms and measure real logs using [phone protocol](../../PHONE_TESTING.md). Preserve failed runs and hash inputs.

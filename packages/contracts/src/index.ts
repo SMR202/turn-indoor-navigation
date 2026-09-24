@@ -32,6 +32,20 @@ const vectorSchema = z.tuple([
 export const observationSchema = z.discriminatedUnion('type', [
   z.object({
     ...envelope,
+    type: z.literal('attitude'),
+    yawRad: headingSchema,
+    tiltRad: z.number().min(0).max(Math.PI),
+    units: z.literal('rad'),
+    frame: z.literal('session-relative'),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('heading-alignment'),
+    headingRad: headingSchema,
+    frame: z.literal('venue'),
+  }),
+  z.object({
+    ...envelope,
     type: z.literal('accelerometer'),
     values: vectorSchema,
     units: z.literal('m/s2'),
