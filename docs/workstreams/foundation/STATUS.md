@@ -19,7 +19,7 @@ Root package.json, lockfile, scripts, CI; ADR-0002/0003. M0 and a working synthe
 - Browser preview: initial screen, all three routes (24/19/19 m), clear route, SVG geometry and 390px viewport inspected; no captured console errors/warnings.
 - `adb devices`: no devices attached. No native phone, camera/sensor, battery, offline cold-start or real-venue tests performed.
 - `npm audit`: 13 moderate transitive findings, zero high/critical. Evidence/disposition in reuse registry; not fixed by unsafe forced major downgrades.
-- GitHub workflow configured; no hosted result claimed. No deployed service or recurring automation.
+- GitHub Actions on Ubuntu passed install, full quality checks and web export for implementation commit `a68071e`: [run 35982581424](https://github.com/SMR202/turn-indoor-navigation/actions/runs/35982581424). No deployed service or recurring automation.
 
 ## Important decisions / dependencies
 
@@ -32,3 +32,7 @@ No pilot/device measurements. System Node 22.12 and its npm launcher failed engi
 ## Next action
 
 Run `npm ci`, `npm run check`, `npm run mobile` on Node 24; smoke-test M1 on Android/iOS. Next code slice: M2 QR adapter + pure anchor-to-pose resolution and invalid/denied/recovery cases. Keep sensor capture/E001 separate from this product dependency.
+
+## Multi-machine publication
+
+Implementation and handoff are published on `origin/codex/product-foundation`; not merged into main. On another checkout: `git fetch origin`, `git switch --track origin/codex/product-foundation` (or switch/pull the existing local branch), then `npm ci`. The final documentation-only follow-up records the hosted result above. Local browser preview is temporary; restart with `npm run web` on another machine.

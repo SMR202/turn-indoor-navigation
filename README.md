@@ -8,6 +8,8 @@ TURN powers its own reference app and future venue apps/SDK integrations. Centau
 
 ## Setup
 
+Until this foundation is merged, check out the published `codex/product-foundation` branch after cloning (or clone with `--branch codex/product-foundation`).
+
 Use Node **24.19.0** (.nvmrc), npm 10/11 and Git. No secrets/database/services required.
 
 ```sh

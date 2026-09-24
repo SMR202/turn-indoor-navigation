@@ -26,4 +26,4 @@ Validate M1 on Android/iOS; implement M2: scan a versioned QR anchor ID, resolve
 
 ## Automation
 
-GitHub Actions checks are configured to run on push/PR after publication. No recurring agent loop, deployment or monitor. Actual local results: [foundation handoff](workstreams/foundation/STATUS.md).
+GitHub Actions runs on push/PR; the Linux run passed for implementation commit a68071e. No recurring agent loop, deployment or monitor. Validation and published branch instructions: [foundation handoff](workstreams/foundation/STATUS.md).
