@@ -1,0 +1,35 @@
+{
+  "name": "turn-indoor-navigation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24.3.0 <25",
+    "npm": ">=10 <12"
+  },
+  "scripts": {
+    "mobile": "npm run start --workspace @turn/mobile",
+    "web": "npm run web --workspace @turn/mobile",
+    "export:web": "npm run export:web --workspace @turn/mobile",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace @turn/mobile",
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "docs:check": "node scripts/check-doc-links.mjs",
+    "check": "npm run typecheck && npm test && npm run lint && npm run format:check && npm run docs:check"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.11.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^5.0.1"
+  }
+}

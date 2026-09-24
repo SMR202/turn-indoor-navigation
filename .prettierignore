@@ -1,0 +1,9 @@
+node_modules
+package-lock.json
+dist
+.expo
+work
+# Preserve formatting of historical evidence.
+research/ACCELERATION_AUDIT.md
+docs/CODEX_CLOUD_SETUP.md
+plans/completed/001-acceleration-audit.md

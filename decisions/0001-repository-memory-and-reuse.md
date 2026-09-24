@@ -1,6 +1,8 @@
 # ADR-0001: Repository context and reuse-first workflow
+
 Date: 2026-09-12
 Status: ACCEPTED (user-directed setup)
+Update 2026-09-24: PARTLY SUPERSEDED by [ADR-0002](0002-product-platform-foundation.md). Durable context and reuse remain accepted; the research-only/no-production restriction is retired.
 
 Context: TURN spans mapping, mobile sensing and localization. Chat memory and disconnected agent notes are insufficient for reconstructing state.
 Decision: keep a short AGENTS.md as an index and maintain canonical brief, requirements, state, architecture, constraints, reuse, decisions and experiment records. Audit existing implementations before new code. Do not scaffold production code during this phase.

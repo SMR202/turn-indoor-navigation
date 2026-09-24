@@ -1,4 +1,5 @@
 # Session manifest
+
 Session ID / experiment ID:
 Collection date / pseudonymous operator:
 Device / OS / sensor capability inventory:

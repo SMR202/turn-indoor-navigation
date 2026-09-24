@@ -1,4 +1,5 @@
 # ADR-NNNN: Title
+
 Date:
 Status: PROPOSED / ACCEPTED / SUPERSEDED
 Context and evidence:

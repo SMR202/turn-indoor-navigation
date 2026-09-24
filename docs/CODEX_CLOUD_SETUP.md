@@ -1,4 +1,5 @@
 # Codex cloud setup record
+Historical environment record. Current local setup: [DEVELOPMENT.md](DEVELOPMENT.md). The old network restrictions and no-dependencies status below are not current workspace requirements.
 Environment configuration observed in saved cloud UI: 2026-09-12.
 
 Repository: <https://github.com/SMR202/turn-indoor-navigation>

@@ -1,2 +1,3 @@
-# Workflow placeholder
-No active GitHub Actions workflow is configured. Add meaningful documentation or experiment checks after toolchain selection; do not add deploy jobs or secrets during bootstrap.
+# Validation
+
+checks.yml installs locked dependencies, runs npm run check and exports web on push/PR. No deployment/native device tests/recurring agent loop. A remote success requires an actual Actions result.

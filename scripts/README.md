@@ -1,2 +1,3 @@
 # Scripts
-Reserved for reproducible validation and analysis helpers. No production scripts or dependencies yet. Each future script should document inputs, units, outputs and invocation; pin required dependencies when introduced.
+
+npm run docs:check checks relative Markdown file/directory targets with check-doc-links.mjs. External URL liveness and section anchors are not checked. Root package.json lists commands. Acquisition/replay helpers are not implemented yet.

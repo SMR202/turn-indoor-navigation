@@ -1,22 +1,15 @@
-# Project brief
-Updated: 2026-09-12
+# TURN product brief
 
-## Confirmed project context
-Source: user's setup request and referenced conversation “Plan Daily Automation Loop”, recovered 2026-09-12.
-- TURN aims to provide indoor navigation for malls/buildings.
-- Work includes converting floor plans into navigable maps, positioning and routing.
-- Candidate positioning inputs: PDR/IMU, magnetic fingerprints, BLE and optional Wi-Fi; map constraints should limit impossible motion.
-- Both Android and iOS are targets. Wi-Fi cannot be a universal dependency.
-- The team has early mapping, PDR/magnetic and Wi-Fi experiments. Their datasets, results and reproducibility have not been supplied here.
-- Speed matters: adopt/adapt existing work wherever viable; focus original effort on integration and measured weaknesses.
-- This phase creates docs and performs an acceleration audit, not production code.
+Updated: 2026-09-24. DECISION: approved implementation phase.
 
-## Outcome
-A reproducible path from a venue floor plan and smartphone observations to a useful indoor route and uncertainty-aware location estimate.
+TURN is a reusable indoor-navigation platform for malls, universities, hospitals, airports, offices and large buildings. Its mobile app is the reference client; external apps should eventually consume reusable modules/SDK APIs.
 
-## Unknowns
-Target venue, team ownership, phone models, minimum OS versions, accuracy/latency/battery acceptance thresholds, beacon budget, floor-plan formats/rights and deadline remain unconfirmed.
-Existing local Android and Expo research folders were observed, but are not reviewed or imported. Their presence does not establish working capabilities.
+Centaurus is the user-reported prospective first serious pilot. Willingness to cooperate and potential app access are reported; source access, data rights, stack and deployment commitments are unverified. TURN must remain independently usable.
 
-## Scope update — 2026-09-12
-The user explicitly requests starting from scratch with this repository. Previous local/team experiments, implementations and logs are excluded from the new baseline and are not required inputs. Retain this repository's knowledge base and acceleration audit, and continue evaluating licensed external reuse. See [device inventory](DEVICE_INVENTORY.md) for user-reported phones; OS versions and hardware behavior are unverified.
+Load a reviewed venue, choose a destination, establish location (early priority: QR), then navigate locally. PDR and optional magnetic/BLE/map corrections improve pose; uncertainty/loss/recovery stay explicit. Wi-Fi is optional Android-only.
+
+Build static routing/anchoring while measuring sensor integrity, drift, corrections and battery. Human-reviewed mapping is the dependable path; AI/CV later proposes geometry into the same model. Prefer licensed reuse.
+
+Devices are in [inventory](DEVICE_INVENTORY.md); OS/capabilities, pilot rights, integration access, numerical targets, owners, budget and deadline remain open. These block pilot claims, not synthetic product work.
+
+Research-only restrictions ended 2026-09-24. Preserve prior audit/reproducibility; do not import old team code/logs.

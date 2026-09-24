@@ -1,4 +1,5 @@
 # TURN Acceleration Audit
+Historical desk audit. Update 2026-09-24: its research-only/product sequencing restrictions are superseded by [ADR-0002](../decisions/0002-product-platform-foundation.md). Source evidence and limitations below remain dated to the original audit.
 Status: COMPLETE (desk audit; no TURN device or venue measurement)
 Audit date: 2026-09-12
 Plan: [completed plan 001](../plans/completed/001-acceleration-audit.md)
