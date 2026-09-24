@@ -1,6 +1,14 @@
 # Current state
-Updated: 2026-09-12
+Updated: 2026-09-24
 Phase: first acceleration audit complete; before production implementation.
+
+## Repository orientation review — 2026-09-24
+
+- **FACT:** Reviewed tracked files, project requirements, architecture, audit, reuse registry, experiment protocols and device inventory. The checkout contains documentation and templates only; no executable acquisition/replay tools or GitHub Actions workflows exist.
+- **FACT:** No device tests, candidate builds or new external-source verification were performed in this review. The audit remains dated 2026-09-12; its former cloud networking restrictions are historical, not established constraints of this local workspace.
+- **DECISION:** The fresh-start instruction governs older references to inventorying/importing team code. Corrected the active-plan index accordingly; historical audit text remains an audit record.
+- **PROPOSED:** Next engineering task is to prepare a bounded E001 capture/export and integrity-check workflow. Full PDR replay follows real sample/schema verification. E001 is not ready for team execution.
+- **FACT:** Outstanding inputs remain installed phone OS versions, venue/map rights and numeric acceptance targets. No automation was configured during this review.
 
 ## Established
 
