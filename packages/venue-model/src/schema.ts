@@ -7,6 +7,30 @@ const floorSchema = z.object({
   level: z.number().int(),
   widthMetres: z.number().positive(),
   heightMetres: z.number().positive(),
+  windows: z
+    .array(
+      z.object({
+        from: pointSchema,
+        to: pointSchema,
+        label: z.string().optional(),
+      }),
+    )
+    .default([]),
+  rooms: z
+    .array(
+      z.object({
+        id: idSchema,
+        name: z.string().min(1),
+        polygon: z.array(pointSchema).min(3),
+        labelPosition: pointSchema,
+        dimensionLabel: z.string().optional(),
+        kind: z
+          .enum(['room', 'circulation', 'outdoor', 'stairs', 'fixture'])
+          .default('room'),
+        note: z.string().optional(),
+      }),
+    )
+    .default([]),
   walkablePolygons: z.array(z.array(pointSchema).min(3)).min(1),
   walls: z.array(z.object({ from: pointSchema, to: pointSchema })),
   doors: z.array(
@@ -33,9 +57,14 @@ const baseSchema = z.object({
   revision: idSchema,
   name: z.string().min(1),
   provenance: z.object({
-    kind: z.enum(['synthetic', 'surveyed']),
+    kind: z.enum(['synthetic', 'surveyed', 'plan-derived']),
     rights: z.string().min(1),
     description: z.string(),
+    sourceSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    notes: z.array(z.string()).default([]),
   }),
   frame: z.object({
     units: z.literal('metres'),
@@ -54,6 +83,18 @@ const baseSchema = z.object({
     }),
   ),
   anchors: z.array(anchorSchema.extend({ nodeId: idSchema })),
+  testCourses: z
+    .array(
+      z.object({
+        id: idSchema,
+        name: z.string().min(1),
+        anchorId: idSchema,
+        headingRad: z.number().min(-Math.PI).max(Math.PI),
+        points: z.array(pointSchema).min(2),
+        setup: z.string().min(1),
+      }),
+    )
+    .default([]),
   connectors: z.array(
     z.object({
       id: idSchema,
@@ -154,6 +195,43 @@ export const venuePackageSchema = baseSchema.superRefine((venue, ctx) => {
       node.y !== anchor.position.y
     )
       issue(`Anchor ${anchor.id} does not match its venue/node`);
+  }
+  for (const floor of venue.floors) {
+    for (const room of floor.rooms) {
+      if (
+        room.polygon.some(
+          (p) =>
+            p.x < 0 ||
+            p.y < 0 ||
+            p.x > floor.widthMetres ||
+            p.y > floor.heightMetres,
+        )
+      )
+        issue(`Room ${room.id} outside floor bounds`);
+    }
+  }
+  for (const course of venue.testCourses) {
+    const anchor = venue.anchors.find((a) => a.id === course.anchorId);
+    if (
+      !anchor ||
+      Math.hypot(
+        anchor.position.x - course.points[0]!.x,
+        anchor.position.y - course.points[0]!.y,
+      ) > 0.001
+    )
+      issue(`Test course ${course.id} must start at its anchor`);
+    const floor = floors.get(anchor?.floorId ?? '');
+    if (
+      floor &&
+      course.points.some(
+        (p) =>
+          p.x < 0 ||
+          p.y < 0 ||
+          p.x > floor.widthMetres ||
+          p.y > floor.heightMetres,
+      )
+    )
+      issue(`Test course ${course.id} outside floor bounds`);
   }
 });
 

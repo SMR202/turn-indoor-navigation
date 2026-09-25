@@ -1,14 +1,22 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { sampleVenue } from '@turn/venue-model';
-import { replayRecording } from '@turn/positioning-core';
+import {
+  replayRecording,
+  recordingSchema,
+  evaluateWalk,
+} from '@turn/positioning-core';
 
 if (!process.argv[2])
   throw new Error(
     'Usage: npm run replay -- recording.json [expected-x expected-y]',
   );
 const bytes = await readFile(process.argv[2]);
-const result = replayRecording(JSON.parse(bytes.toString('utf8')), sampleVenue);
+const input = recordingSchema.parse(JSON.parse(bytes.toString('utf8')));
+const result = replayRecording(input, input.venue ?? sampleVenue);
+const course = input.venue?.testCourses.find(
+  (c) => c.id === input.test?.courseId,
+);
 const expected = process.argv.slice(3).map(Number);
 if (
   expected.length &&
@@ -20,6 +28,10 @@ console.log(
     {
       sha256: createHash('sha256').update(bytes).digest('hex'),
       result,
+      completedTest:
+        course && input.test?.completedAtMarkedEndpoint
+          ? { ...evaluateWalk(result, course.points), interrupted: false }
+          : null,
       endpointErrorMetres:
         expected.length && result.pose
           ? Math.hypot(

@@ -1,10 +1,15 @@
 import { z } from 'zod';
+export { evaluateWalk } from './evaluation';
 import {
   observationSchema,
   type Observation,
   type Pose,
 } from '@turn/contracts';
-import { parseVenuePackage, type VenuePackage } from '@turn/venue-model';
+import {
+  parseVenuePackage,
+  venuePackageSchema,
+  type VenuePackage,
+} from '@turn/venue-model';
 import { StepDetector, wrapAngle, PDR_REVISION } from '@turn/pdr';
 
 const qrSchema = z
@@ -248,6 +253,13 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  test: z
+    .object({
+      courseId: z.string().min(1),
+      completedAtMarkedEndpoint: z.boolean(),
+    })
+    .optional(),
+  venue: venuePackageSchema.optional(),
   schemaVersion: z.literal(1),
   algorithm: z.literal(PDR_REVISION),
   sessionId: z.string().min(1),

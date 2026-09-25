@@ -1,14 +1,14 @@
 # TURN project state
 
-Updated: 2026-09-24.
+Updated: 2026-09-25.
 
 ## Current milestone
 
-M0/M1 foundation and M2 anchor slice implemented. Experimental PDR capture/replay baseline added on `codex/anchored-pdr`. No measured localization accuracy or physical native validation.
+M0/M1/M2 and experimental PDR baseline implemented. Current branch `codex/local-venue-testing` adds private plan-derived venue loading and guided phone tests. No measured localization accuracy or physical native validation.
 
 ## Capabilities
 
-Expo SDK 57 reference app; validated metric synthetic venue; camera/manual known-anchor selection; anchor-based destination routing; calibrated step-length and relative-yaw motion tracking; local recording export; deterministic replay with input SHA-256 and optional endpoint error; reusable Expo launch/location QR generator.
+Expo SDK 57; private local venue packages with room dimensions; zoomable maps; camera/manual anchors; local routes; guided courses; saved calibration; walked trail and endpoint error; portable recordings with embedded venue; deterministic replay; active-venue launch/location QR generation. [Local venue instructions](LOCAL_VENUES.md). Default public fixture remains synthetic.
 
 ## Active workstreams
 
@@ -16,7 +16,7 @@ Expo SDK 57 reference app; validated metric synthetic venue; camera/manual known
 
 ## Gaps
 
-Accuracy unmeasured. No map matching, continuous rerouting, floor detection, real venue, package updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. Dependency audit reports 14 moderate transitive findings, no high/critical; forced downgrade recommendations are incompatible with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
+Accuracy unmeasured. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No map matching, continuous rerouting, floor detection, updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. Dependency audit reports 14 moderate transitive findings, no high/critical; forced downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
 
 ## Next action
 

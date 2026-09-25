@@ -8,7 +8,7 @@ TURN powers its own reference app and future venue apps/SDK integrations. Centau
 
 ## Setup
 
-Until these changes are merged, check out `codex/anchored-pdr` after cloning (or clone with `--branch codex/anchored-pdr`).
+Until these changes are merged, check out `codex/local-venue-testing` after cloning (or clone with `--branch codex/local-venue-testing`).
 
 Use Node **24.19.0** (.nvmrc), npm 10/11 and Git. No secrets/database/services required.
 
@@ -31,7 +31,7 @@ Existing checkout: pull your working branch, then `npm ci`. Commit the root lock
 | `npm test`           | UI-independent contracts/venue/routing tests      |
 | `npm run format`     | Format active code/docs                           |
 
-The SDK 57 app bundles a fictional metric floor and three POIs. Scan a versioned location marker or select a known demo start to route locally. Experimental calibrated step/yaw tracking, recording export and deterministic replay are implemented; physical accuracy is unmeasured. Follow [phone testing](docs/PHONE_TESTING.md) for launch/location QRs and measured walks.
+The SDK 57 app supports private, locally bundled plan-derived maps, room selection, zoom, guided test courses, saved calibration, walked trails and endpoint evaluation. A fresh clone uses the fictional demo; private plans are deliberately excluded from Git. See [local venues and guided testing](docs/LOCAL_VENUES.md). Experimental step/yaw tracking and replay are implemented; physical accuracy is unmeasured. [Phone testing](docs/PHONE_TESTING.md) covers the sensor protocol.
 
 ## Structure
 

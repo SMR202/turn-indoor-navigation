@@ -12,6 +12,10 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "postinstall": "npm run venue:prepare",
+    "venue:prepare": "tsx scripts/prepare-venue.mjs",
+    "venue:load": "tsx scripts/prepare-venue.mjs",
+    "venue:validate": "tsx scripts/validate-venue.mjs",
     "phone:qr": "tsx scripts/phone-qr.mjs",
     "replay": "tsx scripts/replay.mjs",
     "mobile": "npm run start --workspace @turn/mobile",

@@ -1,17 +1,17 @@
 # Mobile workstream
 
-Updated: 2026-09-24.
+Updated: 2026-09-25.
 
-## Current state / decisions
+## Current state
 
-Expo 57.0.24 reference client adds camera QR scan with permission/retry/cancel, manual known demo anchors, marker-driven routes, calibrated live PDR controls and local OS-share recording export. Camera/sensor/sharing/file modules use SDK 57 versions. Launch and location QRs are separate; generator is `npm run phone:qr -- exp://HOST:PORT`. User preference for QR handoff persists in AGENTS.
+SDK 57 app consumes a generated active venue, with a public synthetic fallback. Zoomable room/window/wall map, tap-to-route, guided course selection, measured-path confirmation, saved calibration, trace/heading, endpoint and distance errors, repeat/reset, and OS-share export. Private map artifacts stay Git-ignored. [Setup](../../LOCAL_VENUES.md).
 
 ## Validation / limitations
 
-Root checks pass including 23 tests. Expo Doctor 21/21; Android, iOS and web exports pass. Browser verifies entrance→Reading Room 19 m, crossroads→Reading Room 7 m, invalid calibration feedback, valid 10/14 calibration and phone-only live testing message. LAN manifest reports exposdk:57.0.0 and PC host. Camera/motion/OS-share physical execution remains untested. Audit has 14 moderate transitive findings, no high/critical.
+28 tests and root checks pass. Browser phone-width preview verifies plan labels, zoom, start gating and saved calibration. Android/iOS/web bundles are checked separately from device execution. Private model validation checks all anchor-to-destination routes and proper wall crossings. No real phone walk or measured accuracy claimed.
 
-No background tracking, pocket/bag mode or measured accuracy. Current map is fictional, and routes remain from the last anchor. Native binaries have not been built.
+Calibration storage is per phone/user/carry style. No run history screen; unsaved runs are replaced on re-anchor. No background/pocket tracking. Routes start at the last anchor. No native binary build.
 
 ## Next action
 
-Follow [phone testing](../../PHONE_TESTING.md), including permission denial/recovery, scan identity errors, background/resume and held-out measured walks. Keep the Expo server running for each phone handoff.
+Run independently taped courses on the user's phone; verify yaw direction, counts, permission recovery and export. Retain completed and interrupted runs. Include a fresh verified Expo launch QR at each app handoff.

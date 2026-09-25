@@ -30,3 +30,5 @@ Finish with completed work, validation/limitations, what is actually automated a
 ## Phone-test handoff preference (2026-09-24)
 
 Keep mobile on Expo SDK 57 until the user requests an upgrade. At the end of app implementation work, start/verify the Expo development server and include a scannable connection QR image plus its URL and network instructions. Distinguish the Expo launch QR from TURN location-anchor QRs. Never substitute a localhost web URL for a phone-test link or claim the phone loaded it without evidence.
+
+Private testing venues may be selected in ignored work/private/venue.json. Preserve that selection and read its provenance before changing geometry. Use venue:prepare after installing dependencies; a fresh clone uses the synthetic fallback. Keep private source/derived files out of commits and public build artifacts; see [local venues](docs/LOCAL_VENUES.md).

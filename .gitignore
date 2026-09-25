@@ -10,6 +10,7 @@ datasets/private/
 datasets/derived/
 # Local scratch
 work/
+apps/mobile/src/config/venue.generated.json
 .DS_Store
 Thumbs.db
 node_modules/

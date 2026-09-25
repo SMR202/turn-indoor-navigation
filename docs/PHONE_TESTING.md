@@ -1,5 +1,7 @@
 # Phone test: SDK 57, anchors and experimental PDR
 
+For a private map and the current guided-walk UI, start with [local venues](LOCAL_VENUES.md). The manual synthetic-venue protocol below remains useful for sensor validation.
+
 Use Node 24.19.0 and `npm ci`. Run `npm run mobile -- --go --lan` (or from apps/mobile run `npx expo start --go --lan --port 8082`). Keep Metro running. Phone and computer must be on a mutually reachable LAN. Use an Expo Go build supporting SDK 57. Native sensor tests cannot be substituted by the browser preview.
 
 Generate a shareable launch image with `npm run phone:qr -- exp://YOUR_LAN_IP:8082`, using the actual URL emitted by Expo. This writes ignored local files under work/phone-test. The **Expo launch QR** opens the app; **entry-qr.png / junction-qr.png** establish locations inside TURN. Display a location image on another screen or print it. These describe a fictional venue, not physical landmarks in your building.

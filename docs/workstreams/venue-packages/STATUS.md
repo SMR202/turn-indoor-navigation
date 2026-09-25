@@ -1,27 +1,15 @@
-# venue-packages workstream
+# Venue packages workstream
 
-Last meaningful update: 2026-09-24
+Updated: 2026-09-25.
 
-## Objective
+## Current state
 
-Versioned portable buildings, usable locally and later downloadable.
+Schema v1 gains backward-compatible optional/default room labels/polygons, windows, plan-derived provenance and guided test courses. Metric geometry retains exact feet/inch conversion. `venue:load` validates and bundles a private local package; postinstall prepares local selection or public synthetic fallback. Source/derived private artifacts remain ignored. [Workflow](../../LOCAL_VENUES.md).
 
-## Current state / what changed
+## Validation / limitations
 
-packages/venue-model implements schema v1, ID/ref/bounds/connector validation and original synthetic package. See ADR-0003 and docs/VENUE_PACKAGES.md.
-
-## Validation performed
-
-Four venue tests pass: serialization, unsupported versions/duplicate IDs/references, invalid edge lengths/floor references, connector requirements and stair access. See [foundation status](../foundation/STATUS.md).
-
-## Important decisions / dependencies
-
-[Architecture](../../ARCHITECTURE.md), [roadmap](../../ROADMAP.md), [reuse registry](../../../research/REUSE_REGISTRY.md), [platform ADR](../../../decisions/0002-product-platform-foundation.md), [venue ADR](../../../decisions/0003-venue-contracts-and-offline-navigation.md).
-
-## Known issues / attempted approaches
-
-No cache/updater yet. No wall-clearance/polygon-validity proof. Runtime validation rejects unsupported versions; migration fixtures required for future changes.
+Tests cover conversion, course/anchor agreement, bounds and proper graph/wall intersections. `venue:validate` additionally checks all anchor-to-POI routes and test wall intersections. These do not establish as-built geometry, furniture/clearance, tangent/collinear intersections or accessibility. Unlabelled wall thicknesses/offsets stay explicit in package provenance.
 
 ## Next action
 
-Add fixture import/validation command and geometry checks, then authenticated download/atomic cache with last-good rollback.
+Verify inferred geometry against on-site measurements before treating routes as surveyed. Transfer private packages explicitly between machines. Do not commit plans/derived maps to the public repository. Download/cache updates remain future work.

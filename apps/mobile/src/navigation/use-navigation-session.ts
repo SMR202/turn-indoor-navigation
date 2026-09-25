@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-import { sampleVenue } from '@turn/venue-model';
+import { activeVenue as sampleVenue } from '../config/active-venue';
 import {
   NavigationEngine,
   resolveAnchorPayload,
@@ -15,7 +15,7 @@ const empty: TrackingSnapshot = {
   pose: null,
   steps: 0,
   distanceMetres: 0,
-  message: 'Scan a location marker or select a known demo start.',
+  message: 'Choose a test walk or establish your starting point.',
   stopped: false,
 };
 export function useNavigationSession() {
@@ -30,6 +30,9 @@ export function useNavigationSession() {
   const lastTime = useRef(0);
   const lastRender = useRef(0);
   const pendingStart = useRef(false);
+  const [trace, setTrace] = useState<{ x: number; y: number }[]>([]);
+  const traceRef = useRef<{ x: number; y: number }[]>([]);
+  const lastSteps = useRef(0);
 
   const stop = useCallback((reason = 'Paused. Re-anchor before resuming.') => {
     generation.current++;
@@ -55,7 +58,7 @@ export function useNavigationSession() {
   }, []);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active')
+      if (state !== 'active' && stopSource.current)
         stop('App backgrounded. Re-anchor before resuming.');
     });
     return () => {
@@ -76,6 +79,7 @@ export function useNavigationSession() {
     const sessionId = `walk-${Date.now()}`;
     engine.current = new NavigationEngine(sampleVenue, sessionId, stepLength);
     recording.current = {
+      venue: sampleVenue,
       schemaVersion: 1,
       algorithm: PDR_REVISION,
       sessionId,
@@ -84,7 +88,7 @@ export function useNavigationSession() {
         platform: Platform.OS,
         osVersion: String(Platform.Version),
         timestampBasis: 'native-boot-seconds-minus-session-origin',
-        note: 'Synthetic venue / hand-held screen-up baseline. No measured accuracy implied.',
+        note: `${sampleVenue.provenance.kind} venue / hand-held screen-up baseline. No measured accuracy implied.`,
       },
       observations: [],
     };
@@ -101,6 +105,9 @@ export function useNavigationSession() {
     recording.current.observations.push(event);
     lastTime.current = 0;
     setSnapshot(engine.current.consume(event));
+    traceRef.current = [{ ...resolved.position }];
+    lastSteps.current = 0;
+    setTrace([...traceRef.current]);
     setAnchorNodeId(resolved.nodeId);
   };
   const start = async (headingRad: number) => {
@@ -139,6 +146,11 @@ export function useNavigationSession() {
           }
           activeRecording.observations.push(event);
           const next = activeEngine.consume(event);
+          if (next.pose && next.steps > lastSteps.current) {
+            lastSteps.current = next.steps;
+            traceRef.current.push({ ...next.pose.position });
+            setTrace([...traceRef.current]);
+          }
           if (next.stopped) {
             stop(next.message);
             return;
@@ -178,5 +190,7 @@ export function useNavigationSession() {
     start,
     stop,
     getRecording: () => recording.current,
+    getSnapshot: () => engine.current?.snapshot() ?? empty,
+    trace,
   };
 }
