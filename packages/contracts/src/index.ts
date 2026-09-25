@@ -37,6 +37,14 @@ export const observationSchema = z.discriminatedUnion('type', [
     tiltRad: z.number().min(0).max(Math.PI),
     units: z.literal('rad'),
     frame: z.literal('session-relative'),
+    platformEulerRad: z
+      .object({
+        alpha: z.number().finite(),
+        beta: z.number().finite(),
+        gamma: z.number().finite(),
+        convention: z.enum(['ios-core-motion', 'android-expo']),
+      })
+      .optional(),
   }),
   z.object({
     ...envelope,
@@ -51,6 +59,13 @@ export const observationSchema = z.discriminatedUnion('type', [
     units: z.literal('m/s2'),
     frame: z.literal('device'),
     includesGravity: z.boolean(),
+  }),
+  z.object({
+    ...envelope,
+    type: z.literal('linear-acceleration'),
+    values: vectorSchema,
+    units: z.literal('m/s2'),
+    frame: z.literal('device'),
   }),
   z.object({
     ...envelope,

@@ -8,10 +8,14 @@ SDK 57 app consumes a generated active venue, with a public synthetic fallback. 
 
 ## Validation / limitations
 
-35 tests and root checks pass. Browser preview verifies plan labels, stationary mode without calibration, pace controls, start gating and the native-only sensor message. Android/iOS/web bundles are checked separately from device execution. Private model validation checks all anchor-to-destination routes and proper wall crossings. Seven user-provided iOS recordings were replayed; the new countdown/history flow still needs phone validation.
+41 tests and root checks pass. Browser preview verifies plan labels, stationary mode without calibration, pace controls, start gating and the native-only sensor message. Android/iOS/web bundles are checked separately from device execution. Private model validation checks all anchor-to-destination routes and proper wall crossings. Seven user-provided iOS recordings were replayed; the new countdown/history flow still needs phone validation.
 
 Calibration storage is per phone/user/carry style. Completed/interrupted runs save locally; share through the OS sheet for backup. Abrupt OS termination during capture can still lose an unfinished run. No background/pocket tracking. Routes start at the last anchor. No native binary build.
 
 ## Next action
 
 Run one stationary trial and three normal/three brisk taped walks with unchanged calibration, explicit start cue and actual per-run footfall counts; verify on-device persistence, permission recovery and sharing. Retain completed and interrupted runs. Include a fresh verified Expo launch QR at each app handoff.
+
+## Native comparison slice
+
+Native/live/manual count display and five labelled phone-handling controls added. SDK 57 and the private venue remain. Native counts are diagnostic only, with unavailable/denied/unknown/partial states and a bounded iOS interval query. Phone validation of native permissions, latency and count quality remains pending. See the [execution plan](../../../research/MARKET_DIRECTION_2026_09.md).

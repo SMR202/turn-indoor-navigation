@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activeVenue as venue } from '../config/active-venue';
 import { calculateRoute } from '@turn/routing';
@@ -22,6 +29,13 @@ import {
   clearCalibration,
 } from '../navigation/calibration-storage';
 
+const activities = {
+  still: 'Stand still',
+  'phone-bobbing': 'Phone up / down',
+  'phone-rotation': 'Rotate phone',
+  typing: 'Type while standing',
+  'walking-in-place': 'Walk in place',
+} as const;
 const ink = '#183d34',
   muted = '#617369';
 function Action({
@@ -83,6 +97,7 @@ export default function Home() {
     null,
   );
   const [mode, setMode] = useState<'walk' | 'stationary'>('walk');
+  const [activity, setActivity] = useState<keyof typeof activities>('still');
   const [pace, setPace] =
     useState<NonNullable<Recording['labels']>['pace']>('normal');
   const [manualSteps, setManualSteps] = useState('');
@@ -122,12 +137,12 @@ export default function Home() {
       report(e);
       setSavedMessage('Save failed. Share this run before resetting.');
     }
-  }, [session.snapshot.stopped, runId]);
+  }, [session.snapshot.stopped, runId, session.nativeCount?.status]);
   const attachLabels = () => {
     const recording = session.getRecording();
     if (!recording) return;
     const actual =
-      mode === 'stationary'
+      mode === 'stationary' && activity !== 'walking-in-place'
         ? 0
         : manualSteps.trim() === ''
           ? null
@@ -141,6 +156,7 @@ export default function Home() {
       );
     recording.labels = {
       mode,
+      activity: mode === 'walk' ? 'walking' : activity,
       pace: mode === 'stationary' ? 'unspecified' : pace,
       manualSteps: actual,
       phoneModel: '',
@@ -266,7 +282,7 @@ export default function Home() {
           {(['walk', 'stationary'] as const).map((value) => (
             <Action
               key={value}
-              title={`${mode === value ? '✓ ' : ''}${value === 'walk' ? 'Measured walk' : 'Stand still · 20 s'}`}
+              title={`${mode === value ? '✓ ' : ''}${value === 'walk' ? 'Measured walk' : 'Phone handling · 20 s'}`}
               disabled={busy}
               onPress={() => {
                 setMode(value);
@@ -276,6 +292,21 @@ export default function Home() {
             />
           ))}
         </View>
+        {mode === 'stationary' && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(activities).map(([key, title]) => (
+              <Action
+                key={key}
+                title={`${activity === key ? '✓ ' : ''}${title}`}
+                disabled={busy}
+                onPress={() => {
+                  setActivity(key as keyof typeof activities);
+                  reset();
+                }}
+              />
+            ))}
+          </View>
+        )}
         {mode === 'walk' && (
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {(['normal', 'brisk', 'slow'] as const).map((value) => (
@@ -290,7 +321,7 @@ export default function Home() {
         )}
         <Text style={{ color: muted }}>
           {mode === 'stationary'
-            ? 'Remain still for 20 seconds after the countdown. Expected steps: zero.'
+            ? `After the countdown: ${activities[activity].toLowerCase()} for 20 seconds without travelling. ${activity === 'walking-in-place' ? 'Count footfalls; expected horizontal travel is zero.' : 'Keep your feet still; expected steps and travel are zero.'}`
             : 'Keep one calibration for comparison walks. Count every footfall; enter the actual count after finishing.'}
         </Text>
       </View>
@@ -304,7 +335,13 @@ export default function Home() {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {[
-            [String(session.snapshot.steps), 'steps'],
+            [String(session.snapshot.steps), 'TURN steps'],
+            [
+              session.nativeCount?.queriedSteps?.toString() ??
+                session.nativeCount?.liveSteps?.toString() ??
+                '—',
+              Platform.OS === 'ios' ? 'Apple steps' : 'Native steps',
+            ],
             [`${session.snapshot.distanceMetres.toFixed(2)} m`, 'walked'],
             [
               mode === 'stationary'
@@ -330,6 +367,25 @@ export default function Home() {
         >
           {session.snapshot.message}
         </Text>
+        <Text selectable>
+          {session.nativeCount?.message ??
+            'Native count starts with the test. No reading is shown as —, not zero.'}
+        </Text>
+        {session.nativeSaveError ? (
+          <Text accessibilityRole="alert">
+            Native result save failed: {session.nativeSaveError}. Share the run
+            before closing.
+          </Text>
+        ) : null}
+        <Text style={{ color: muted }}>
+          Manual count:{' '}
+          {manualSteps ||
+            (mode === 'stationary' && activity !== 'walking-in-place'
+              ? '0 expected'
+              : 'enter after finishing')}
+          . Counts are independent estimates; the native counter does not yet
+          correct TURN.
+        </Text>
         {busy && (
           <Text
             accessibilityLiveRegion="polite"
@@ -340,7 +396,7 @@ export default function Home() {
               : session.settling > 0
                 ? `Hold still & point along the path · ${session.settling}`
                 : mode === 'stationary'
-                  ? `Stay still · ${Math.floor(session.activeSeconds)} / 20 s`
+                  ? ` ${activities[activity]} · ${Math.floor(session.activeSeconds)} / 20 s`
                   : 'Walk now'}
           </Text>
         )}
@@ -362,7 +418,7 @@ export default function Home() {
                   : session.settling > 0
                     ? 'Wait for the countdown'
                     : mode === 'stationary'
-                      ? 'Finish stationary test'
+                      ? 'Finish handling test'
                       : 'Finish at the end mark'
               }
               disabled={
@@ -395,7 +451,7 @@ export default function Home() {
             />
             <Action
               title={
-                mode === 'stationary' ? 'Start stationary test' : 'Start walk'
+                mode === 'stationary' ? 'Start handling test' : 'Start walk'
               }
               primary
               disabled={
@@ -467,8 +523,12 @@ export default function Home() {
               accessibilityLabel="Actual test step count"
               placeholder="e.g. 10"
               keyboardType="number-pad"
-              editable={mode === 'walk'}
-              value={mode === 'stationary' ? '0' : manualSteps}
+              editable={mode === 'walk' || activity === 'walking-in-place'}
+              value={
+                mode === 'stationary' && activity !== 'walking-in-place'
+                  ? '0'
+                  : manualSteps
+              }
               onChangeText={setManualSteps}
               style={{
                 padding: 14,
@@ -511,7 +571,7 @@ export default function Home() {
         {pose && (
           <Action
             title="Share this run"
-            disabled={session.starting}
+            disabled={busy || session.nativeCount?.status === 'querying'}
             onPress={() => {
               session.stop(
                 'Stopped for export. Return to start before repeating.',

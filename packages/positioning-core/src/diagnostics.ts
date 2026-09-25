@@ -104,6 +104,22 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     stepLengthMetres: recording.stepLengthMetres,
     steps: final.steps,
     distanceMetres: final.distanceMetres,
+    turnStepsInNativeWindow:
+      recording.nativePedometer?.startedAtUnixMs == null
+        ? null
+        : final.steps - recording.nativePedometer.turnStepsAtStart,
+    nativePedometer: recording.nativePedometer ?? null,
+    nativeStepCount:
+      recording.nativePedometer?.queriedSteps ??
+      recording.nativePedometer?.liveSteps ??
+      null,
+    nativeStepCountError:
+      manualSteps === null ||
+      (recording.nativePedometer?.queriedSteps ??
+        recording.nativePedometer?.liveSteps) == null
+        ? null
+        : (recording.nativePedometer!.queriedSteps ??
+            recording.nativePedometer!.liveSteps)! - manualSteps,
     manualSteps,
     stepCountError: manualSteps === null ? null : final.steps - manualSteps,
     durationSeconds: lastTime,

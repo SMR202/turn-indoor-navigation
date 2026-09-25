@@ -1,3 +1,4 @@
+import type { Observation } from '@turn/contracts';
 import { expect, it } from 'vitest';
 import { sampleVenue } from '@turn/venue-model';
 import { diagnoseRecording, replayRecording, type Recording } from './index';
@@ -103,4 +104,20 @@ it('reports stream gaps and an engine failure without calling the run completed'
   expect(d.acceleration.gapsOver100ms).toBe(1);
   expect(d.failure).toMatch(/gap/i);
   expect(d.completed).toBe(false);
+});
+it('preserves baseline replay when diagnostic gyro and linear streams are added', () => {
+  const original = recording();
+  const enriched = structuredClone(original);
+  enriched.observations = original.observations.flatMap<Observation>((o) =>
+    o.type === 'accelerometer'
+      ? [
+          o,
+          { ...o, type: 'linear-acceleration' as const },
+          { ...o, type: 'gyroscope' as const, units: 'rad/s' as const },
+        ]
+      : [o],
+  );
+  expect(replayRecording(enriched, sampleVenue)).toEqual(
+    replayRecording(original, sampleVenue),
+  );
 });

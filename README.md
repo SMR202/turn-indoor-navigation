@@ -8,7 +8,7 @@ TURN powers its own reference app and future venue apps/SDK integrations. Centau
 
 ## Setup
 
-Until these changes are merged, check out `codex/local-venue-testing` after cloning (or clone with `--branch codex/local-venue-testing`).
+Until these changes are merged, check out `codex/native-step-comparison` after cloning (or clone with `--branch codex/native-step-comparison`).
 
 Use Node **24.19.0** (.nvmrc), npm 10/11 and Git. No secrets/database/services required.
 

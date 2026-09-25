@@ -4,7 +4,7 @@ Updated: 2026-09-25.
 
 ## Current milestone
 
-M0/M1/M2 and experimental PDR baseline implemented. Current branch `codex/walk-diagnostics` adds settled starts, stationary/pace-labelled trials, local run history and replay diagnostics. Seven user-supplied iOS captures have been replayed; general localization accuracy remains unvalidated.
+M0/M1/M2 and experimental PDR baseline implemented. Current branch `codex/native-step-comparison` adds settled starts, stationary/pace-labelled trials, local run history and replay diagnostics. Twelve user-supplied iOS captures have been replayed; native/live/manual count comparison and labelled handling tests are now implemented; general localization accuracy remains unvalidated.
 
 ## Capabilities
 
@@ -17,6 +17,10 @@ Expo SDK 57; private local venue packages with room dimensions; zoomable maps; c
 ## Gaps
 
 Repeatable accuracy unvalidated; initial user trials show count variation and heading offset. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No map matching, continuous rerouting, floor detection, updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. Dependency audit reports 14 moderate transitive findings, no high/critical; forced downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
+
+## Direction
+
+[Market review and execution plan](../research/MARKET_DIRECTION_2026_09.md) preserves multi-sensor corrections, offline venue packages, authoring and a reusable SDK. Native counts currently provide diagnostic evidence only. No walking classifier or false-motion suppression is claimed.
 
 ## Next action
 

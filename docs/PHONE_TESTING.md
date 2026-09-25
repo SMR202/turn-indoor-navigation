@@ -25,3 +25,11 @@ Keep one independent calibration unchanged. Run a 20-second stationary test, the
 `npm run diagnose -- path/to/run1.json path/to/run2.json` reports hashes, peak-time cadence, detected/manual count difference, sensor gaps/reversals, initial-direction offsets and confirmed endpoint error. Positive lateral/heading values mean left. On turning paths these offsets are not drift measurements. Missing completion or manual counts remain unknown. Timing uses native observation timestamps, never UI callback timing.
 
 Local history uses one file per run in the app document directory (browser storage for preview tests). It survives ordinary restarts but is not a backup against app-data deletion, uninstall or storage failure. Explicit sharing preserves a copy. No recording is uploaded automatically. Browser previews cannot validate phone sensor, native persistence or sharing behavior.
+
+## Native count comparison
+
+The next run displays TURN steps, Apple/native steps and your manual count. Native collection starts at the visible test cue. Keep still during the countdown. On iPhone, Finish queries the interval from that cue to Stop; wait for the query status to finish before sharing (bounded to eight seconds). The result remains an estimate. Android retains the last live count and marks possible missing late batches. A dash means no native reading, never an assumed zero. Permission or availability failures do not disable the TURN-only diagnostic recording.
+
+Choose Measured walk for actual travel and Phone handling for a 20-second control. Handling labels are Stand still, Phone up/down, Rotate phone, Type while standing, and Walk in place. Keep feet in the same location for handling controls. Walking in place has real footfalls but zero expected horizontal displacement: enter its actual footfall count. For the other controls expected footfalls are zero. Controls deliberately still run the detector so false movement is measurable; no suppression algorithm has been added yet.
+
+After finishing, enter the count, save details and share. Saved runs preserve native status, count and receipt-time updates alongside motion samples. Native callbacks cannot identify individual footfall times and must not be interpreted as synchronous heading measurements. Keep calibration unchanged throughout comparisons.

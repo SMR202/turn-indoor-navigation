@@ -10,6 +10,12 @@ import {
 import { PDR_REVISION } from '@turn/pdr';
 import type { Observation } from '@turn/contracts';
 import { startMotionSource } from '../sensors/motion-source';
+import { Pedometer } from 'expo-sensors';
+import {
+  preparePedometer,
+  type NativeCount,
+} from '../sensors/pedometer-capture';
+import { saveRun } from './run-storage';
 import { SettledStart } from '../sensors/settled-start';
 
 const empty: TrackingSnapshot = {
@@ -27,6 +33,11 @@ export function useNavigationSession() {
   const [settling, setSettling] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [activeSeconds, setActiveSeconds] = useState(0);
+  const [nativeCount, setNativeCount] = useState<NativeCount | null>(null);
+  const [nativeSaveError, setNativeSaveError] = useState('');
+  const nativeCapture = useRef<Awaited<
+    ReturnType<typeof preparePedometer>
+  > | null>(null);
   const engine = useRef<NavigationEngine | null>(null);
   const recording = useRef<Recording | null>(null);
   const stopSource = useRef<(() => void) | null>(null);
@@ -39,6 +50,18 @@ export function useNavigationSession() {
   const lastSteps = useRef(0);
 
   const stop = useCallback((reason = 'Paused. Re-anchor before resuming.') => {
+    const capture = nativeCapture.current;
+    nativeCapture.current = null;
+    const finishedRecording = recording.current;
+    void capture?.finish().then(() => {
+      if (finishedRecording) {
+        try {
+          saveRun(finishedRecording);
+        } catch (e) {
+          setNativeSaveError(String(e));
+        }
+      }
+    });
     generation.current++;
     pendingStart.current = false;
     stopSource.current?.();
@@ -69,11 +92,16 @@ export function useNavigationSession() {
     return () => {
       generation.current++;
       stopSource.current?.();
+      nativeCapture.current?.dispose();
       subscription.remove();
     };
   }, [stop]);
 
   const anchor = (payload: string, stepLength: number) => {
+    nativeCapture.current?.dispose();
+    nativeCapture.current = null;
+    setNativeCount(null);
+    setNativeSaveError('');
     const resolved = resolveAnchorPayload(payload, sampleVenue);
     stopSource.current?.();
     stopSource.current = null;
@@ -135,6 +163,19 @@ export function useNavigationSession() {
     const settledStart = new SettledStart();
     setSettling(4);
     try {
+      const capture = await preparePedometer(
+        Pedometer,
+        Platform.OS,
+        (state) => {
+          activeRecording.nativePedometer = state;
+          if (recording.current === activeRecording) setNativeCount(state);
+        },
+      );
+      if (generation.current !== token) {
+        capture.dispose();
+        return;
+      }
+      nativeCapture.current = capture;
       const cleanup = await startMotionSource(
         activeRecording.sessionId,
         (event) => {
@@ -151,6 +192,7 @@ export function useNavigationSession() {
           }
           activeRecording.observations.push(event);
           const next = activeEngine.consume(event);
+          if (settled.remaining === 0) capture.begin(next.steps);
           if (next.pose && next.steps > lastSteps.current) {
             lastSteps.current = next.steps;
             traceRef.current.push({ ...next.pose.position });
@@ -201,6 +243,8 @@ export function useNavigationSession() {
     settling,
     elapsed,
     activeSeconds,
+    nativeCount,
+    nativeSaveError,
     anchor,
     start,
     stop,

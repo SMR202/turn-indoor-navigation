@@ -17,3 +17,7 @@ DECISION: preserve `step-yaw-v1` replay math; expose accepted peak timestamps an
 ## Next action
 
 Follow [phone testing](../../PHONE_TESTING.md), retain original logs outside Git, compare manual counts and held-out measured endpoints. Proposed 10 m endpoint ≤1 m and distance ≤5% targets remain unvalidated. Evaluate Fusion/native acquisition only if logs justify it.
+
+## Native comparison acquisition
+
+Added optional platform-tagged Euler angles, normalized device-axis gyro in rad/s and gravity-removed acceleration with native timestamps. Baseline step/yaw math remains unchanged. Native count acquisition uses a separate explicitly timed interval; cumulative receipt callbacks never drive pose. Capture foot-still hand motion and walking-in-place separately before selecting a gate. No false-motion suppression or improved physical accuracy is claimed.

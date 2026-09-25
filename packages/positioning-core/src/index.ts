@@ -259,9 +259,49 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  nativePedometer: z
+    .object({
+      status: z.enum([
+        'preparing',
+        'ready',
+        'collecting',
+        'unavailable',
+        'denied',
+        'error',
+        'stopped',
+        'querying',
+        'complete',
+      ]),
+      source: z.string(),
+      message: z.string(),
+      startedAtUnixMs: z.number().nullable(),
+      endedAtUnixMs: z.number().nullable(),
+      turnStepsAtStart: z.number().int().nonnegative(),
+      liveSteps: z.number().int().nonnegative().nullable(),
+      queriedSteps: z.number().int().nonnegative().nullable(),
+      updates: z
+        .array(
+          z.object({
+            receivedAfterStartSeconds: z.number().nonnegative(),
+            steps: z.number().int().nonnegative(),
+          }),
+        )
+        .max(10000),
+    })
+    .optional(),
   labels: z
     .object({
       mode: z.enum(['walk', 'stationary']),
+      activity: z
+        .enum([
+          'walking',
+          'still',
+          'phone-bobbing',
+          'phone-rotation',
+          'typing',
+          'walking-in-place',
+        ])
+        .optional(),
       pace: z.enum(['normal', 'brisk', 'slow', 'unspecified']),
       manualSteps: z.number().int().min(0).max(10000).nullable(),
       phoneModel: z.string().max(100),

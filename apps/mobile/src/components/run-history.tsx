@@ -88,9 +88,20 @@ export const RunHistory = memo(function RunHistory({
             </Text>
           )}
           <Text selectable>
-            {selected.labels?.mode ?? 'walk'} ·{' '}
+            {selected.labels?.activity ?? selected.labels?.mode ?? 'walk'} ·{' '}
             {selected.labels?.pace ?? 'unlabelled pace'} · {diagnostics.steps}{' '}
             detected steps / {diagnostics.manualSteps ?? '?'} counted
+          </Text>
+          <Text selectable>
+            TURN in native interval:{' '}
+            {diagnostics.turnStepsInNativeWindow ?? 'unknown'} · Native count:{' '}
+            {diagnostics.nativeStepCount ?? 'unavailable'} · manual:{' '}
+            {diagnostics.manualSteps ?? 'unknown'} · native count error:{' '}
+            {diagnostics.nativeStepCountError ?? 'unknown'}
+          </Text>
+          <Text selectable>
+            {diagnostics.nativePedometer?.source} ·{' '}
+            {diagnostics.nativePedometer?.message}
           </Text>
           <Text selectable>
             {diagnostics.distanceMetres.toFixed(2)} m estimated · endpoint error{' '}
