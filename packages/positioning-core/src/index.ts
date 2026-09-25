@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export { evaluateWalk } from './evaluation';
+export { diagnoseRecording } from './diagnostics';
 import {
   observationSchema,
   type Observation,
@@ -55,6 +56,7 @@ export function resolveAnchorPayload(raw: string, venue: VenuePackage) {
 }
 
 export type TrackingSnapshot = {
+  lastStepAtSeconds?: number;
   pose: Pose | null;
   steps: number;
   distanceMetres: number;
@@ -70,6 +72,7 @@ export class NavigationEngine {
     null;
   private lastByType = new Map<string, number>();
   private steps = 0;
+  private lastStepAt: number | undefined;
   private headingHistory: { time: number; heading: number }[] = [];
   private stopped = false;
   private message = 'Scan a TURN location marker.';
@@ -87,6 +90,7 @@ export class NavigationEngine {
   }
   snapshot(): TrackingSnapshot {
     return {
+      lastStepAtSeconds: this.lastStepAt,
       pose: this.pose
         ? { ...this.pose, position: { ...this.pose.position } }
         : null,
@@ -140,6 +144,7 @@ export class NavigationEngine {
       this.attitude = null;
       this.headingHistory = [];
       this.steps = 0;
+      this.lastStepAt = undefined;
       this.stopped = false;
       this.lastByType.clear();
       this.message = 'Location established. Align heading before walking.';
@@ -224,6 +229,7 @@ export class NavigationEngine {
         else {
           const heading = stepHeading.heading;
           this.steps++;
+          this.lastStepAt = detected.stepAt;
           this.pose = {
             ...this.pose,
             source: PDR_REVISION,
@@ -253,6 +259,15 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  labels: z
+    .object({
+      mode: z.enum(['walk', 'stationary']),
+      pace: z.enum(['normal', 'brisk', 'slow', 'unspecified']),
+      manualSteps: z.number().int().min(0).max(10000).nullable(),
+      phoneModel: z.string().max(100),
+      notes: z.string().max(1000),
+    })
+    .optional(),
   test: z
     .object({
       courseId: z.string().min(1),
@@ -269,6 +284,7 @@ export const recordingSchema = z.object({
     osVersion: z.string(),
     timestampBasis: z.literal('native-boot-seconds-minus-session-origin'),
     note: z.string(),
+    acquisitionProtocol: z.string().optional(),
   }),
   observations: z.array(observationSchema).max(100000),
 });

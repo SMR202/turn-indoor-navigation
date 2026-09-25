@@ -6,6 +6,7 @@ export default defineConfig({
       'packages/**/*.test.ts',
       'tooling/**/*.test.ts',
       'apps/mobile/src/sensors/**/*.test.ts',
+      'apps/mobile/src/navigation/**/*.test.ts',
     ],
   },
 });

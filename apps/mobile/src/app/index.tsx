@@ -3,13 +3,19 @@ import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activeVenue as venue } from '../config/active-venue';
 import { calculateRoute } from '@turn/routing';
-import { anchorPayload, evaluateWalk } from '@turn/positioning-core';
-import { calibratedStepLength } from '@turn/pdr';
+import {
+  anchorPayload,
+  evaluateWalk,
+  type Recording,
+} from '@turn/positioning-core';
+import { calibratedStepLength, wrapAngle } from '@turn/pdr';
 import { pathLength } from '@turn/venue-model';
 import { FloorMap } from '../components/floor-map';
 import { AnchorScanner } from '../components/anchor-scanner';
 import { useNavigationSession } from '../navigation/use-navigation-session';
 import { exportRecording } from '../navigation/export-recording';
+import { saveRun } from '../navigation/run-storage';
+import { RunHistory } from '../components/run-history';
 import {
   loadCalibration,
   saveCalibration,
@@ -76,6 +82,13 @@ export default function Home() {
   const [result, setResult] = useState<ReturnType<typeof evaluateWalk> | null>(
     null,
   );
+  const [mode, setMode] = useState<'walk' | 'stationary'>('walk');
+  const [pace, setPace] =
+    useState<NonNullable<Recording['labels']>['pace']>('normal');
+  const [manualSteps, setManualSteps] = useState('');
+  const [notes, setNotes] = useState('');
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [savedMessage, setSavedMessage] = useState('');
   const busy = session.running || session.starting;
   const pose = session.snapshot.pose;
   const room = venue.floors[0]!.rooms.find((r) => r.id === selectedRoom);
@@ -93,12 +106,59 @@ export default function Home() {
       setShowCalibration(value === null);
     });
   }, []);
+  const runId = session.getRecording()?.sessionId;
+  useEffect(() => {
+    if (!session.snapshot.stopped) return;
+    const recording = session.getRecording();
+    if (!recording?.observations.some((o) => o.type === 'accelerometer'))
+      return;
+    try {
+      saveRun(recording);
+      setSavedMessage(
+        'Saved on this device. Add your actual count below, then save the details.',
+      );
+      setHistoryRevision((v) => v + 1);
+    } catch (e) {
+      report(e);
+      setSavedMessage('Save failed. Share this run before resetting.');
+    }
+  }, [session.snapshot.stopped, runId]);
+  const attachLabels = () => {
+    const recording = session.getRecording();
+    if (!recording) return;
+    const actual =
+      mode === 'stationary'
+        ? 0
+        : manualSteps.trim() === ''
+          ? null
+          : Number(manualSteps);
+    if (
+      actual !== null &&
+      (!Number.isInteger(actual) || actual < 0 || actual > 10000)
+    )
+      throw new Error(
+        'Enter a whole count for this run, or leave it blank if unknown.',
+      );
+    recording.labels = {
+      mode,
+      pace: mode === 'stationary' ? 'unspecified' : pace,
+      manualSteps: actual,
+      phoneModel: '',
+      notes,
+    };
+  };
   const establish = (payload: string) => {
+    const previous = session.getRecording();
+    if (previous?.observations.some((o) => o.type === 'accelerometer'))
+      saveRun(previous);
     session.anchor(payload, stepLength ?? 0.7);
     setLastAnchor(payload);
     setScanning(false);
     setError(null);
     setResult(null);
+    setManualSteps('');
+    setNotes('');
+    setSavedMessage('');
   };
   const reset = () => {
     try {
@@ -127,14 +187,17 @@ export default function Home() {
   const finish = () => {
     try {
       const recording = session.getRecording();
+      attachLabels();
       if (recording && course)
         recording.test = {
           courseId: course.id,
-          completedAtMarkedEndpoint: !session.getSnapshot().stopped,
+          completedAtMarkedEndpoint:
+            mode === 'walk' && !session.getSnapshot().stopped,
         };
-      if (course) setResult(evaluateWalk(session.getSnapshot(), course.points));
+      if (course && mode === 'walk')
+        setResult(evaluateWalk(session.getSnapshot(), course.points));
       session.stop(
-        'Walk finished. Save this run or return to the start to repeat.',
+        'Test finished. Review the saved run or return to the start to repeat.',
       );
     } catch (e) {
       report(e);
@@ -197,6 +260,40 @@ export default function Home() {
           </View>
         </View>
       )}
+      <View style={{ gap: 8 }}>
+        <Text style={{ fontWeight: '700', color: ink }}>Test mode & pace</Text>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {(['walk', 'stationary'] as const).map((value) => (
+            <Action
+              key={value}
+              title={`${mode === value ? '✓ ' : ''}${value === 'walk' ? 'Measured walk' : 'Stand still · 20 s'}`}
+              disabled={busy}
+              onPress={() => {
+                setMode(value);
+                setResult(null);
+                reset();
+              }}
+            />
+          ))}
+        </View>
+        {mode === 'walk' && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(['normal', 'brisk', 'slow'] as const).map((value) => (
+              <Action
+                key={value}
+                title={`${pace === value ? '✓ ' : ''}${value}`}
+                disabled={busy || session.snapshot.stopped}
+                onPress={() => setPace(value)}
+              />
+            ))}
+          </View>
+        )}
+        <Text style={{ color: muted }}>
+          {mode === 'stationary'
+            ? 'Remain still for 20 seconds after the countdown. Expected steps: zero.'
+            : 'Keep one calibration for comparison walks. Count every footfall; enter the actual count after finishing.'}
+        </Text>
+      </View>
       <View
         style={{
           backgroundColor: 'white',
@@ -210,7 +307,11 @@ export default function Home() {
             [String(session.snapshot.steps), 'steps'],
             [`${session.snapshot.distanceMetres.toFixed(2)} m`, 'walked'],
             [
-              course ? `${pathLength(course.points).toFixed(0)} m` : '—',
+              mode === 'stationary'
+                ? '0 m'
+                : course
+                  ? `${pathLength(course.points).toFixed(0)} m`
+                  : '—',
               'planned',
             ],
           ].map(([value, label]) => (
@@ -229,15 +330,46 @@ export default function Home() {
         >
           {session.snapshot.message}
         </Text>
+        {busy && (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ fontSize: 22, fontWeight: '700', color: ink }}
+          >
+            {session.starting
+              ? 'Starting sensors…'
+              : session.settling > 0
+                ? `Hold still & point along the path · ${session.settling}`
+                : mode === 'stationary'
+                  ? `Stay still · ${Math.floor(session.activeSeconds)} / 20 s`
+                  : 'Walk now'}
+          </Text>
+        )}
+        {busy && (
+          <Text>
+            Heading from start:{' '}
+            {pose?.headingRad == null
+              ? '—'
+              : `${((wrapAngle(pose.headingRad - heading) * 180) / Math.PI).toFixed(1)}°`}{' '}
+            · {session.elapsed.toFixed(1)} s
+          </Text>
+        )}
         {busy ? (
           <>
             <Action
               title={
                 session.starting
                   ? 'Starting sensors…'
-                  : 'Finish at the end mark'
+                  : session.settling > 0
+                    ? 'Wait for the countdown'
+                    : mode === 'stationary'
+                      ? 'Finish stationary test'
+                      : 'Finish at the end mark'
               }
-              disabled={session.starting}
+              disabled={
+                session.starting ||
+                session.settling > 0 ||
+                (mode === 'stationary' && session.activeSeconds < 20)
+              }
               primary
               onPress={finish}
             />
@@ -262,15 +394,17 @@ export default function Home() {
               onPress={reset}
             />
             <Action
-              title="Start walk"
+              title={
+                mode === 'stationary' ? 'Start stationary test' : 'Start walk'
+              }
               primary
               disabled={
                 !pose ||
-                !stepLength ||
+                (mode === 'walk' && !stepLength) ||
                 !courseReady ||
                 session.snapshot.stopped ||
                 scanning ||
-                (!!course && !marked)
+                (mode === 'walk' && !!course && !marked)
               }
               onPress={() => {
                 setError(null);
@@ -281,10 +415,15 @@ export default function Home() {
                     courseId: course.id,
                     completedAtMarkedEndpoint: false,
                   };
-                void session.start(heading).catch(report);
+                try {
+                  attachLabels();
+                  void session.start(heading).catch(report);
+                } catch (e) {
+                  report(e);
+                }
               }}
             />
-            {!stepLength && (
+            {!stepLength && mode === 'walk' && (
               <Text style={{ color: '#9b6122' }}>
                 One-time step calibration is required below. It will be saved on
                 this phone.
@@ -316,15 +455,82 @@ export default function Home() {
             </Text>
           </View>
         )}
+        {savedMessage && (
+          <Text accessibilityLiveRegion="polite" style={{ color: ink }}>
+            {savedMessage}
+          </Text>
+        )}
+        {session.snapshot.stopped && pose && (
+          <View style={{ gap: 8 }}>
+            <Text>Actual steps in THIS test (leave blank if unknown)</Text>
+            <TextInput
+              accessibilityLabel="Actual test step count"
+              placeholder="e.g. 10"
+              keyboardType="number-pad"
+              editable={mode === 'walk'}
+              value={mode === 'stationary' ? '0' : manualSteps}
+              onChangeText={setManualSteps}
+              style={{
+                padding: 14,
+                borderWidth: 1,
+                borderColor: '#cbd5ca',
+                borderRadius: 10,
+              }}
+            />
+            <TextInput
+              accessibilityLabel="Run notes"
+              placeholder="Phone model, grip, anything unusual…"
+              value={notes}
+              onChangeText={setNotes}
+              maxLength={1000}
+              style={{
+                padding: 14,
+                borderWidth: 1,
+                borderColor: '#cbd5ca',
+                borderRadius: 10,
+              }}
+            />
+            <Action
+              title="Save count & notes"
+              onPress={() => {
+                try {
+                  attachLabels();
+                  const recording = session.getRecording();
+                  if (recording) {
+                    saveRun(recording);
+                    setHistoryRevision((v) => v + 1);
+                    setSavedMessage('Run and details saved on this device.');
+                  }
+                } catch (e) {
+                  report(e);
+                }
+              }}
+            />
+          </View>
+        )}
         {pose && (
           <Action
-            title="Save this run"
+            title="Share this run"
             disabled={session.starting}
             onPress={() => {
               session.stop(
                 'Stopped for export. Return to start before repeating.',
               );
-              void exportRecording(session.getRecording()).catch(report);
+              try {
+                attachLabels();
+                const recording = session.getRecording();
+                // Sharing remains available if document storage is full.
+                if (recording) {
+                  try {
+                    saveRun(recording);
+                  } catch (e) {
+                    report(e);
+                  }
+                }
+                void exportRecording(recording).catch(report);
+              } catch (e) {
+                report(e);
+              }
             }}
           />
         )}
@@ -490,8 +696,8 @@ export default function Home() {
         )}
         <Text style={{ color: muted }}>
           Hold the phone screen-up, top edge pointing along your body. After
-          Start, stand still for one second. Keep it below 60° tilt and keep the
-          app open.
+          Start, hold still through the countdown and wait for “Walk now”. Keep
+          it below 60° tilt and keep the app open.
         </Text>
       </View>
       <View style={{ gap: 10 }}>
@@ -557,6 +763,7 @@ export default function Home() {
           ))}
         </ScrollView>
       </View>
+      <RunHistory revision={historyRevision} />
       <Action
         title={showNotes ? 'Hide plan notes' : 'Dimensions & plan notes'}
         onPress={() => setShowNotes((v) => !v)}

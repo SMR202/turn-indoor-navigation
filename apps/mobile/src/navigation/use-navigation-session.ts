@@ -10,6 +10,7 @@ import {
 import { PDR_REVISION } from '@turn/pdr';
 import type { Observation } from '@turn/contracts';
 import { startMotionSource } from '../sensors/motion-source';
+import { SettledStart } from '../sensors/settled-start';
 
 const empty: TrackingSnapshot = {
   pose: null,
@@ -23,6 +24,9 @@ export function useNavigationSession() {
   const [anchorNodeId, setAnchorNodeId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [settling, setSettling] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [activeSeconds, setActiveSeconds] = useState(0);
   const engine = useRef<NavigationEngine | null>(null);
   const recording = useRef<Recording | null>(null);
   const stopSource = useRef<(() => void) | null>(null);
@@ -41,6 +45,7 @@ export function useNavigationSession() {
     stopSource.current = null;
     setRunning(false);
     setStarting(false);
+    setSettling(0);
     if (engine.current && recording.current) {
       const event: Observation = {
         schemaVersion: 1,
@@ -58,7 +63,7 @@ export function useNavigationSession() {
   }, []);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' && stopSource.current)
+      if (state !== 'active' && (stopSource.current || pendingStart.current))
         stop('App backgrounded. Re-anchor before resuming.');
     });
     return () => {
@@ -76,6 +81,9 @@ export function useNavigationSession() {
     pendingStart.current = false;
     setStarting(false);
     setRunning(false);
+    setSettling(0);
+    setElapsed(0);
+    setActiveSeconds(0);
     const sessionId = `walk-${Date.now()}`;
     engine.current = new NavigationEngine(sampleVenue, sessionId, stepLength);
     recording.current = {
@@ -86,6 +94,7 @@ export function useNavigationSession() {
       stepLengthMetres: stepLength,
       metadata: {
         platform: Platform.OS,
+        acquisitionProtocol: 'settle-3s-warmup-v1',
         osVersion: String(Platform.Version),
         timestampBasis: 'native-boot-seconds-minus-session-origin',
         note: `${sampleVenue.provenance.kind} venue / hand-held screen-up baseline. No measured accuracy implied.`,
@@ -123,17 +132,8 @@ export function useNavigationSession() {
     const token = ++generation.current;
     const activeEngine = engine.current,
       activeRecording = recording.current;
-    const alignment: Observation = {
-      schemaVersion: 1,
-      sessionId: activeRecording.sessionId,
-      source: 'user-heading',
-      timestampSeconds: 0,
-      type: 'heading-alignment',
-      headingRad,
-      frame: 'venue',
-    };
-    activeRecording.observations.push(alignment);
-    activeEngine.consume(alignment);
+    const settledStart = new SettledStart();
+    setSettling(4);
     try {
       const cleanup = await startMotionSource(
         activeRecording.sessionId,
@@ -143,6 +143,11 @@ export function useNavigationSession() {
           if (activeRecording.observations.length >= 30000) {
             stop('Recording limit reached. Export and re-anchor.');
             return;
+          }
+          const settled = settledStart.consume(event, headingRad);
+          if (settled.alignment) {
+            activeRecording.observations.push(settled.alignment);
+            activeEngine.consume(settled.alignment);
           }
           activeRecording.observations.push(event);
           const next = activeEngine.consume(event);
@@ -157,6 +162,13 @@ export function useNavigationSession() {
           }
           if (performance.now() - lastRender.current > 100) {
             lastRender.current = performance.now();
+            setSettling(settled.remaining);
+            setElapsed(event.timestampSeconds);
+            setActiveSeconds(
+              settled.readyAt === null
+                ? 0
+                : Math.max(0, event.timestampSeconds - settled.readyAt),
+            );
             setSnapshot(next);
           }
         },
@@ -186,6 +198,9 @@ export function useNavigationSession() {
     anchorNodeId,
     running,
     starting,
+    settling,
+    elapsed,
+    activeSeconds,
     anchor,
     start,
     stop,

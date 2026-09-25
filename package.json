@@ -12,6 +12,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "diagnose": "tsx scripts/diagnose-runs.mjs",
     "postinstall": "npm run venue:prepare",
     "venue:prepare": "tsx scripts/prepare-venue.mjs",
     "venue:load": "tsx scripts/prepare-venue.mjs",
