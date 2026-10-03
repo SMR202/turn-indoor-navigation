@@ -1,5 +1,15 @@
 # Phone test: SDK 57, anchors and experimental PDR
 
+## One-tap transfer to this computer
+
+Run `npm run phone:tests` from the repository root (Node 24). It starts the SDK 57 app on port 8081 and a write-only test receiver on port 8083. Stop an existing Expo server first. If the computer has multiple network adapters, set `TURN_LAN_IP` to its reachable Wi-Fi/Ethernet IPv4 address before starting. Reload the phone from the new Expo launch QR after restarting the receiver.
+
+Finish tests, wait for the native count query, and save manual counts/notes. In **Saved runs**, tap **Send all saved tests to computer**, or choose a run and tap **Send selected test to computer**. Keep the app open during transfer. Both devices must be on a trusted, mutually reachable LAN; Windows must allow Node on that private network. A successful message confirms storage on the computer. Failed transfers leave the phone copies intact; retry safely. The batch stops at its first error and reports the remaining unsent count.
+
+Files arrive in ignored `work/test-inbox/<SHA-256>.json`. Original uploaded bytes are immutable; identical retries deduplicate, while changed annotations produce another version. Hash filenames verify integrity; filesystem creation time records arrival. Read session IDs and labels from the recordings rather than interpreting a hash as a run ID. The receiver validates the shared recording schema, rejects pending native counts, limits each upload to 32 MB and publishes complete files atomically. No public download/list endpoint, cloud storage, chat posting or automated analysis is provided. Say **“check the new runs”** in this chat after sending; Codex can read that directory directly.
+
+This is a development-only LAN tool, including any embedded private venue and sensor traces. Pairing uses a random token per launch, bundled into the development app through [Expo public environment variables](https://docs.expo.dev/guides/environment-variables/). That token is visible to development-bundle readers, not a production secret. HTTP is local and unencrypted: do not expose either port to the internet or publish a paired bundle. Normal starts/exports without these environment variables disable the inbox buttons. Navigation remains offline and independent of this receiver. Existing file sharing is still available.
+
 For a private map and the current guided-walk UI, start with [local venues](LOCAL_VENUES.md). The manual synthetic-venue protocol below remains useful for sensor validation.
 
 Use Node 24.19.0 and `npm ci`. Run `npm run mobile -- --go --lan` (or from apps/mobile run `npx expo start --go --lan --port 8082`). Keep Metro running. Phone and computer must be on a mutually reachable LAN. Use an Expo Go build supporting SDK 57. Native sensor tests cannot be substituted by the browser preview.

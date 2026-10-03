@@ -12,6 +12,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "phone:tests": "tsx scripts/phone-tests.mjs",
     "diagnose": "tsx scripts/diagnose-runs.mjs",
     "postinstall": "npm run venue:prepare",
     "venue:prepare": "tsx scripts/prepare-venue.mjs",

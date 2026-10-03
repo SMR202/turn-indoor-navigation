@@ -2,6 +2,14 @@
 
 Updated: 2026-10-03.
 
+## One-tap test inbox
+
+Added **Send all saved tests to computer** and per-run send in Saved runs. `npm run phone:tests` launches Expo plus a paired, write-only local receiver. Uploads are explicit, bounded and schema-validated; immutable SHA-256 files in ignored `work/test-inbox` deduplicate retries and preserve revised annotations. The batch reports acknowledged saves and stops on failure; no automatic chat message, analysis or monitoring. Existing local saving and OS sharing remain. See [transfer setup and development-only security boundary](../../PHONE_TESTING.md#one-tap-transfer-to-this-computer).
+
+Validation: root `npm run check` passes (45 tests, types, lint, formatting, docs links); web export succeeds. Tests include real HTTP authentication/schema/size checks, exact-byte hashing, duplicate and revised uploads, plus client acknowledgement/offline/pending-count handling. Expo and receiver are running; the iOS bundle was fetched over LAN and its pairing configuration used for a successful synthetic upload, stored-hash verification and duplicate acknowledgement. The synthetic file was moved to ignored `work/inbox-verification`, outside incoming runs. Physical phone-to-PC transfer remains to be verified by the user; browser UI inspection was blocked by the browser tool's URL policy.
+
+Next action: reload from the fresh Expo QR, send saved tests, verify the success message, then ask Codex to inspect `work/test-inbox`.
+
 Launch correction: root `npm start`, `npm run mobile` and `npm run web` explicitly target `apps/mobile`, avoiding Expo's default AppEntry when launched from the monorepo root. The mobile app retains `expo-router/entry` and SDK 57.
 
 Launch validation: root start resolves `src/app`; iOS router bundle served successfully over LAN, web export succeeds, typecheck/lint and changed-file formatting pass. Physical phone launch remains user-verified separately.

@@ -4,6 +4,7 @@ import { diagnoseRecording, type Recording } from '@turn/positioning-core';
 import { activeVenue } from '../config/active-venue';
 import { listRuns, readRun } from '../navigation/run-storage';
 import { exportRecording } from '../navigation/export-recording';
+import { inboxConfigured, sendRun } from '../navigation/send-runs';
 import { FloorMap } from './floor-map';
 
 export const RunHistory = memo(function RunHistory({
@@ -15,6 +16,35 @@ export const RunHistory = memo(function RunHistory({
   const [selected, setSelected] = useState<Recording | null>(null);
   const [error, setError] = useState('');
   const [limit, setLimit] = useState(10);
+  const [sending, setSending] = useState(false);
+  const [transfer, setTransfer] = useState('');
+  async function send(namesToSend: string[]) {
+    if (sending) return;
+    setSending(true);
+    setError('');
+    let sent = 0;
+    let failed = 0;
+    let lastError = '';
+    try {
+      for (const name of namesToSend) {
+        setTransfer(`Sending ${sent + failed + 1} of ${namesToSend.length}…`);
+        try {
+          await sendRun(await readRun(name));
+          sent++;
+        } catch (e) {
+          failed = namesToSend.length - sent;
+          lastError = String(e);
+          break;
+        }
+      }
+      setTransfer(
+        `${sent} run(s) confirmed on your computer${failed ? `; ${failed} not sent. Retry safely.` : '. Tell Codex: “check the new runs”.'}`,
+      );
+      if (lastError) setError(lastError);
+    } finally {
+      setSending(false);
+    }
+  }
   const [comparison, setComparison] = useState<ReturnType<
     typeof diagnoseRecording
   > | null>(null);
@@ -40,6 +70,35 @@ export const RunHistory = memo(function RunHistory({
       <Text style={{ fontSize: 19, fontWeight: '700' }}>
         Saved runs · {names.length}
       </Text>
+      <Text>
+        Save your count and notes first. Send tests to this computer for
+        analysis, including their map and sensor data. Nothing is sent until you
+        tap.
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        disabled={sending || names.length === 0 || !inboxConfigured}
+        style={{
+          padding: 14,
+          backgroundColor: '#e7efe6',
+          borderRadius: 8,
+          opacity: sending || !inboxConfigured ? 0.5 : 1,
+        }}
+        onPress={() => void send(names)}
+      >
+        <Text>
+          {sending ? 'Sending tests…' : 'Send all saved tests to computer'}
+        </Text>
+      </Pressable>
+      {!inboxConfigured && (
+        <Text>
+          Computer inbox is off. Start npm run phone:tests on your computer and
+          reload TURN.
+        </Text>
+      )}
+      {transfer ? (
+        <Text accessibilityLiveRegion="polite">{transfer}</Text>
+      ) : null}
       <Text>
         Runs save on this device when you finish or stop. Choose one to replay
         its trace and inspect detection, heading and sensor timing.
@@ -142,6 +201,16 @@ export const RunHistory = memo(function RunHistory({
                 ?.points
             }
           />
+          <Pressable
+            accessibilityRole="button"
+            disabled={sending || !inboxConfigured}
+            style={{ padding: 14, backgroundColor: '#e7efe6', borderRadius: 8 }}
+            onPress={() =>
+              void send([`turn-run-v1-${selected.sessionId}.json`])
+            }
+          >
+            <Text>Send selected test to computer</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             style={{ padding: 14, backgroundColor: '#e7efe6', borderRadius: 8 }}

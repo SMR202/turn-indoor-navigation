@@ -37,6 +37,8 @@ The SDK 57 app supports private, locally bundled plan-derived maps, room selecti
 
 ## Structure
 
+For one-tap test transfers, run `npm run phone:tests` instead of the plain mobile command. It starts Expo and a private LAN inbox together. In **Saved runs**, tap **Send all saved tests to computer**, then tell Codex “check the new runs”. See [phone testing](docs/PHONE_TESTING.md#one-tap-transfer-to-this-computer).
+
 - apps/mobile: Expo reference client.
 - packages/contracts: versioned observations, poses, anchors, routes.
 - packages/venue-model: runtime-validated venue and original synthetic fixture.
