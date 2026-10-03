@@ -1,5 +1,9 @@
 # Reuse registry
 
+## 2026-10-03 motion-filter experiment
+
+ADOPT the already pinned Expo sensor acquisition and TURN step detector; IMPLEMENT original bounded motion-feature/candidate filtering in shared core, tagged `step-yaw-motion-v2`. No new dependency or copied model/code. Reviewed native counter limitations and primary motion-recognition research; exact thresholds, development evidence and known failures are recorded in [motion-filter experiment](MOTION_GUARD_EXPERIMENT.md). This is EXPERIMENTAL recognition for the existing handheld mode; camera-assisted translation remains a separate candidate if held-out trials fail.
+
 ## Build-phase selections — 2026-09-24
 
 The historical inventory below remains dated evidence. Product implementation is now authorized; these are the actionable M0–M2 selections. Versions are pinned by the root lockfile. License metadata and installed upstream license files were inspected for adopted runtime libraries; no external unlicensed code was copied. Native/device behavior remains untested.

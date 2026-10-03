@@ -1,0 +1,29 @@
+# Experimental motion filter — 2026-10-03
+
+## Decision and reuse
+
+DECISION: new phone sessions use an explicitly experimental screen-up handheld filter, `step-yaw-motion-v2`. Preserve `step-yaw-v1` replay for historical recordings. The filter lives in positioning-core; it does not depend on venue geometry, trial labels, native pedometer callbacks or network access. No stride/heading correction or map snapping is introduced.
+
+ADOPT existing normalized Expo DeviceMotion streams (`expo-sensors` 57.0.3, MIT) and TURN's step detector from baseline commit `6a7c868`. IMPLEMENT a small original deterministic candidate filter; no third-party classifier code or weights copied. The [reuse review](PDR_IMPLEMENTATION_REVIEW.md) remains applicable: Fusion supplies attitude rather than activity recognition; RoNIN needs separate licensing/model/preprocessing evaluation; Apple's counter also produced false counts in the labelled bobbing control. A native-counter gate alone is insufficient for that case.
+
+Research direction: [Motion Mode Recognition and Step Detection Algorithms for Mobile Phone Users](https://pmc.ncbi.nlm.nih.gov/articles/PMC3649428/) discusses accelerometer/gyro motion patterns; [An Adaptive Human Activity-Aided Hand-Held Smartphone-Based Pedestrian Dead Reckoning Positioning System](https://www.mdpi.com/2072-4292/13/11/2137) describes activity features and stationary stepping. Indexed primary-source excerpts informed this bounded review; full-page retrieval was blocked/challenged. Neither source validates TURN's thresholds or guarantees rejection of rhythmic hand motion. This is an experiment derived from TURN development captures, not a reproduction of either paper.
+
+## Algorithm and contract
+
+- Pair gravity-inclusive and gravity-removed device-frame acceleration within 40 ms, with gyro within 60 ms. Subtract to recover gravity direction; require its norm in 7–12 m/s². Project linear acceleration parallel/perpendicular to gravity. No Euler conversion or displacement integration.
+- Inspect a 1.2 s window (±0.6 s) around each original step peak, with decision at least 0.65 s after the peak. Require ≥25 valid pairs, both edges within 100 ms, and no pair gap >100 ms. Missing data holds position; never silently falls back to ungated steps.
+- RMS thresholds, in m/s² unless specified: total <0.35 → little motion; gyro >1.5 rad/s → rotation; vertical >0.6 and horizontal/vertical <0.4 → predominantly vertical; vertical ≥0.35, horizontal ≥0.25 and ratio ≥0.45 → walking-like; otherwise uncertain. Motion energy is not horizontal travel.
+- Require two adjacent walking-like candidates 0.3–1.2 s apart to start. Retain the first peak/heading and release both in order, at most one per incoming acceleration event. Isolated candidates expire after 1.9 s. Stops discard unfinished candidates; anchors reset filter state. Original impact/tilt/timing/30 m failure guards remain.
+- Snapshot reports detected, accepted (`steps`), rejected and pending counts plus assessment/features. Rejected includes unfinished candidates discarded at Stop or on missing data, not only identified bobbing. Distance uses accepted steps. Historical recordings retain their declared algorithm; explicit comparison never changes their bytes.
+
+## Development replay result — not held-out validation
+
+Fourteen received recordings were hashed/replayed; seven contain the required extra streams. Private originals, hashes and per-session results stay under ignored `work/`. The labelled bobbing development recording changes from 19 baseline detections (10.56 m) to 0 accepted; its Apple interval estimate was 8. Still stays at 0. Two walking-labelled sensor-complete recordings retain all 10 baseline detections each, with first acceptance delayed about 1.40/1.44 s. Neither has a manual count: this preserves detections, not proven correct counts. Three other sensor-complete, walking-labelled recordings terminate on the existing impact guard: baseline 0/1/4, filtered 0/0/0. Actual activity is uncertain; these cannot be called successful walking recognition. Seven older recordings lack required streams and are excluded, not scored as successful rejection.
+
+Thresholds were selected after inspecting development data. There is one explicitly labelled bobbing control and no valid held-out performance claim. Regular horizontal hand motion, walking in place, stairs, very slow/short walks, another grip or phone may defeat the filter. Native counts remain diagnostics; receipt times are not footfall times. A phone IMU does not directly establish body translation.
+
+## Repeatable evaluation and next gate
+
+`npm run compare:motion -- recording.json ...` reports hashes, labels, baseline/filtered counts and path lengths, missing streams, failures, pending/rejected counts and start delay. `npm run diagnose` replays each declared version. Synthetic tests cover accounting, delayed original heading/time, missing inputs/gaps, vertical motion, rotation, isolated peaks, fixed frame rotation, label independence, anchor reset and live/replay identity; they do not establish physical accuracy.
+
+Freeze v2 and collect fresh bobbing/still controls and normal/brisk measured walks (two each for bobbing/normal/brisk, actual manual footfalls). Add walking-in-place and rotate/typing controls before broader claims. Hold still two seconds at the endpoint before Finish, then send through the inbox. Report false distance, missed steps, start delay and every failure. Do not recalibrate stride to compensate for rejected steps. A provisional gate is ≤1 accepted false step per 20 s control and ≤1 additional missed step versus baseline per measured walk; this is a proposed local gate, not a product accuracy specification. Failed discrimination motivates additional observations, including camera-assisted translation, rather than ever stricter thresholds. Future known-location/map/radio corrections remain independent.

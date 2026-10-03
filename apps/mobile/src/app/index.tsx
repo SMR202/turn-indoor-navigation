@@ -335,7 +335,7 @@ export default function Home() {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {[
-            [String(session.snapshot.steps), 'TURN steps'],
+            [String(session.snapshot.steps), 'Accepted steps'],
             [
               session.nativeCount?.queriedSteps?.toString() ??
                 session.nativeCount?.liveSteps?.toString() ??
@@ -360,6 +360,34 @@ export default function Home() {
             </View>
           ))}
         </View>
+        {session.snapshot.motion && (
+          <View style={{ gap: 6 }}>
+            <Text style={{ fontWeight: '700', color: ink }}>
+              {
+                {
+                  checking: 'Checking motion…',
+                  still: 'Little phone motion',
+                  'vertical-motion': 'Mostly vertical motion · position held',
+                  rotation: 'Phone rotation · position held',
+                  'walking-like': 'Possible walking · experimental',
+                  uncertain: 'Motion unclear · position held',
+                  unavailable: 'Waiting for motion sensors · position held',
+                }[session.snapshot.motion.state]
+              }
+            </Text>
+            <Text style={{ color: muted }}>
+              {session.snapshot.motion.detected} detected ·{' '}
+              {session.snapshot.steps} accepted ·{' '}
+              {session.snapshot.motion.rejected} not used ·{' '}
+              {session.snapshot.motion.pending} checking
+            </Text>
+            <Text style={{ color: muted }}>
+              Movement appears after a short check. At the end, hold still for
+              two seconds before finishing. This experimental filter can still
+              miss walks or accept phone handling.
+            </Text>
+          </View>
+        )}
         <Text
           selectable
           accessibilityLiveRegion="polite"

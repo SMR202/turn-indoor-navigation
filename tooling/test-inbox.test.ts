@@ -68,6 +68,14 @@ it('authenticates, preserves exact bytes by hash, deduplicates and retains revis
     ).status,
   ).toBe(200);
   expect(await readdir(directory)).toHaveLength(2);
+  expect(
+    (
+      await post(
+        JSON.stringify({ ...fixture, algorithm: 'step-yaw-motion-v2' }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(await readdir(directory)).toHaveLength(3);
 });
 it('rejects malformed and oversized uploads without saving files', async () => {
   const { directory, post } = await setup(1000);

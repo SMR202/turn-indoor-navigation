@@ -2,6 +2,12 @@
 
 Updated: 2026-10-03.
 
+## Motion-filter test build
+
+New phone sessions record algorithm `step-yaw-motion-v2`; live and saved-run UI distinguish detected/accepted/not-used/pending counts and display the core's motion assessment. Missing richer sensors holds position. Finish instructions allow two seconds of stillness for the delayed candidates. Old run schemas/algorithms still replay. SDK 57, private venue and one-tap inbox remain. See [experiment](../../../research/MOTION_GUARD_EXPERIMENT.md) and [current protocol](../../PHONE_TESTING.md#current-experiment-motion-filtering).
+
+Root checks and web export pass; the live SDK 57 iOS bundle includes v2. The restarted inbox accepted a synthetic v2 recording with matching stored hash; the synthetic file is outside incoming runs. Development replay rejects the labelled bobbing trial while preserving detections on two walking-labelled trials; no held-out accuracy claim. The one-tap transfer was physically exercised by the user: 14 recordings arrived with matching filename hashes. Next: new v2 controls and manual-count normal/brisk walks, then compare both algorithms. Phone behavior and visual UI inspection of v2 remain unverified.
+
 ## One-tap test inbox
 
 Added **Send all saved tests to computer** and per-run send in Saved runs. `npm run phone:tests` launches Expo plus a paired, write-only local receiver. Uploads are explicit, bounded and schema-validated; immutable SHA-256 files in ignored `work/test-inbox` deduplicate retries and preserve revised annotations. The batch reports acknowledged saves and stops on failure; no automatic chat message, analysis or monitoring. Existing local saving and OS sharing remain. See [transfer setup and development-only security boundary](../../PHONE_TESTING.md#one-tap-transfer-to-this-computer).

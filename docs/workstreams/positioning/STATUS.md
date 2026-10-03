@@ -1,6 +1,10 @@
 # Positioning workstream
 
-Updated: 2026-09-24.
+Updated: 2026-10-03.
+
+## Versioned motion filtering
+
+New live sessions select `step-yaw-motion-v2`; engine default and historical v1 recordings preserve baseline behavior. Shared core buffers peaks and original headings, accepts at most one per observation, holds ambiguous/missing-data displacement, and exposes assessment separately from unknown pose uncertainty. Anchors/stops reset or discard pending motion. No labels, map geometry or native counts enter the classifier. [Experiment and limits](../../../research/MOTION_GUARD_EXPERIMENT.md). 51 tests/root checks pass; held-out phone behavior is unvalidated.
 
 ## Current state / decisions
 

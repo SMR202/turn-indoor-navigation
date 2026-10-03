@@ -3,11 +3,11 @@ import { AppState, Platform } from 'react-native';
 import { activeVenue as sampleVenue } from '../config/active-venue';
 import {
   NavigationEngine,
+  GUARDED_PDR_REVISION,
   resolveAnchorPayload,
   type Recording,
   type TrackingSnapshot,
 } from '@turn/positioning-core';
-import { PDR_REVISION } from '@turn/pdr';
 import type { Observation } from '@turn/contracts';
 import { startMotionSource } from '../sensors/motion-source';
 import { Pedometer } from 'expo-sensors';
@@ -113,11 +113,16 @@ export function useNavigationSession() {
     setElapsed(0);
     setActiveSeconds(0);
     const sessionId = `walk-${Date.now()}`;
-    engine.current = new NavigationEngine(sampleVenue, sessionId, stepLength);
+    engine.current = new NavigationEngine(
+      sampleVenue,
+      sessionId,
+      stepLength,
+      GUARDED_PDR_REVISION,
+    );
     recording.current = {
       venue: sampleVenue,
       schemaVersion: 1,
-      algorithm: PDR_REVISION,
+      algorithm: GUARDED_PDR_REVISION,
       sessionId,
       stepLengthMetres: stepLength,
       metadata: {

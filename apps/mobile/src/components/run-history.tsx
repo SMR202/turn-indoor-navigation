@@ -151,6 +151,14 @@ export const RunHistory = memo(function RunHistory({
             {selected.labels?.pace ?? 'unlabelled pace'} · {diagnostics.steps}{' '}
             detected steps / {diagnostics.manualSteps ?? '?'} counted
           </Text>
+          {diagnostics.motion && (
+            <Text selectable>
+              Motion filter: {diagnostics.motion.detected} detected ·{' '}
+              {diagnostics.steps} accepted · {diagnostics.motion.rejected}{' '}
+              filtered · {diagnostics.motion.pending} pending. Last assessment:{' '}
+              {diagnostics.motion.state}. Algorithm: {diagnostics.algorithm}.
+            </Text>
+          )}
           <Text selectable>
             TURN in native interval:{' '}
             {diagnostics.turnStepsInNativeWindow ?? 'unknown'} · Native count:{' '}

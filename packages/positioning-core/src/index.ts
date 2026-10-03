@@ -12,6 +12,9 @@ import {
   type VenuePackage,
 } from '@turn/venue-model';
 import { StepDetector, wrapAngle, PDR_REVISION } from '@turn/pdr';
+import { MotionGuard, GUARDED_PDR_REVISION } from './motion-guard';
+export { GUARDED_PDR_REVISION } from './motion-guard';
+export type PdrAlgorithm = typeof PDR_REVISION | typeof GUARDED_PDR_REVISION;
 
 const qrSchema = z
   .object({
@@ -56,6 +59,7 @@ export function resolveAnchorPayload(raw: string, venue: VenuePackage) {
 }
 
 export type TrackingSnapshot = {
+  motion?: ReturnType<MotionGuard['snapshot']>;
   lastStepAtSeconds?: number;
   pose: Pose | null;
   steps: number;
@@ -66,6 +70,7 @@ export type TrackingSnapshot = {
 export class NavigationEngine {
   private pose: Pose | null = null;
   private detector = new StepDetector();
+  private guard = new MotionGuard();
   private alignment: number | null = null;
   private yawOrigin: number | null = null;
   private attitude: { time: number; yaw: number; heading: number } | null =
@@ -80,6 +85,7 @@ export class NavigationEngine {
     readonly venue: VenuePackage,
     readonly sessionId: string,
     readonly stepLengthMetres: number,
+    readonly algorithm: PdrAlgorithm = PDR_REVISION,
   ) {
     if (
       !Number.isFinite(stepLengthMetres) ||
@@ -90,6 +96,9 @@ export class NavigationEngine {
   }
   snapshot(): TrackingSnapshot {
     return {
+      ...(this.algorithm === GUARDED_PDR_REVISION
+        ? { motion: this.guard.snapshot() }
+        : {}),
       lastStepAtSeconds: this.lastStepAt,
       pose: this.pose
         ? { ...this.pose, position: { ...this.pose.position } }
@@ -101,6 +110,7 @@ export class NavigationEngine {
     };
   }
   private stop(reason: string) {
+    if (this.algorithm === GUARDED_PDR_REVISION) this.guard.finish();
     this.stopped = true;
     this.message = reason;
     if (this.pose)
@@ -139,6 +149,7 @@ export class NavigationEngine {
         status: 'anchored',
       };
       this.detector = new StepDetector();
+      this.guard = new MotionGuard();
       this.alignment = null;
       this.yawOrigin = null;
       this.attitude = null;
@@ -161,8 +172,14 @@ export class NavigationEngine {
       return this.snapshot();
     }
     this.lastByType.set(observation.type, observation.timestampSeconds);
+    if (this.algorithm === GUARDED_PDR_REVISION)
+      this.guard.observe(observation);
     if (observation.type === 'heading-alignment') {
-      if (this.steps > 0) {
+      if (
+        this.steps > 0 ||
+        (this.algorithm === GUARDED_PDR_REVISION &&
+          this.guard.snapshot().detected > 0)
+      ) {
         this.stop('Re-anchor before changing heading.');
         return this.snapshot();
       }
@@ -227,34 +244,51 @@ export class NavigationEngine {
         if (!stepHeading || Math.abs(stepTime - stepHeading.time) > 0.2)
           this.stop('Heading unavailable/stale at step; re-anchor.');
         else {
-          const heading = stepHeading.heading;
-          this.steps++;
-          this.lastStepAt = detected.stepAt;
-          this.pose = {
-            ...this.pose,
-            source: PDR_REVISION,
-            timestampSeconds: observation.timestampSeconds,
-            headingRad: heading,
-            position: {
-              x:
-                this.pose.position.x +
-                this.stepLengthMetres * Math.cos(heading),
-              y:
-                this.pose.position.y +
-                this.stepLengthMetres * Math.sin(heading),
-            },
-            status: 'degraded',
-            horizontalUncertaintyMetres: null,
-          };
-          this.message = 'Experimental PDR · accuracy unmeasured';
-          if (this.steps * this.stepLengthMetres >= 30)
-            this.stop(
-              '30m experimental tracking limit; re-anchor to limit drift.',
+          if (this.algorithm === GUARDED_PDR_REVISION)
+            this.guard.candidate(stepTime, stepHeading.heading);
+          else
+            this.applyStep(
+              stepTime,
+              stepHeading.heading,
+              observation.timestampSeconds,
             );
+        }
+      }
+      if (this.algorithm === GUARDED_PDR_REVISION && !this.stopped) {
+        const accepted = this.guard.advance(observation.timestampSeconds);
+        if (accepted)
+          this.applyStep(
+            accepted.time,
+            accepted.heading,
+            observation.timestampSeconds,
+          );
+        if (!this.stopped && this.pose) {
+          this.pose.status = 'degraded';
+          this.message = 'Experimental motion filter · accuracy unmeasured';
         }
       }
     }
     return this.snapshot();
+  }
+  private applyStep(time: number, heading: number, observedAt: number) {
+    if (!this.pose) return;
+    this.steps++;
+    this.lastStepAt = time;
+    this.pose = {
+      ...this.pose,
+      source: this.algorithm,
+      timestampSeconds: observedAt,
+      headingRad: heading,
+      position: {
+        x: this.pose.position.x + this.stepLengthMetres * Math.cos(heading),
+        y: this.pose.position.y + this.stepLengthMetres * Math.sin(heading),
+      },
+      status: 'degraded',
+      horizontalUncertaintyMetres: null,
+    };
+    this.message = 'Experimental PDR · accuracy unmeasured';
+    if (this.steps * this.stepLengthMetres >= 30)
+      this.stop('30m experimental tracking limit; re-anchor to limit drift.');
   }
 }
 
@@ -316,7 +350,7 @@ export const recordingSchema = z.object({
     .optional(),
   venue: venuePackageSchema.optional(),
   schemaVersion: z.literal(1),
-  algorithm: z.literal(PDR_REVISION),
+  algorithm: z.enum([PDR_REVISION, GUARDED_PDR_REVISION]),
   sessionId: z.string().min(1),
   stepLengthMetres: z.number().min(0.3).max(1.2),
   metadata: z.object({
@@ -335,6 +369,7 @@ export function replayRecording(input: unknown, venueInput: unknown) {
     parseVenuePackage(venueInput),
     recording.sessionId,
     recording.stepLengthMetres,
+    recording.algorithm,
   );
   for (const observation of recording.observations) engine.consume(observation);
   return engine.snapshot();

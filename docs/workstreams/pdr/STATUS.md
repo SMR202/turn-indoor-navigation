@@ -1,6 +1,14 @@
 # PDR workstream
 
-Updated: 2026-09-25.
+Updated: 2026-10-03.
+
+## Experimental motion filter (supersedes baseline-only live behavior below)
+
+New phone sessions use `step-yaw-motion-v2`: a buffered, gravity-relative acceleration/gyro filter upstream of displacement. Historical v1 recordings still replay v1. See [method, thresholds, reuse and evaluation](../../../research/MOTION_GUARD_EXPERIMENT.md). Detected/accepted/rejected/pending counts are separate. Missing extra sensors holds position; native counts and test labels never gate movement.
+
+Development replay rejects 19/19 detections in the labelled bobbing recording and preserves 10/10 in each of two walking-labelled recordings with required streams; first acceptance takes about 1.4 s. Manual walking counts are missing. Still stays zero; impact-stopped/default-labelled trials remain inconclusive, older missing-stream recordings are excluded. This is development fit, not held-out accuracy. Raw captures and hashes remain private.
+
+Validation: 51 tests and root checks pass, including delayed heading/time, label independence, missing streams/gaps, candidate accounting, re-anchor and live/replay. All 14 inbox hashes and baseline counts/distances/failures remain unchanged. Next: physical v2 validation with unchanged calibration, fresh controls and normal/brisk manual-count walks through the inbox.
 
 ## Current state / decisions
 

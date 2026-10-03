@@ -1,5 +1,13 @@
 # Phone test: SDK 57, anchors and experimental PDR
 
+## Current experiment: motion filtering
+
+New sessions use `step-yaw-motion-v2`; saved older tests replay their original algorithm. The app displays raw detections, accepted steps, candidates still being checked and detections not used. Only accepted steps move the marker. Mostly vertical motion, strong rotation, unclear motion or missing sensor data holds position; this is an experimental phone-motion filter, not proof the person is stationary. Normal acquisition failure guards can still stop the run.
+
+Movement starts after two suitable detections and a short sensor window (about 1.4 s in the current development walks). Hold still at the endpoint for **two seconds before Finish** to let the last candidates resolve. A stop discards unfinished candidates. Keep the same calibration: do not compensate for rejected steps by increasing stride length.
+
+Next phone batch: two 20 s Phone up/down controls, one still control, two normal and two brisk 5 m walks with exact manual counts. These must be new trials, separate from development captures. Send through the inbox. Add walking-in-place and rotate/typing trials before broader claims. [Method, thresholds and limitations](../research/MOTION_GUARD_EXPERIMENT.md). The descriptions below of baseline behavior remain historical protocol context; v2 now filters movement in both walk and handling modes without consulting the labels.
+
 ## One-tap transfer to this computer
 
 Run `npm run phone:tests` from the repository root (Node 24). It starts the SDK 57 app on port 8081 and a write-only test receiver on port 8083. Stop an existing Expo server first. If the computer has multiple network adapters, set `TURN_LAN_IP` to its reachable Wi-Fi/Ethernet IPv4 address before starting. Reload the phone from the new Expo launch QR after restarting the receiver.

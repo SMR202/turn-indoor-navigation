@@ -1,10 +1,10 @@
 # TURN project state
 
-Updated: 2026-09-25.
+Updated: 2026-10-03.
 
 ## Current milestone
 
-M0/M1/M2 and experimental PDR baseline implemented. Current branch `codex/native-step-comparison` adds settled starts, stationary/pace-labelled trials, local run history and replay diagnostics. Twelve user-supplied iOS captures have been replayed; native/live/manual count comparison and labelled handling tests are now implemented; general localization accuracy remains unvalidated.
+M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-comparison` includes settled starts, labelled trials, native/manual count comparison, local history and one-tap LAN transfer. Fourteen inbox recordings were replayed; new sessions now use a versioned experimental motion filter. General localization accuracy remains unvalidated.
 
 ## Capabilities
 
@@ -20,7 +20,7 @@ Repeatable accuracy unvalidated; initial user trials show count variation and he
 
 ## Direction
 
-[Market review and execution plan](../research/MARKET_DIRECTION_2026_09.md) preserves multi-sensor corrections, offline venue packages, authoring and a reusable SDK. Native counts currently provide diagnostic evidence only. No walking classifier or false-motion suppression is claimed.
+[Market review and execution plan](../research/MARKET_DIRECTION_2026_09.md) preserves multi-sensor corrections, offline venue packages, authoring and a reusable SDK. Native counts provide diagnostic evidence only. New phone sessions use experimental `step-yaw-motion-v2`; historical v1 replay is preserved. Rejection of the available bobbing control is a development result, not general accuracy. See [motion-filter experiment](../research/MOTION_GUARD_EXPERIMENT.md). One-tap LAN transfers deliver tests into the private project inbox.
 
 ## Next action
 

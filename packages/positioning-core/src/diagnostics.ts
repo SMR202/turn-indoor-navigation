@@ -8,6 +8,7 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     venue,
     recording.sessionId,
     recording.stepLengthMetres,
+    recording.algorithm,
   );
   const steps: {
     time: number;
@@ -103,6 +104,7 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     osVersion: recording.metadata.osVersion,
     stepLengthMetres: recording.stepLengthMetres,
     steps: final.steps,
+    motion: final.motion ?? null,
     distanceMetres: final.distanceMetres,
     turnStepsInNativeWindow:
       recording.nativePedometer?.startedAtUnixMs == null
