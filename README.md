@@ -37,6 +37,8 @@ The SDK 57 app supports private, locally bundled plan-derived maps, room selecti
 
 ## Structure
 
+The home screen now offers one-floor room-to-room guidance. **Tests, calibration & recordings** retains the diagnostic workflow and one-tap transfer. Follow the [navigation phone protocol](docs/NAVIGATION_TESTING.md) for start/alignment, turn guidance, arrival confirmation and location recovery.
+
 For one-tap test transfers, run `npm run phone:tests` instead of the plain mobile command. It starts Expo and a private LAN inbox together. In **Saved runs**, tap **Send all saved tests to computer**, then tell Codex “check the new runs”. See [phone testing](docs/PHONE_TESTING.md#one-tap-transfer-to-this-computer).
 
 - apps/mobile: Expo reference client.

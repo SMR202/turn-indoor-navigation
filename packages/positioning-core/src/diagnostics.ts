@@ -100,6 +100,7 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     sessionId: recording.sessionId,
     algorithm: recording.algorithm,
     labels: recording.labels ?? null,
+    navigation: recording.navigation ?? null,
     platform: recording.metadata.platform,
     osVersion: recording.metadata.osVersion,
     stepLengthMetres: recording.stepLengthMetres,

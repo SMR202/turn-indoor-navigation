@@ -9,10 +9,8 @@ export default function Layout() {
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen
-        name="index"
-        options={{ title: 'TURN / Explore indoors' }}
-      />
+      <Stack.Screen name="index" options={{ title: 'TURN / Navigate' }} />
+      <Stack.Screen name="tests" options={{ title: 'Tests & calibration' }} />
     </Stack>
   );
 }

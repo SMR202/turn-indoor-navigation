@@ -1,6 +1,7 @@
 import type { Route } from '@turn/contracts';
 import type { VenuePackage } from '@turn/venue-model';
 import { Graph, alg } from '@dagrejs/graphlib';
+export { RouteGuidance, initialRouteHeading, type Guidance } from './guidance';
 
 export type RouteResult =
   | { status: 'ok'; route: Route }

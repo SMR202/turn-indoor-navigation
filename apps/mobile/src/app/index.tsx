@@ -1,44 +1,23 @@
-import { useEffect, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { activeVenue as venue } from '../config/active-venue';
-import { calculateRoute } from '@turn/routing';
 import {
-  anchorPayload,
-  evaluateWalk,
-  type Recording,
-} from '@turn/positioning-core';
-import { calibratedStepLength, wrapAngle } from '@turn/pdr';
-import { pathLength } from '@turn/venue-model';
+  calculateRoute,
+  initialRouteHeading,
+  RouteGuidance,
+  type Guidance,
+} from '@turn/routing';
+import { anchorPayload, resolveAnchorPayload } from '@turn/positioning-core';
+import { activeVenue as venue } from '../config/active-venue';
+import { useNavigationSession } from '../navigation/use-navigation-session';
+import { loadCalibration } from '../navigation/calibration-storage';
+import { saveRun } from '../navigation/run-storage';
 import { FloorMap } from '../components/floor-map';
 import { AnchorScanner } from '../components/anchor-scanner';
-import { useNavigationSession } from '../navigation/use-navigation-session';
-import { exportRecording } from '../navigation/export-recording';
-import { saveRun } from '../navigation/run-storage';
-import { RunHistory } from '../components/run-history';
-import {
-  loadCalibration,
-  saveCalibration,
-  clearCalibration,
-} from '../navigation/calibration-storage';
 
-const activities = {
-  still: 'Stand still',
-  'phone-bobbing': 'Phone up / down',
-  'phone-rotation': 'Rotate phone',
-  typing: 'Type while standing',
-  'walking-in-place': 'Walk in place',
-} as const;
-const ink = '#183d34',
-  muted = '#617369';
-function Action({
+const ink = '#183d34';
+function Button({
   title,
   onPress,
   disabled = false,
@@ -55,11 +34,10 @@ function Action({
       disabled={disabled}
       onPress={onPress}
       style={{
+        padding: 15,
         minHeight: 48,
-        padding: 14,
-        backgroundColor: disabled ? '#e0e5df' : primary ? ink : '#e7efe6',
         borderRadius: 12,
-        justifyContent: 'center',
+        backgroundColor: disabled ? '#e0e5df' : primary ? ink : '#e7efe6',
       }}
     >
       <Text
@@ -74,151 +52,164 @@ function Action({
     </Pressable>
   );
 }
-export default function Home() {
+const card = {
+  padding: 18,
+  borderRadius: 18,
+  backgroundColor: 'white',
+  gap: 12,
+} as const;
+function instruction(g: Guidance) {
+  if (g.status === 'recover' || g.status === 'unsupported')
+    return 'Check your location';
+  if (g.status === 'near-destination') return 'Check for your destination';
+  const metres = g.distanceToActionMetres.toFixed(1);
+  if (g.action === 'arrive')
+    return `Continue · about ${metres} m to destination`;
+  const action =
+    g.action === 'turn-around'
+      ? 'Turn around'
+      : g.action === 'continue'
+        ? 'Continue'
+        : `Turn ${g.action}`;
+  return g.distanceToActionMetres <= 0.8
+    ? `${action} at the junction`
+    : `${action} in about ${metres} m`;
+}
+
+export default function Navigate() {
   const session = useNavigationSession();
   const insets = useSafeAreaInsets();
-  const [courseId, setCourseId] = useState<string | null>(
-    venue.testCourses[0]?.id ?? null,
-  );
-  const course = venue.testCourses.find((c) => c.id === courseId);
   const [destination, setDestination] = useState<string | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<string>();
-  const [scanning, setScanning] = useState(false),
-    [error, setError] = useState<string | null>(null);
-  const [stepLength, setStepLength] = useState<number | null>(null),
-    [showCalibration, setShowCalibration] = useState(false);
-  const [distance, setDistance] = useState('5'),
-    [count, setCount] = useState('');
-  const [heading, setHeading] = useState(Math.PI / 2),
-    [lastAnchor, setLastAnchor] = useState<string | null>(null);
-  const [showNotes, setShowNotes] = useState(false),
-    [marked, setMarked] = useState(false);
-  const [result, setResult] = useState<ReturnType<typeof evaluateWalk> | null>(
-    null,
-  );
-  const [mode, setMode] = useState<'walk' | 'stationary'>('walk');
-  const [activity, setActivity] = useState<keyof typeof activities>('still');
-  const [pace, setPace] =
-    useState<NonNullable<Recording['labels']>['pace']>('normal');
-  const [manualSteps, setManualSteps] = useState('');
-  const [notes, setNotes] = useState('');
-  const [historyRevision, setHistoryRevision] = useState(0);
-  const [savedMessage, setSavedMessage] = useState('');
+  const [query, setQuery] = useState('');
+  const [stepLength, setStepLength] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [showStarts, setShowStarts] = useState(false);
+  const [anchorName, setAnchorName] = useState('Location not set');
+  const [aligned, setAligned] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [arrived, setArrived] = useState(false);
+  const [error, setError] = useState('');
+  const [guidance, setGuidance] = useState<Guidance | null>(null);
   const busy = session.running || session.starting;
   const pose = session.snapshot.pose;
-  const room = venue.floors[0]!.rooms.find((r) => r.id === selectedRoom);
+  const sessionId = session.getRecording()?.sessionId;
   const poi = venue.pois.find((p) => p.id === destination);
-  const routing =
-    poi && session.anchorNodeId
-      ? calculateRoute(venue, session.anchorNodeId, poi.nodeId)
-      : null;
-  const route = routing?.status === 'ok' ? routing.route : undefined;
+  const routeResult = useMemo(
+    () =>
+      destination && session.anchorNodeId
+        ? calculateRoute(
+            venue,
+            session.anchorNodeId,
+            venue.pois.find((p) => p.id === destination)!.nodeId,
+          )
+        : null,
+    [destination, session.anchorNodeId],
+  );
+  const route = routeResult?.status === 'ok' ? routeResult.route : undefined;
+  const guide = useMemo(
+    () => (route ? new RouteGuidance(route) : null),
+    [route, sessionId],
+  );
+  const heading = route ? initialRouteHeading(route) : null;
   const report = (e: unknown) =>
-    setError(e instanceof Error ? e.message : 'Action failed');
+    setError(e instanceof Error ? e.message : String(e));
+  useFocusEffect(
+    useCallback(() => {
+      void loadCalibration().then(setStepLength);
+    }, []),
+  );
   useEffect(() => {
-    void loadCalibration().then((value) => {
-      setStepLength(value);
-      setShowCalibration(value === null);
-    });
-  }, []);
-  const runId = session.getRecording()?.sessionId;
+    if (!guide) {
+      setGuidance(null);
+      return;
+    }
+    const next = pose ? guide.consume(pose) : guide.snapshot();
+    setGuidance(next);
+    if (next.status === 'recover' && busy) session.stop(next.message);
+  }, [guide, pose, busy, session.stop]);
   useEffect(() => {
     if (!session.snapshot.stopped) return;
     const recording = session.getRecording();
-    if (!recording?.observations.some((o) => o.type === 'accelerometer'))
-      return;
-    try {
-      saveRun(recording);
-      setSavedMessage(
-        'Saved on this device. Add your actual count below, then save the details.',
-      );
-      setHistoryRevision((v) => v + 1);
-    } catch (e) {
-      report(e);
-      setSavedMessage('Save failed. Share this run before resetting.');
+    if (recording?.observations.some((o) => o.type === 'accelerometer')) {
+      try {
+        saveRun(recording);
+      } catch (e) {
+        report(e);
+      }
     }
-  }, [session.snapshot.stopped, runId, session.nativeCount?.status]);
-  const attachLabels = () => {
-    const recording = session.getRecording();
-    if (!recording) return;
-    const actual =
-      mode === 'stationary' && activity !== 'walking-in-place'
-        ? 0
-        : manualSteps.trim() === ''
-          ? null
-          : Number(manualSteps);
-    if (
-      actual !== null &&
-      (!Number.isInteger(actual) || actual < 0 || actual > 10000)
-    )
-      throw new Error(
-        'Enter a whole count for this run, or leave it blank if unknown.',
-      );
-    recording.labels = {
-      mode,
-      activity: mode === 'walk' ? 'walking' : activity,
-      pace: mode === 'stationary' ? 'unspecified' : pace,
-      manualSteps: actual,
-      phoneModel: '',
-      notes,
-    };
-  };
-  const establish = (payload: string) => {
+    // Refresh the saved record when the bounded Apple query completes as well.
+  }, [session.snapshot.stopped, session.nativeCount?.status, sessionId]);
+
+  function establish(payload: string) {
+    const anchor = resolveAnchorPayload(payload, venue);
     const previous = session.getRecording();
     if (previous?.observations.some((o) => o.type === 'accelerometer'))
       saveRun(previous);
-    session.anchor(payload, stepLength ?? 0.7);
-    setLastAnchor(payload);
+    session.anchor(payload, stepLength ?? 0.55);
+    setAnchorName(anchor.label);
     setScanning(false);
-    setError(null);
-    setResult(null);
-    setManualSteps('');
-    setNotes('');
-    setSavedMessage('');
-  };
-  const reset = () => {
-    try {
-      if (course) {
-        establish(anchorPayload(venue, course.anchorId));
-        setHeading(course.headingRad);
-      } else if (lastAnchor) establish(lastAnchor);
-    } catch (e) {
-      report(e);
+    setShowStarts(false);
+    setAligned(false);
+    setStarted(false);
+    setArrived(false);
+    setError('');
+  }
+  function selectDestination(id: string) {
+    setDestination(id);
+    setAligned(false);
+    setArrived(false);
+    setStarted(false);
+    setError('');
+  }
+  function start() {
+    const recording = session.getRecording();
+    if (!recording || !poi || heading === null || stepLength === null) return;
+    if (recording.stepLengthMetres !== stepLength) {
+      setError('Calibration changed. Set your starting location again.');
+      return;
     }
-  };
-  const chooseCourse = (id: string) => {
-    setCourseId(id);
-    setMarked(false);
-    setResult(null);
-    setDestination(null);
-    setError(null);
-    const next = venue.testCourses.find((c) => c.id === id)!;
-    setHeading(next.headingRad);
-    session.stop('Test changed. Stand at its start and set your position.');
-    setLastAnchor(null);
-  };
-  const courseReady =
-    !course ||
-    (!!lastAnchor && JSON.parse(lastAnchor).anchorId === course.anchorId);
-  const finish = () => {
-    try {
-      const recording = session.getRecording();
-      attachLabels();
-      if (recording && course)
-        recording.test = {
-          courseId: course.id,
-          completedAtMarkedEndpoint:
-            mode === 'walk' && !session.getSnapshot().stopped,
-        };
-      if (course && mode === 'walk')
-        setResult(evaluateWalk(session.getSnapshot(), course.points));
-      session.stop(
-        'Test finished. Review the saved run or return to the start to repeat.',
-      );
-    } catch (e) {
-      report(e);
+    const anchor = recording.observations.find((o) => o.type === 'anchor');
+    if (anchor?.type !== 'anchor') return;
+    recording.navigation = {
+      destinationPoiId: poi.id,
+      sourceAnchorId: anchor.anchorId,
+      guidanceRevision: 'route-progress-v1',
+      completion: 'in-progress',
+    };
+    setStarted(true);
+    setError('');
+    void session.start(heading).catch(report);
+  }
+  function recover() {
+    if (busy) session.stop('Paused for location recovery.');
+    setScanning(true);
+    setAligned(false);
+  }
+  function confirmArrival() {
+    const recording = session.getRecording();
+    const anchor = recording?.observations.find((o) => o.type === 'anchor');
+    if (recording && poi && anchor?.type === 'anchor')
+      recording.navigation = {
+        destinationPoiId: poi.id,
+        sourceAnchorId: anchor.anchorId,
+        guidanceRevision: 'route-progress-v1',
+        completion: 'user-confirmed',
+      };
+    session.stop('Destination confirmed by the user.');
+    if (recording) {
+      try {
+        saveRun(recording);
+      } catch (e) {
+        report(e);
+      }
     }
-  };
+    setArrived(true);
+    setStarted(false);
+  }
+  const needsRecovery =
+    !arrived &&
+    !!pose &&
+    (session.snapshot.stopped || guidance?.status === 'recover');
   return (
     <ScrollView
       keyboardShouldPersistTaps="handled"
@@ -228,648 +219,291 @@ export default function Home() {
         padding: 18,
         paddingBottom: Math.max(insets.bottom, 24),
         gap: 16,
-        width: '100%',
         maxWidth: 850,
+        width: '100%',
         alignSelf: 'center',
       }}
     >
       <View style={{ gap: 5 }}>
-        <Text
-          style={{
-            fontSize: 12,
-            color: '#49745c',
-            fontWeight: '700',
-            letterSpacing: 2,
-          }}
-        >
-          TURN / WALK TEST
+        <Text style={{ color: '#49745c', fontWeight: '700', letterSpacing: 2 }}>
+          TURN / NAVIGATE
         </Text>
-        <Text style={{ fontSize: 29, fontWeight: '700', color: ink }}>
-          {venue.name}
+        <Text style={{ fontSize: 29, color: ink, fontWeight: '700' }}>
+          Where are you heading?
         </Text>
-        <Text style={{ color: muted }}>
-          SDK 57 ·{' '}
-          {venue.provenance.kind === 'plan-derived'
-            ? 'Scaled from your plan · dimensions in feet & metres'
-            : 'Development venue'}
+        <Text style={{ color: '#617369' }}>
+          {venue.name} · works with your loaded map
         </Text>
       </View>
-      {error && (
-        <Text accessibilityRole="alert" selectable style={{ color: '#9c3328' }}>
+      {error ? (
+        <Text accessibilityRole="alert" style={{ color: '#9c3328' }}>
           {error}
         </Text>
-      )}
-      {venue.testCourses.length > 0 && (
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontWeight: '600', color: ink }}>
-            Choose a short walk
+      ) : null}
+      {session.nativeSaveError ? (
+        <Text accessibilityRole="alert">{session.nativeSaveError}</Text>
+      ) : null}
+      {arrived ? (
+        <View style={card}>
+          <Text style={{ fontSize: 25, color: ink, fontWeight: '700' }}>
+            You confirmed arrival
           </Text>
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {venue.testCourses.map((c) => (
-              <Action
-                key={c.id}
-                title={`${courseId === c.id ? '✓ ' : ''}${c.name}`}
-                disabled={busy}
-                onPress={() => chooseCourse(c.id)}
-              />
-            ))}
-          </View>
-        </View>
-      )}
-      <View style={{ gap: 8 }}>
-        <Text style={{ fontWeight: '700', color: ink }}>Test mode & pace</Text>
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          {(['walk', 'stationary'] as const).map((value) => (
-            <Action
-              key={value}
-              title={`${mode === value ? '✓ ' : ''}${value === 'walk' ? 'Measured walk' : 'Phone handling · 20 s'}`}
-              disabled={busy}
-              onPress={() => {
-                setMode(value);
-                setResult(null);
-                reset();
-              }}
-            />
-          ))}
-        </View>
-        {mode === 'stationary' && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {Object.entries(activities).map(([key, title]) => (
-              <Action
-                key={key}
-                title={`${activity === key ? '✓ ' : ''}${title}`}
-                disabled={busy}
-                onPress={() => {
-                  setActivity(key as keyof typeof activities);
-                  reset();
-                }}
-              />
-            ))}
-          </View>
-        )}
-        {mode === 'walk' && (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(['normal', 'brisk', 'slow'] as const).map((value) => (
-              <Action
-                key={value}
-                title={`${pace === value ? '✓ ' : ''}${value}`}
-                disabled={busy || session.snapshot.stopped}
-                onPress={() => setPace(value)}
-              />
-            ))}
-          </View>
-        )}
-        <Text style={{ color: muted }}>
-          {mode === 'stationary'
-            ? `After the countdown: ${activities[activity].toLowerCase()} for 20 seconds without travelling. ${activity === 'walking-in-place' ? 'Count footfalls; expected horizontal travel is zero.' : 'Keep your feet still; expected steps and travel are zero.'}`
-            : 'Keep one calibration for comparison walks. Count every footfall; enter the actual count after finishing.'}
-        </Text>
-      </View>
-      <View
-        style={{
-          backgroundColor: 'white',
-          borderRadius: 18,
-          padding: 16,
-          gap: 12,
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          {[
-            [String(session.snapshot.steps), 'Accepted steps'],
-            [
-              session.nativeCount?.queriedSteps?.toString() ??
-                session.nativeCount?.liveSteps?.toString() ??
-                '—',
-              Platform.OS === 'ios' ? 'Apple steps' : 'Native steps',
-            ],
-            [`${session.snapshot.distanceMetres.toFixed(2)} m`, 'walked'],
-            [
-              mode === 'stationary'
-                ? '0 m'
-                : course
-                  ? `${pathLength(course.points).toFixed(0)} m`
-                  : '—',
-              'planned',
-            ],
-          ].map(([value, label]) => (
-            <View key={label}>
-              <Text style={{ fontSize: 25, fontWeight: '700', color: ink }}>
-                {value}
-              </Text>
-              <Text style={{ fontSize: 12, color: muted }}>{label}</Text>
-            </View>
-          ))}
-        </View>
-        {session.snapshot.motion && (
-          <View style={{ gap: 6 }}>
-            <Text style={{ fontWeight: '700', color: ink }}>
-              {
-                {
-                  checking: 'Checking motion…',
-                  still: 'Little phone motion',
-                  'vertical-motion': 'Mostly vertical motion · position held',
-                  rotation: 'Phone rotation · position held',
-                  'walking-like': 'Possible walking · experimental',
-                  uncertain: 'Motion unclear · position held',
-                  unavailable: 'Waiting for motion sensors · position held',
-                }[session.snapshot.motion.state]
-              }
-            </Text>
-            <Text style={{ color: muted }}>
-              {session.snapshot.motion.detected} detected ·{' '}
-              {session.snapshot.steps} accepted ·{' '}
-              {session.snapshot.motion.rejected} not used ·{' '}
-              {session.snapshot.motion.pending} checking
-            </Text>
-            <Text style={{ color: muted }}>
-              Movement appears after a short check. At the end, hold still for
-              two seconds before finishing. This experimental filter can still
-              miss walks or accept phone handling.
-            </Text>
-          </View>
-        )}
-        <Text
-          selectable
-          accessibilityLiveRegion="polite"
-          style={{ color: muted }}
-        >
-          {session.snapshot.message}
-        </Text>
-        <Text selectable>
-          {session.nativeCount?.message ??
-            'Native count starts with the test. No reading is shown as —, not zero.'}
-        </Text>
-        {session.nativeSaveError ? (
-          <Text accessibilityRole="alert">
-            Native result save failed: {session.nativeSaveError}. Share the run
-            before closing.
-          </Text>
-        ) : null}
-        <Text style={{ color: muted }}>
-          Manual count:{' '}
-          {manualSteps ||
-            (mode === 'stationary' && activity !== 'walking-in-place'
-              ? '0 expected'
-              : 'enter after finishing')}
-          . Counts are independent estimates; the native counter does not yet
-          correct TURN.
-        </Text>
-        {busy && (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={{ fontSize: 22, fontWeight: '700', color: ink }}
-          >
-            {session.starting
-              ? 'Starting sensors…'
-              : session.settling > 0
-                ? `Hold still & point along the path · ${session.settling}`
-                : mode === 'stationary'
-                  ? ` ${activities[activity]} · ${Math.floor(session.activeSeconds)} / 20 s`
-                  : 'Walk now'}
-          </Text>
-        )}
-        {busy && (
-          <Text>
-            Heading from start:{' '}
-            {pose?.headingRad == null
-              ? '—'
-              : `${((wrapAngle(pose.headingRad - heading) * 180) / Math.PI).toFixed(1)}°`}{' '}
-            · {session.elapsed.toFixed(1)} s
-          </Text>
-        )}
-        {busy ? (
-          <>
-            <Action
-              title={
-                session.starting
-                  ? 'Starting sensors…'
-                  : session.settling > 0
-                    ? 'Wait for the countdown'
-                    : mode === 'stationary'
-                      ? 'Finish handling test'
-                      : 'Finish at the end mark'
-              }
-              disabled={
-                session.starting ||
-                session.settling > 0 ||
-                (mode === 'stationary' && session.activeSeconds < 20)
-              }
-              primary
-              onPress={finish}
-            />
-            <Action
-              title="Stop / interrupted walk"
-              onPress={() =>
-                session.stop(
-                  'Walk interrupted. Save for diagnosis or return to start.',
-                )
-              }
-            />
-          </>
-        ) : (
-          <>
-            <Action
-              title={
-                course
-                  ? 'I’m at the start · set position'
-                  : 'Reset to known start'
-              }
-              disabled={(!course && !lastAnchor) || scanning}
-              onPress={reset}
-            />
-            <Action
-              title={
-                mode === 'stationary' ? 'Start handling test' : 'Start walk'
-              }
-              primary
-              disabled={
-                !pose ||
-                (mode === 'walk' && !stepLength) ||
-                !courseReady ||
-                session.snapshot.stopped ||
-                scanning ||
-                (mode === 'walk' && !!course && !marked)
-              }
-              onPress={() => {
-                setError(null);
-                setResult(null);
-                const recording = session.getRecording();
-                if (recording && course)
-                  recording.test = {
-                    courseId: course.id,
-                    completedAtMarkedEndpoint: false,
-                  };
-                try {
-                  attachLabels();
-                  void session.start(heading).catch(report);
-                } catch (e) {
-                  report(e);
-                }
-              }}
-            />
-            {!stepLength && mode === 'walk' && (
-              <Text style={{ color: '#9b6122' }}>
-                One-time step calibration is required below. It will be saved on
-                this phone.
-              </Text>
-            )}
-          </>
-        )}
-        {result && (
-          <View
-            style={{
-              padding: 12,
-              backgroundColor: '#eef4ed',
-              borderRadius: 10,
-              gap: 5,
-            }}
-          >
-            <Text style={{ fontWeight: '700', color: ink }}>This walk</Text>
-            <Text selectable>
-              Endpoint error: {result.endpointErrorMetres.toFixed(2)} m
-            </Text>
-            <Text selectable>
-              Distance error: {result.distanceErrorPercent >= 0 ? '+' : ''}
-              {result.distanceErrorPercent.toFixed(1)}% · {result.steps} steps
-            </Text>
-            <Text style={{ fontSize: 12, color: muted }}>
-              {result.interrupted
-                ? 'Tracking was interrupted; this is not a completed accuracy trial.'
-                : 'Compared with the end mark you confirmed. One walk does not establish overall accuracy.'}
-            </Text>
-          </View>
-        )}
-        {savedMessage && (
-          <Text accessibilityLiveRegion="polite" style={{ color: ink }}>
-            {savedMessage}
-          </Text>
-        )}
-        {session.snapshot.stopped && pose && (
-          <View style={{ gap: 8 }}>
-            <Text>Actual steps in THIS test (leave blank if unknown)</Text>
-            <TextInput
-              accessibilityLabel="Actual test step count"
-              placeholder="e.g. 10"
-              keyboardType="number-pad"
-              editable={mode === 'walk' || activity === 'walking-in-place'}
-              value={
-                mode === 'stationary' && activity !== 'walking-in-place'
-                  ? '0'
-                  : manualSteps
-              }
-              onChangeText={setManualSteps}
-              style={{
-                padding: 14,
-                borderWidth: 1,
-                borderColor: '#cbd5ca',
-                borderRadius: 10,
-              }}
-            />
-            <TextInput
-              accessibilityLabel="Run notes"
-              placeholder="Phone model, grip, anything unusual…"
-              value={notes}
-              onChangeText={setNotes}
-              maxLength={1000}
-              style={{
-                padding: 14,
-                borderWidth: 1,
-                borderColor: '#cbd5ca',
-                borderRadius: 10,
-              }}
-            />
-            <Action
-              title="Save count & notes"
-              onPress={() => {
-                try {
-                  attachLabels();
-                  const recording = session.getRecording();
-                  if (recording) {
-                    saveRun(recording);
-                    setHistoryRevision((v) => v + 1);
-                    setSavedMessage('Run and details saved on this device.');
-                  }
-                } catch (e) {
-                  report(e);
-                }
-              }}
-            />
-          </View>
-        )}
-        {pose && (
-          <Action
-            title="Share this run"
-            disabled={busy || session.nativeCount?.status === 'querying'}
+          <Text>{poi?.name}. Your session is saved in Tests & recordings.</Text>
+          <Button
+            title="Choose another destination"
             onPress={() => {
-              session.stop(
-                'Stopped for export. Return to start before repeating.',
-              );
-              try {
-                attachLabels();
-                const recording = session.getRecording();
-                // Sharing remains available if document storage is full.
-                if (recording) {
-                  try {
-                    saveRun(recording);
-                  } catch (e) {
-                    report(e);
-                  }
-                }
-                void exportRecording(recording).catch(report);
-              } catch (e) {
-                report(e);
-              }
+              setDestination(null);
+              setArrived(false);
+              setStarted(false);
             }}
           />
-        )}
-      </View>
-      <View
-        style={{
-          padding: 10,
-          backgroundColor: 'white',
-          borderRadius: 18,
-          gap: 10,
-        }}
-      >
+        </View>
+      ) : (
+        <>
+          <View style={card}>
+            <Text style={{ color: ink, fontSize: 19, fontWeight: '700' }}>
+              1 · Choose a destination
+            </Text>
+            {poi && (
+              <Text style={{ color: ink, fontWeight: '600' }}>
+                Selected: {poi.name}
+              </Text>
+            )}
+            {!busy && (
+              <>
+                <TextInput
+                  accessibilityLabel="Search destinations"
+                  placeholder="Search rooms and places"
+                  value={query}
+                  onChangeText={setQuery}
+                  style={{
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor: '#cbd5ca',
+                    borderRadius: 10,
+                  }}
+                />
+                <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+                  {venue.pois
+                    .filter((p) =>
+                      p.name.toLowerCase().includes(query.toLowerCase()),
+                    )
+                    .map((p) => (
+                      <Button
+                        key={p.id}
+                        title={`${p.id === destination ? '✓ ' : ''}${p.name}`}
+                        onPress={() => selectDestination(p.id)}
+                      />
+                    ))}
+                </ScrollView>
+                {!venue.pois.some((p) =>
+                  p.name.toLowerCase().includes(query.toLowerCase()),
+                ) && <Text>No matching destinations.</Text>}
+              </>
+            )}
+          </View>
+          <View style={card}>
+            <Text style={{ color: ink, fontSize: 19, fontWeight: '700' }}>
+              2 · Establish your location
+            </Text>
+            <Text>{anchorName}</Text>
+            <Button
+              title={
+                needsRecovery ? 'Scan a marker to recover' : 'Scan location QR'
+              }
+              primary
+              onPress={recover}
+            />
+            {!busy && (
+              <Button
+                title={
+                  showStarts
+                    ? 'Hide known locations'
+                    : 'Set a known location manually'
+                }
+                onPress={() => setShowStarts(!showStarts)}
+              />
+            )}
+            {showStarts && !busy && (
+              <>
+                <Text>
+                  Only choose a location where you are physically standing. This
+                  resets the position estimate.
+                </Text>
+                {venue.anchors.map((a) => (
+                  <Button
+                    key={a.id}
+                    title={`I’m at ${a.label}`}
+                    onPress={() => {
+                      try {
+                        establish(anchorPayload(venue, a.id));
+                      } catch (e) {
+                        report(e);
+                      }
+                    }}
+                  />
+                ))}
+              </>
+            )}
+            {scanning && (
+              <AnchorScanner
+                onScan={establish}
+                onClose={() => setScanning(false)}
+              />
+            )}
+          </View>
+          {routeResult && routeResult.status !== 'ok' && (
+            <Text accessibilityRole="alert">
+              No route connects these locations. Choose another destination or
+              starting point.
+            </Text>
+          )}
+          {route && guidance && (
+            <View
+              style={{
+                ...card,
+                backgroundColor: needsRecovery ? '#fff0de' : '#e7efe6',
+              }}
+            >
+              <Text
+                style={{ color: ink, fontSize: 23, fontWeight: '700' }}
+                accessibilityLiveRegion="polite"
+              >
+                {needsRecovery
+                  ? 'Position needs checking'
+                  : session.starting || (busy && session.settling > 0)
+                    ? `Hold still · ${session.settling || 4}`
+                    : !started && heading !== null
+                      ? '3 · Face the route to begin'
+                      : instruction(guidance)}
+              </Text>
+              {needsRecovery ? (
+                <Text>
+                  {session.snapshot.message} Scan a known marker or set a known
+                  location to recalculate your route.
+                </Text>
+              ) : (
+                <>
+                  <Text style={{ color: ink, fontSize: 20 }}>
+                    About {guidance.remainingMetres.toFixed(1)} m remaining
+                  </Text>
+                  <Text>{guidance.message}</Text>
+                  {busy && session.settling === 0 && (
+                    <Text>
+                      Walk when ready. Keep the phone screen-up, top edge facing
+                      forward.
+                    </Text>
+                  )}
+                  {busy &&
+                    session.snapshot.motion &&
+                    !['walking-like', 'checking'].includes(
+                      session.snapshot.motion.state,
+                    ) && (
+                      <Text>
+                        Position held while motion is unclear or no walking is
+                        detected.
+                      </Text>
+                    )}
+                  {!busy &&
+                    !session.snapshot.stopped &&
+                    guidance.status !== 'unsupported' &&
+                    heading !== null && (
+                      <>
+                        <Text>
+                          At the starting marker, face along the first
+                          highlighted segment. The QR sets position, not
+                          direction.
+                        </Text>
+                        <Button
+                          title={
+                            aligned
+                              ? '✓ I’m facing the first route segment'
+                              : 'I’m facing the first route segment'
+                          }
+                          onPress={() => setAligned(!aligned)}
+                        />
+                        <Button
+                          title={
+                            stepLength === null
+                              ? 'Calibration needed — open Tests & calibration'
+                              : 'Start guidance'
+                          }
+                          primary
+                          disabled={!aligned || stepLength === null || scanning}
+                          onPress={start}
+                        />
+                      </>
+                    )}
+                  {guidance.status === 'near-destination' && (
+                    <Button
+                      title="I can see the destination — confirm arrival"
+                      primary
+                      onPress={confirmArrival}
+                    />
+                  )}
+                </>
+              )}
+              {busy && (
+                <Button
+                  title="Pause guidance"
+                  onPress={() =>
+                    session.stop(
+                      'Guidance paused. Set a known location before resuming.',
+                    )
+                  }
+                />
+              )}
+            </View>
+          )}
+        </>
+      )}
+      <View style={{ ...card, padding: 10 }}>
         <FloorMap
           venue={venue}
-          floorId={pose?.floorId ?? 'ground'}
+          floorId={pose?.floorId ?? venue.floors[0]!.id}
           pose={pose ?? undefined}
           route={route}
-          course={course?.points}
           trace={session.trace}
-          selectedRoom={selectedRoom}
-          onSelectRoom={(id) => {
-            setSelectedRoom(id);
-            const found = venue.pois.find((p) => p.nodeId === id);
-            if (found) setDestination(found.id);
-            else setDestination(null);
-          }}
-        />
-        {room && (
-          <View style={{ padding: 10, gap: 5 }}>
-            <Text style={{ fontWeight: '700', color: ink }}>
-              {room.name}
-              {room.dimensionLabel ? ` · ${room.dimensionLabel}` : ''}
-            </Text>
-            <Text style={{ color: muted }}>
-              {room.note ??
-                'Room dimensions follow the plan; check door locations and obstacles on site.'}
-            </Text>
-          </View>
-        )}
-        {route && (
-          <Text style={{ color: ink }}>
-            {route.distanceMetres.toFixed(1)} m to {poi?.name} from your last
-            start point
-          </Text>
-        )}
-      </View>
-      {course && (
-        <View
-          style={{
-            padding: 16,
-            backgroundColor: '#fff7e6',
-            borderRadius: 16,
-            gap: 10,
-          }}
-        >
-          <Text style={{ fontWeight: '700', color: ink }}>
-            Set up once · repeat easily
-          </Text>
-          <Text style={{ color: ink, lineHeight: 22 }}>{course.setup}</Text>
-          <Action
-            title={
-              marked
-                ? '✓ Start, corner and end marks measured'
-                : 'I’ve measured and cleared the test path'
-            }
-            disabled={busy}
-            onPress={() => setMarked((v) => !v)}
-          />
-          <Text style={{ fontSize: 12, color: muted }}>
-            Place tape marks first. After each walk, return to S and tap “I’m at
-            the start”. The map cannot detect that you have returned.
-          </Text>
-        </View>
-      )}
-      <View
-        style={{
-          padding: 16,
-          backgroundColor: 'white',
-          borderRadius: 16,
-          gap: 10,
-        }}
-      >
-        <Action
-          title={
-            stepLength
-              ? `${showCalibration ? 'Hide' : 'Edit'} calibration · ${stepLength.toFixed(3)} m/step`
-              : 'Calibrate my steps'
-          }
-          disabled={busy}
-          onPress={() => setShowCalibration((v) => !v)}
-        />
-        {showCalibration && (
-          <>
-            <Text style={{ color: muted }}>
-              Walk a taped straight distance of at least 5 m, counting steps
-              manually. Use a separate walk for evaluation. The saved
-              calibration is specific to your pace and carry style.
-            </Text>
-            <TextInput
-              accessibilityLabel="Calibration distance in metres"
-              placeholder="Distance in metres"
-              keyboardType="decimal-pad"
-              value={distance}
-              editable={!busy}
-              onChangeText={setDistance}
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5ca',
-                borderRadius: 10,
-                padding: 14,
-              }}
-            />
-            <TextInput
-              accessibilityLabel="Calibration counted steps"
-              placeholder="Steps you counted"
-              keyboardType="number-pad"
-              value={count}
-              editable={!busy}
-              onChangeText={setCount}
-              style={{
-                borderWidth: 1,
-                borderColor: '#cbd5ca',
-                borderRadius: 10,
-                padding: 14,
-              }}
-            />
-            <Action
-              title="Save calibration on this phone"
-              disabled={busy}
-              onPress={() => {
-                try {
-                  const value = calibratedStepLength(
-                    Number(distance),
-                    Number(count),
-                  );
-                  saveCalibration(value);
-                  setStepLength(value);
-                  setShowCalibration(false);
-                  setError(null);
-                  if (lastAnchor) session.anchor(lastAnchor, value);
-                  setResult(null);
-                } catch (e) {
-                  report(e);
+          onSelectRoom={
+            busy
+              ? undefined
+              : (id) => {
+                  const found = venue.pois.find((p) => p.nodeId === id);
+                  if (found) selectDestination(found.id);
                 }
-              }}
-            />
-            {stepLength !== null && (
-              <Action
-                title="Forget saved calibration"
-                disabled={busy}
-                onPress={() => {
-                  try {
-                    clearCalibration();
-                    setStepLength(null);
-                    setResult(null);
-                  } catch (e) {
-                    report(e);
-                  }
-                }}
-              />
-            )}
-          </>
-        )}
-        <Text style={{ color: muted }}>
-          Hold the phone screen-up, top edge pointing along your body. After
-          Start, hold still through the countdown and wait for “Walk now”. Keep
-          it below 60° tilt and keep the app open.
-        </Text>
-      </View>
-      <View style={{ gap: 10 }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: ink }}>
-          Explore from another location
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8 }}
-        >
-          {venue.anchors.map((a) => (
-            <Action
-              key={a.id}
-              title={a.label}
-              disabled={busy}
-              onPress={() => {
-                setCourseId(null);
-                setResult(null);
-                establish(anchorPayload(venue, a.id));
-              }}
-            />
-          ))}
-        </ScrollView>
-        <Action
-          title="Scan a location marker"
-          disabled={busy}
-          onPress={() => {
-            setCourseId(null);
-            setScanning(true);
-          }}
+          }
+          selectedRoom={poi?.nodeId}
         />
-        {scanning && (
-          <AnchorScanner
-            onScan={establish}
-            onClose={() => setScanning(false)}
-          />
-        )}
-        {!course && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {[
-              ['Toward rear ↑', Math.PI / 2],
-              ['Toward right →', 0],
-              ['Toward front ↓', -Math.PI / 2],
-              ['Toward left ←', Math.PI],
-            ].map(([label, value]) => (
-              <Action
-                key={label}
-                title={`${heading === value ? '✓ ' : ''}${label}`}
-                disabled={busy}
-                onPress={() => setHeading(Number(value))}
-              />
-            ))}
-          </View>
-        )}
-        <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
-          {venue.pois.map((p) => (
-            <Action
-              key={p.id}
-              title={`To ${p.name}`}
-              onPress={() => setDestination(p.id)}
-            />
-          ))}
-        </ScrollView>
+        <Text style={{ color: '#617369', padding: 8 }}>
+          Your position is estimated and may drift from the route. Check door
+          locations and clearance as you go.
+        </Text>
       </View>
-      <RunHistory revision={historyRevision} />
-      <Action
-        title={showNotes ? 'Hide plan notes' : 'Dimensions & plan notes'}
-        onPress={() => setShowNotes((v) => !v)}
-      />
-      {showNotes && (
-        <View style={{ gap: 10 }}>
-          <Text selectable>{venue.provenance.description}</Text>
-          {venue.provenance.notes.map((note) => (
-            <Text key={note} selectable style={{ color: muted }}>
-              • {note}
-            </Text>
-          ))}
-        </View>
+      {stepLength === null && (
+        <Text>
+          Calibrate your step length once in Tests & calibration before starting
+          live guidance.
+        </Text>
       )}
-      <Text style={{ fontSize: 12, color: muted }}>
-        Experimental PDR; accuracy is unmeasured. Private venue and recordings
-        remain local until you choose to share them. Routes do not account for
-        furniture.
+      <Button
+        title="Tests, calibration & recordings"
+        onPress={() => {
+          if (busy)
+            session.stop('Navigation paused to open tests and recordings.');
+          const recording = session.getRecording();
+          try {
+            if (recording?.observations.some((o) => o.type === 'accelerometer'))
+              saveRun(recording);
+            router.push('/tests');
+          } catch (e) {
+            report(e);
+          }
+        }}
+      />
+      <Text style={{ color: '#617369', fontSize: 12 }}>
+        Experimental one-floor guidance. Position and remaining distance are
+        estimates. Use visible surroundings to confirm turns and arrival. No
+        furniture or obstacle detection.
       </Text>
     </ScrollView>
   );

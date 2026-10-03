@@ -129,6 +129,18 @@ export const RunHistory = memo(function RunHistory({
       )}
       {diagnostics && selected && (
         <>
+          {selected.navigation && (
+            <Text>
+              Navigation to{' '}
+              {venue.pois.find(
+                (p) => p.id === selected.navigation?.destinationPoiId,
+              )?.name ?? selected.navigation.destinationPoiId}{' '}
+              ·{' '}
+              {selected.navigation.completion === 'user-confirmed'
+                ? 'arrival confirmed by user'
+                : selected.navigation.completion}
+            </Text>
+          )}
           <Pressable
             accessibilityRole="button"
             style={{ padding: 14, backgroundColor: '#e7efe6', borderRadius: 8 }}

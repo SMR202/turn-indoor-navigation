@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { AppState, Platform } from 'react-native';
 import { activeVenue as sampleVenue } from '../config/active-venue';
 import {
@@ -53,6 +54,8 @@ export function useNavigationSession() {
     const capture = nativeCapture.current;
     nativeCapture.current = null;
     const finishedRecording = recording.current;
+    if (finishedRecording?.navigation?.completion === 'in-progress')
+      finishedRecording.navigation.completion = 'stopped';
     void capture?.finish().then(() => {
       if (finishedRecording) {
         try {
@@ -84,6 +87,15 @@ export function useNavigationSession() {
       setSnapshot(engine.current.consume(event));
     }
   }, []);
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (stopSource.current || pendingStart.current)
+          stop('Navigation screen left. Re-anchor before resuming.');
+      },
+      [stop],
+    ),
+  );
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active' && (stopSource.current || pendingStart.current))

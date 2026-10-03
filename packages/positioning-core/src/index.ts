@@ -293,6 +293,14 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  navigation: z
+    .object({
+      destinationPoiId: z.string().min(1),
+      sourceAnchorId: z.string().min(1),
+      guidanceRevision: z.literal('route-progress-v1'),
+      completion: z.enum(['in-progress', 'stopped', 'user-confirmed']),
+    })
+    .optional(),
   nativePedometer: z
     .object({
       status: z.enum([

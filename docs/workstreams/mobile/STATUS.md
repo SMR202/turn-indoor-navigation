@@ -2,6 +2,12 @@
 
 Updated: 2026-10-03.
 
+## Room-to-room navigation
+
+Navigate is now the main screen: searchable/tappable destinations, location scan or explicit known-location selection, route-facing alignment, live guidance, pause/recovery and user-confirmed arrival. Tests/calibration/history/inbox moved to `/tests` and retain their existing functionality. Leaving a screen stops active sensors and saves through the shared session lifecycle. Sessions carry optional navigation destination/source/completion metadata. Private map and SDK 57 are preserved. See [phone protocol](../../NAVIGATION_TESTING.md).
+
+55 tests/root checks and web export pass; all 72 private routes pass synthetic progress checks. The SDK 57 iOS navigation bundle was fetched over LAN; the restarted inbox accepted a navigation-tagged synthetic recording and its stored hash matched. Physical navigation UI/turn/recovery behavior is unvalidated; no browser visual check is claimed. PDR brisk undercount and heading bias remain open; the new screen does not claim to fix those. Next: short room-to-room walk through a turn, then pause/re-anchor with destination retained and upload both sessions.
+
 ## Motion-filter test build
 
 New phone sessions record algorithm `step-yaw-motion-v2`; live and saved-run UI distinguish detected/accepted/not-used/pending counts and display the core's motion assessment. Missing richer sensors holds position. Finish instructions allow two seconds of stillness for the delayed candidates. Old run schemas/algorithms still replay. SDK 57, private venue and one-tap inbox remain. See [experiment](../../../research/MOTION_GUARD_EXPERIMENT.md) and [current protocol](../../PHONE_TESTING.md#current-experiment-motion-filtering).

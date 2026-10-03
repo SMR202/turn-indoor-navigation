@@ -1,6 +1,12 @@
 # routing workstream
 
-Last meaningful update: 2026-09-24
+Last meaningful update: 2026-10-03
+
+## One-floor live guidance
+
+Added pure `RouteGuidance` and initial route heading on top of existing Graphlib routes. Sequential progress provides remaining geometric distance, upcoming left/right/U-turn, near-destination and latched recovery. Pose is never snapped/modified. Known-anchor recovery recalculates with the destination retained; arrival requires user confirmation. [ADR-0005](../../../decisions/0005-route-progress-and-anchor-recovery.md) records exact provisional thresholds and limitations.
+
+55 tests/root checks and web export pass. All 72 private-venue routes reached near-destination under synthetic geometry-following input (ignored report `work/navigation-route-checks.json`); no physical accuracy/clearance implied. Tests exercise turns, no shortcut onto later segments, recovery, lost/wrong-floor/revision, same-node and duplicate vertices. Next: [phone walk-through](../../NAVIGATION_TESTING.md), including a turn and recovery. Wall constraints and continuous rerouting from uncertain poses are not implemented.
 
 ## Objective
 
