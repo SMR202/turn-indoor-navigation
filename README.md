@@ -22,6 +22,8 @@ npm run web
 
 Existing checkout: pull your working branch, then `npm ci`. Commit the root lockfile after dependency changes; do not create separate app lockfiles. [.env.example](.env.example) documents zero-configuration setup.
 
+From the repository root, launch the phone app with `npm start -- --go --lan` (or `npm run mobile -- --go --lan`). Both explicitly target `apps/mobile`. Do not run bare `npx expo start` from the repository root: Expo will choose its default `AppEntry.js` and fail to find `../../App`. For direct CLI use, run `npx expo start apps/mobile --go --lan`.
+
 | Command              | Purpose                                           |
 | -------------------- | ------------------------------------------------- |
 | `npm run mobile`     | Start Expo; open on compatible Expo Go device     |

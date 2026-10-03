@@ -1,6 +1,10 @@
 # Mobile workstream
 
-Updated: 2026-09-25.
+Updated: 2026-10-03.
+
+Launch correction: root `npm start`, `npm run mobile` and `npm run web` explicitly target `apps/mobile`, avoiding Expo's default AppEntry when launched from the monorepo root. The mobile app retains `expo-router/entry` and SDK 57.
+
+Launch validation: root start resolves `src/app`; iOS router bundle served successfully over LAN, web export succeeds, typecheck/lint and changed-file formatting pass. Physical phone launch remains user-verified separately.
 
 ## Current state
 
