@@ -1,6 +1,11 @@
 import type { DeviceMotionMeasurement } from 'expo-sensors';
 import type { Observation } from '@turn/contracts';
 
+// The native Android payload can omit fields although Expo's public TS type requires them.
+type NativeMotionSample = {
+  [K in keyof DeviceMotionMeasurement]?: DeviceMotionMeasurement[K] | null;
+};
+
 /** Native-time adapter: repeated fields are normal on Android; reversals are not. */
 export function createMotionNormalizer(
   sessionId: string,
@@ -11,12 +16,13 @@ export function createMotionNormalizer(
     lastRotation = -Infinity;
   let lastGyro = -Infinity,
     lastLinear = -Infinity;
-  return (sample: DeviceMotionMeasurement): Observation[] => {
+  return (sample: NativeMotionSample): Observation[] => {
     const acceleration = sample.accelerationIncludingGravity;
     const rotation = sample.rotation;
+    // Android dispatches independently populated sensor fields during startup.
+    // The source watchdog handles persistent absence; an incomplete first frame is not a failure.
+    if (!acceleration || !rotation) return [];
     if (
-      !acceleration ||
-      !rotation ||
       ![
         acceleration.timestamp,
         rotation.timestamp,

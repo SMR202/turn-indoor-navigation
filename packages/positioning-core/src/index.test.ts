@@ -58,6 +58,63 @@ function walk() {
   return observations;
 }
 describe('anchored experimental tracking', () => {
+  it('keeps distance limits as warnings only for recorded continuous-test policy', () => {
+    const observations = walk();
+    const moving = observations.slice(2);
+    for (let cycle = 1; cycle < 4; cycle++) {
+      observations.push(
+        ...moving.map((o) => ({
+          ...o,
+          timestampSeconds: o.timestampSeconds + cycle * 11.02,
+        })),
+      );
+    }
+    const bounded = new NavigationEngine(sampleVenue, 'test', 0.7);
+    const continuous = new NavigationEngine(
+      sampleVenue,
+      'test',
+      0.7,
+      PDR_REVISION,
+      'continuous-test',
+    );
+    for (const o of observations) {
+      bounded.consume(o);
+      continuous.consume(o);
+    }
+    expect(bounded.snapshot().stopped).toBe(true);
+    expect(bounded.snapshot().message).toContain('30m');
+    expect(continuous.snapshot().stopped).toBe(false);
+    expect(continuous.snapshot().distanceMetres).toBeGreaterThan(30);
+    expect(continuous.snapshot().warning).toContain('30 m');
+    expect(
+      replayRecording(
+        {
+          schemaVersion: 1,
+          algorithm: PDR_REVISION,
+          trackingPolicy: 'continuous-test',
+          sessionId: 'test',
+          stepLengthMetres: 0.7,
+          metadata: {
+            platform: 'synthetic',
+            osVersion: 'none',
+            timestampBasis: 'native-boot-seconds-minus-session-origin',
+            note: '',
+          },
+          observations,
+        },
+        sampleVenue,
+      ),
+    ).toEqual(continuous.snapshot());
+    continuous.consume({
+      ...envelope,
+      timestampSeconds: 50,
+      type: 'capability',
+      capability: 'motion',
+      status: 'unavailable',
+      reason: 'Sensor disconnected',
+    });
+    expect(continuous.snapshot().stopped).toBe(true);
+  });
   it('integrates smooth left turns in venue coordinates across yaw wrap', () => {
     const engine = new NavigationEngine(sampleVenue, 'test', 0.7);
     const observations = walk().map((o) =>

@@ -9,6 +9,7 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     recording.sessionId,
     recording.stepLengthMetres,
     recording.algorithm,
+    recording.trackingPolicy,
   );
   const steps: {
     time: number;

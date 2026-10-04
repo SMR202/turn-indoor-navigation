@@ -52,13 +52,13 @@ it('announces turns, measures remaining distance and requires explicit arrival c
     status: 'near-destination',
   });
 });
-it('never jumps directly onto a later segment and latches recovery until a new anchor route', () => {
+it('warns off-route without latching recovery and resumes when back on route', () => {
   const guide = new RouteGuidance(route);
   const original = pose(5, 4.8, 1);
   guide.consume(pose(0, 0, 0));
   expect(guide.consume(original).status).not.toBe('near-destination');
-  expect(guide.consume(pose(5, 4.8, 2.1)).status).toBe('recover');
-  expect(guide.consume(pose(0, 0, 3)).status).toBe('recover');
+  expect(guide.consume(pose(5, 4.8, 2.1)).status).toBe('off-route');
+  expect(guide.consume(pose(0, 0, 3)).status).toBe('following');
   expect(original.position).toEqual({ x: 5, y: 4.8 });
   expect(new RouteGuidance(route).consume(pose(0, 0, 4)).status).toBe(
     'following',

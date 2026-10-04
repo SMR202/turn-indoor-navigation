@@ -2,6 +2,8 @@
 
 Updated: 2026-10-04.
 
+Navigation now explicitly selects recorded `continuous-test` policy: 30 m drift limit becomes a persistent warning, while sensor failure stops remain. Missing policy preserves historical bounded replay. Unit coverage compares both policies beyond 30 m, replay equality and sensor failure behavior. Android acquisition startup now tolerates partial native frames; normalized displacement math is unchanged.
+
 ## Accuracy review after navigation testing
 
 User reports short distance and turns occurring before the mapped doorway. No navigation-tagged runs are in the 23-file local inbox yet. Existing follow-up replay demonstrates brisk-step rejection as well as unresolved count/stride error; route guidance does not correct either. [Evidence, external research and proposed next slice](../../../research/ACCURACY_NEXT_STEP_2026_10.md). Recommend doorway checkpoint evaluation, bounded guard repair and an independent ARKit translation experiment before selecting fusion. Camera-free corrections remain a venue-specific BLE/magnetic or vendor-SDK evaluation. No implementation or physical validation added by this review.

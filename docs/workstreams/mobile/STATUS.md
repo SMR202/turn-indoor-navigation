@@ -2,6 +2,14 @@
 
 Updated: 2026-10-04.
 
+## Android startup and uninterrupted navigation tests
+
+Fixed premature failure on incomplete Android DeviceMotion startup payloads: the normalizer waits for acceleration plus rotation before establishing its time origin. Expo's installed Android source emits independently populated fields; its public TS type does not express their possible absence. The source now waits up to 5 seconds for usable initial acceleration and watches fresh usable samples thereafter (1.5 seconds), not merely callbacks. Missing required hardware still reports an explicit error. No Android recording was available to establish the user's exact failure; physical verification remains necessary.
+
+Navigation uses recorded `continuous-test` policy and `route-progress-v2`: distance beyond 30 m and sustained off-route estimates warn without stopping capture. Real sensor failures and user/lifecycle stops remain distinct, displayed as Tracking paused with the reason. Historical recordings default to bounded policy; diagnostic tests retain it. Next: reload Android/iPhone, start a flat screen-up walk, check off-route capture continues, and send any failed recording with its displayed reason.
+
+Validation: 59 tests, both typechecks, lint, formatting and docs links pass; web export succeeds. Restarted Expo and receiver for the new recording schema, fetched Android and iOS SDK 57 bundles over LAN and verified both contain the new guidance/policy. Fresh launch QR generated. No physical Android/iPhone execution or visual inspection claimed.
+
 ## Navigation accuracy checkpoints
 
 Added selectable route-point references (amber S), an arrival tap and a second still check after two sensor seconds. Each annotation saves immediately and transfers through the existing inbox. Saved-run replay shows discrepancy and accepted/rejected/pending counts at the exact observation boundary. Stale acceleration, settling and inactive tracking block capture. Checkpoints never reset pose or enter the estimator. SDK 57, calibration and private geometry are unchanged. [Protocol](../../NAVIGATION_TESTING.md#doorway-checkpoint-comparison).

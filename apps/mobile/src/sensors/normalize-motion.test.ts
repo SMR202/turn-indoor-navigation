@@ -10,6 +10,26 @@ const sample = (timestamp: number): DeviceMotionMeasurement => ({
   orientation: 0,
   interval: 20,
 });
+it('waits for asynchronous Android startup fields without starting the session clock', () => {
+  const normalize = createMotionNormalizer('test', 'android');
+  expect(
+    normalize({
+      ...sample(100),
+      rotation: null,
+      accelerationIncludingGravity: null,
+    }),
+  ).toEqual([]);
+  expect(normalize({ ...sample(100.1), rotation: null })).toEqual([]);
+  expect(
+    normalize({ ...sample(100.2), accelerationIncludingGravity: null }),
+  ).toEqual([]);
+  expect(normalize(sample(105))[0]).toMatchObject({
+    type: 'attitude',
+    timestampSeconds: 0,
+    tiltRad: 0,
+  });
+  expect(normalize(sample(105.02))[0]!.timestampSeconds).toBeCloseTo(0.02);
+});
 it('normalizes platform gyro axes/degrees and preserves optional linear acceleration and Euler provenance', () => {
   for (const platform of ['ios', 'android'] as const) {
     const next = sample(100);

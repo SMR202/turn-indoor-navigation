@@ -2,7 +2,12 @@ import type { Point, Pose, Route } from '@turn/contracts';
 
 export type Guidance = {
   status:
-    'ready' | 'following' | 'near-destination' | 'recover' | 'unsupported';
+    | 'ready'
+    | 'following'
+    | 'near-destination'
+    | 'off-route'
+    | 'recover'
+    | 'unsupported';
   remainingMetres: number;
   distanceToActionMetres: number;
   action: 'continue' | 'left' | 'right' | 'turn-around' | 'arrive';
@@ -126,15 +131,15 @@ export class RouteGuidance {
     }
     if (projected.distance > 2) {
       this.offRouteSince ??= pose.timestampSeconds;
-      if (pose.timestampSeconds - this.offRouteSince >= 1)
-        return this.recover(
-          'Your estimate is away from the route. Stop and scan a known marker.',
-        );
       this.result = {
         ...this.result,
-        status: 'following',
+        status:
+          pose.timestampSeconds - this.offRouteSince >= 1
+            ? 'off-route'
+            : 'following',
         crossTrackMetres: projected.distance,
-        message: 'Checking position near the route…',
+        message:
+          'Estimate away from the route. Recording continues; turn instructions may be unreliable. You can reset at a known location.',
       };
       return this.snapshot();
     }

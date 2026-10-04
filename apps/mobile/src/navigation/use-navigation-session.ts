@@ -111,7 +111,11 @@ export function useNavigationSession() {
     };
   }, [stop]);
 
-  const anchor = (payload: string, stepLength: number) => {
+  const anchor = (
+    payload: string,
+    stepLength: number,
+    trackingPolicy: 'bounded' | 'continuous-test' = 'bounded',
+  ) => {
     nativeCapture.current?.dispose();
     nativeCapture.current = null;
     setNativeCount(null);
@@ -132,11 +136,13 @@ export function useNavigationSession() {
       sessionId,
       stepLength,
       GUARDED_PDR_REVISION,
+      trackingPolicy,
     );
     recording.current = {
       venue: sampleVenue,
       schemaVersion: 1,
       algorithm: GUARDED_PDR_REVISION,
+      trackingPolicy,
       sessionId,
       stepLengthMetres: stepLength,
       metadata: {

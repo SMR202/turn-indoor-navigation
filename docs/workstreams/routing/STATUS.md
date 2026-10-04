@@ -2,6 +2,8 @@
 
 Last meaningful update: 2026-10-03
 
+2026-10-04 update: sustained cross-track distance above 2 m now yields reversible `off-route` guidance rather than latched recovery. Recording continues and the UI withholds unreliable turn/distance estimates. Returning to the current route clears the warning; lost pose, venue/floor mismatch and reversed time still require recovery. This supersedes the off-route stop decision in ADR-0005 for navigation test builds, tagged `route-progress-v2`. Regression test checks warning, no shortcut to arrival and return to following without re-anchoring. No pose snapping or physical accuracy improvement implied.
+
 ## One-floor live guidance
 
 Added pure `RouteGuidance` and initial route heading on top of existing Graphlib routes. Sequential progress provides remaining geometric distance, upcoming left/right/U-turn, near-destination and latched recovery. Pose is never snapped/modified. Known-anchor recovery recalculates with the destination retained; arrival requires user confirmation. [ADR-0005](../../../decisions/0005-route-progress-and-anchor-recovery.md) records exact provisional thresholds and limitations.

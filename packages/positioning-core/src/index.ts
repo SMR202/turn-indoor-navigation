@@ -60,6 +60,7 @@ export function resolveAnchorPayload(raw: string, venue: VenuePackage) {
 }
 
 export type TrackingSnapshot = {
+  warning?: string;
   motion?: ReturnType<MotionGuard['snapshot']>;
   lastStepAtSeconds?: number;
   pose: Pose | null;
@@ -87,6 +88,7 @@ export class NavigationEngine {
     readonly sessionId: string,
     readonly stepLengthMetres: number,
     readonly algorithm: PdrAlgorithm = PDR_REVISION,
+    readonly trackingPolicy: 'bounded' | 'continuous-test' = 'bounded',
   ) {
     if (
       !Number.isFinite(stepLengthMetres) ||
@@ -97,6 +99,13 @@ export class NavigationEngine {
   }
   snapshot(): TrackingSnapshot {
     return {
+      ...(this.trackingPolicy === 'continuous-test' &&
+      this.steps * this.stepLengthMetres >= 30
+        ? {
+            warning:
+              'Over 30 m without a position reference. Drift may be large; test recording continues.',
+          }
+        : {}),
       ...(this.algorithm === GUARDED_PDR_REVISION
         ? { motion: this.guard.snapshot() }
         : {}),
@@ -288,12 +297,16 @@ export class NavigationEngine {
       horizontalUncertaintyMetres: null,
     };
     this.message = 'Experimental PDR · accuracy unmeasured';
-    if (this.steps * this.stepLengthMetres >= 30)
+    if (
+      this.trackingPolicy === 'bounded' &&
+      this.steps * this.stepLengthMetres >= 30
+    )
       this.stop('30m experimental tracking limit; re-anchor to limit drift.');
   }
 }
 
 export const recordingSchema = z.object({
+  trackingPolicy: z.enum(['bounded', 'continuous-test']).optional(),
   checkpoints: z
     .array(
       z.object({
@@ -310,7 +323,7 @@ export const recordingSchema = z.object({
     .object({
       destinationPoiId: z.string().min(1),
       sourceAnchorId: z.string().min(1),
-      guidanceRevision: z.literal('route-progress-v1'),
+      guidanceRevision: z.enum(['route-progress-v1', 'route-progress-v2']),
       completion: z.enum(['in-progress', 'stopped', 'user-confirmed']),
     })
     .optional(),
@@ -391,6 +404,7 @@ export function replayRecording(input: unknown, venueInput: unknown) {
     recording.sessionId,
     recording.stepLengthMetres,
     recording.algorithm,
+    recording.trackingPolicy,
   );
   for (const observation of recording.observations) engine.consume(observation);
   return engine.snapshot();

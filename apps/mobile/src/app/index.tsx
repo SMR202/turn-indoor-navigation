@@ -59,6 +59,7 @@ const card = {
   gap: 12,
 } as const;
 function instruction(g: Guidance) {
+  if (g.status === 'off-route') return 'Off-route estimate · still recording';
   if (g.status === 'recover' || g.status === 'unsupported')
     return 'Check your location';
   if (g.status === 'near-destination') return 'Check for your destination';
@@ -170,7 +171,7 @@ export default function Navigate() {
     const previous = session.getRecording();
     if (previous?.observations.some((o) => o.type === 'accelerometer'))
       saveRun(previous);
-    session.anchor(payload, stepLength ?? 0.55);
+    session.anchor(payload, stepLength ?? 0.55, 'continuous-test');
     setAnchorName(anchor.label);
     setScanning(false);
     setShowStarts(false);
@@ -198,7 +199,7 @@ export default function Navigate() {
     recording.navigation = {
       destinationPoiId: poi.id,
       sourceAnchorId: anchor.anchorId,
-      guidanceRevision: 'route-progress-v1',
+      guidanceRevision: 'route-progress-v2',
       completion: 'in-progress',
     };
     setStarted(true);
@@ -217,7 +218,7 @@ export default function Navigate() {
       recording.navigation = {
         destinationPoiId: poi.id,
         sourceAnchorId: anchor.anchorId,
-        guidanceRevision: 'route-progress-v1',
+        guidanceRevision: 'route-progress-v2',
         completion: 'user-confirmed',
       };
     session.stop('Destination confirmed by the user.');
@@ -395,7 +396,7 @@ export default function Navigate() {
                 accessibilityLiveRegion="polite"
               >
                 {needsRecovery
-                  ? 'Position needs checking'
+                  ? 'Tracking paused'
                   : session.starting || (busy && session.settling > 0)
                     ? `Hold still · ${session.settling || 4}`
                     : !started && heading !== null
@@ -409,9 +410,14 @@ export default function Navigate() {
                 </Text>
               ) : (
                 <>
-                  <Text style={{ color: ink, fontSize: 20 }}>
-                    About {guidance.remainingMetres.toFixed(1)} m remaining
-                  </Text>
+                  {guidance.status !== 'off-route' && (
+                    <Text style={{ color: ink, fontSize: 20 }}>
+                      About {guidance.remainingMetres.toFixed(1)} m remaining
+                    </Text>
+                  )}
+                  {session.snapshot.warning && (
+                    <Text>{session.snapshot.warning}</Text>
+                  )}
                   <Text>{guidance.message}</Text>
                   {busy && session.settling === 0 && (
                     <Text>

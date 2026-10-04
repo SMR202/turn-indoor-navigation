@@ -20,18 +20,26 @@ export async function startMotionSource(
     Platform.OS === 'ios' ? 'ios' : 'android',
   );
   DeviceMotion.setUpdateInterval(20);
-  let lastEvent = performance.now();
+  const startedAt = performance.now();
+  let lastUsableEvent: number | null = null;
   const subscription = DeviceMotion.addListener((sample) => {
-    lastEvent = performance.now();
     try {
-      for (const observation of normalize(sample)) consume(observation);
+      const observations = normalize(sample);
+      if (observations.some((o) => o.type === 'accelerometer'))
+        lastUsableEvent = performance.now();
+      for (const observation of observations) consume(observation);
     } catch (error) {
       failed(error instanceof Error ? error.message : 'Motion adapter failed');
     }
   });
   const watchdog = setInterval(() => {
-    if (performance.now() - lastEvent > 1500)
-      failed('No motion samples for 1.5s. Re-anchor.');
+    if (lastUsableEvent === null) {
+      if (performance.now() - startedAt > 5000)
+        failed(
+          'Motion sensors did not initialise within 5s. This phone may lack required gravity or rotation sensors.',
+        );
+    } else if (performance.now() - lastUsableEvent > 1500)
+      failed('No fresh usable motion samples for 1.5s. Re-anchor.');
   }, 500);
   return () => {
     subscription.remove();
