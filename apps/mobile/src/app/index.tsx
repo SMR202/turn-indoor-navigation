@@ -141,7 +141,13 @@ export default function Navigate() {
     setError(e instanceof Error ? e.message : String(e));
   useFocusEffect(
     useCallback(() => {
-      void loadCalibration().then(setStepLength);
+      let active = true;
+      void loadCalibration().then((value) => {
+        if (active) setStepLength(value);
+      });
+      return () => {
+        active = false;
+      };
     }, []),
   );
   useEffect(() => {

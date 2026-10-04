@@ -2,6 +2,12 @@
 
 Updated: 2026-10-04.
 
+## Android console cleanup
+
+Read Metro's actual output: positioning `index -> diagnostics -> index` require-cycle warning and React's update-before-mount error. Split positioning implementation into `engine.ts` with a one-way public export barrel; diagnostics no longer imports the barrel. Calibration and saved-history promises cancel UI delivery on blur/unmount, and late pedometer callbacks/save errors cannot update an unmounted session hook. No log suppression or dependency upgrade.
+
+Root check passes (59 tests, types, lint, formatting and docs links), web export succeeds, and the Android SDK 57 bundle contains the split engine. Expo/inbox remain running and QR regenerated. The Android inspector disconnected before returning a component stack; lifecycle guards are concrete fixes but the reported React error's exact origin and disappearance are not confirmed. Next: cold reload on Android with console attached and inspect any recurring error's component stack before further changes.
+
 ## Android startup and uninterrupted navigation tests
 
 Fixed premature failure on incomplete Android DeviceMotion startup payloads: the normalizer waits for acceleration plus rotation before establishing its time origin. Expo's installed Android source emits independently populated fields; its public TS type does not express their possible absence. The source now waits up to 5 seconds for usable initial acceleration and watches fresh usable samples thereafter (1.5 seconds), not merely callbacks. Missing required hardware still reports an explicit error. No Android recording was available to establish the user's exact failure; physical verification remains necessary.

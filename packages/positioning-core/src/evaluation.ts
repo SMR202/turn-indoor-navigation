@@ -1,5 +1,5 @@
 import { pathLength } from '@turn/venue-model';
-import type { TrackingSnapshot } from './index';
+import type { TrackingSnapshot } from './engine';
 export function evaluateWalk(
   snapshot: TrackingSnapshot,
   points: { x: number; y: number }[],

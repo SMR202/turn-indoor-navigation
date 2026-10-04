@@ -1,4 +1,4 @@
-import { NavigationEngine, recordingSchema } from './index';
+import { NavigationEngine, recordingSchema } from './engine';
 import { parseVenuePackage } from '@turn/venue-model';
 import { wrapAngle } from '@turn/pdr';
 export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {

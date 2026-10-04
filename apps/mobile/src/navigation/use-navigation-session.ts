@@ -51,6 +51,13 @@ export function useNavigationSession() {
   const [trace, setTrace] = useState<{ x: number; y: number }[]>([]);
   const traceRef = useRef<{ x: number; y: number }[]>([]);
   const lastSteps = useRef(0);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const stop = useCallback((reason = 'Paused. Re-anchor before resuming.') => {
     const capture = nativeCapture.current;
@@ -63,7 +70,8 @@ export function useNavigationSession() {
         try {
           saveRun(finishedRecording);
         } catch (e) {
-          setNativeSaveError(String(e));
+          if (mounted.current && recording.current === finishedRecording)
+            setNativeSaveError(String(e));
         }
       }
     });
@@ -71,9 +79,11 @@ export function useNavigationSession() {
     pendingStart.current = false;
     stopSource.current?.();
     stopSource.current = null;
-    setRunning(false);
-    setStarting(false);
-    setSettling(0);
+    if (mounted.current) {
+      setRunning(false);
+      setStarting(false);
+      setSettling(0);
+    }
     if (engine.current && recording.current) {
       const event: Observation = {
         schemaVersion: 1,
@@ -86,7 +96,8 @@ export function useNavigationSession() {
         reason,
       };
       recording.current.observations.push(event);
-      setSnapshot(engine.current.consume(event));
+      const next = engine.current.consume(event);
+      if (mounted.current) setSnapshot(next);
     }
   }, []);
   useFocusEffect(
@@ -193,7 +204,8 @@ export function useNavigationSession() {
         Platform.OS,
         (state) => {
           activeRecording.nativePedometer = state;
-          if (recording.current === activeRecording) setNativeCount(state);
+          if (mounted.current && recording.current === activeRecording)
+            setNativeCount(state);
         },
       );
       if (generation.current !== token) {

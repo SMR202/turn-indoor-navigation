@@ -2,6 +2,8 @@
 
 Updated: 2026-10-04.
 
+Module-boundary fix: `engine.ts` now owns NavigationEngine/recording schema/replay; `index.ts` only exports public APIs. Diagnostics imports the engine directly, removing Metro's observed runtime require cycle. Algorithms and serialized contracts are unchanged; 59 tests/root checks pass.
+
 Navigation now explicitly selects recorded `continuous-test` policy: 30 m drift limit becomes a persistent warning, while sensor failure stops remain. Missing policy preserves historical bounded replay. Unit coverage compares both policies beyond 30 m, replay equality and sensor failure behavior. Android acquisition startup now tolerates partial native frames; normalized displacement math is unchanged.
 
 ## Accuracy review after navigation testing

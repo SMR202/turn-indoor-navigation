@@ -1,4 +1,4 @@
-import type { Recording } from './index';
+import type { Recording } from './engine';
 
 /** Evaluation annotation only. Never inserted into positioning observations. */
 export function appendCheckpoint(

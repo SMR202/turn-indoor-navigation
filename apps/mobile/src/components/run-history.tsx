@@ -49,9 +49,17 @@ export const RunHistory = memo(function RunHistory({
     typeof diagnoseRecording
   > | null>(null);
   useEffect(() => {
+    let active = true;
     void listRuns()
-      .then(setNames)
-      .catch((e) => setError(String(e)));
+      .then((runs) => {
+        if (active) setNames(runs);
+      })
+      .catch((e) => {
+        if (active) setError(String(e));
+      });
+    return () => {
+      active = false;
+    };
   }, [revision]);
   const diagnostics = useMemo(
     () => (selected ? diagnoseRecording(selected, activeVenue) : null),

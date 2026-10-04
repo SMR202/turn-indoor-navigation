@@ -116,10 +116,15 @@ export default function Tests() {
   const report = (e: unknown) =>
     setError(e instanceof Error ? e.message : 'Action failed');
   useEffect(() => {
+    let active = true;
     void loadCalibration().then((value) => {
+      if (!active) return;
       setStepLength(value);
       setShowCalibration(value === null);
     });
+    return () => {
+      active = false;
+    };
   }, []);
   const runId = session.getRecording()?.sessionId;
   useEffect(() => {
