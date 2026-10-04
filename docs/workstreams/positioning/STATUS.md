@@ -1,6 +1,10 @@
 # Positioning workstream
 
-Updated: 2026-10-03.
+Updated: 2026-10-04.
+
+## Accuracy review after navigation testing
+
+User reports short distance and turns occurring before the mapped doorway. No navigation-tagged runs are in the 23-file local inbox yet. Existing follow-up replay demonstrates brisk-step rejection as well as unresolved count/stride error; route guidance does not correct either. [Evidence, external research and proposed next slice](../../../research/ACCURACY_NEXT_STEP_2026_10.md). Recommend doorway checkpoint evaluation, bounded guard repair and an independent ARKit translation experiment before selecting fusion. Camera-free corrections remain a venue-specific BLE/magnetic or vendor-SDK evaluation. No implementation or physical validation added by this review.
 
 ## Versioned motion filtering
 
@@ -18,4 +22,4 @@ Unit tests cover QR revision/identity failures, replay equality, stationary/turn
 
 ## Next action
 
-Verify normalized timestamps/yaw on both platforms and measure real logs using [phone protocol](../../PHONE_TESTING.md). Preserve failed runs and hash inputs.
+Obtain navigation recordings through the existing inbox and add timestamped physical-door checkpoints for evaluation, checking actual door geometry. Follow the proposed accuracy slice above; preserve failed runs and hashes. SDK 57 remains pinned. Native VIO feasibility and licensing must be checked before selecting an adapter.

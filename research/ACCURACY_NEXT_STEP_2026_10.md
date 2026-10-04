@@ -1,0 +1,32 @@
+# Accuracy after room-to-room guidance
+
+Reviewed 2026-10-04. Research and proposed execution order; no new positioning implementation or physical accuracy validation in this review.
+
+## Evidence and diagnosis
+
+FACT: current displacement is accepted steps multiplied by a fixed calibrated step length, directed by relative phone yaw. The motion guard delays candidate decisions by at least 0.65 s and requires walking-like startup evidence. Route progress does not correct pose against walls or doors. Pose uncertainty remains unknown.
+
+EXPERIMENT RESULT: private follow-up replay includes a completed brisk-labelled 5 m trial with seven detected/accepted steps (3.89 m), and another with eight detected but four accepted (2.22 m). The latter demonstrates filter loss; the former cannot distinguish missed detections from stride mismatch without independent footfall counts. Increasing fixed stride would conceal one failure while worsening other trials. Pace selection is recording metadata, not an engine setting. Bobbing follow-ups accepted zero but ended on impact guards; these are partial-duration controls, not general validation.
+
+FACT: the local inbox contains 23 recordings and no navigation-tagged recording at review time. Latest doorway behavior is user-reported, not replay-diagnosed. Raw files and identifiable geometry remain private. Navigation sessions already use the same saved-run transfer as straight tests.
+
+INFERENCE: underestimated distance can place an otherwise correctly sensed turn before the mapped doorway. Candidate latency may add transient lag. Initial alignment, phone/body heading differences and inferred door geometry are additional possible contributors. A better handset alone cannot remove these algorithmic and observability limitations.
+
+## External evidence
+
+- [IndoorAtlas platform](https://www.indooratlas.com/platform/) describes inertial, geomagnetic, radio, visual-inertial and barometric layers. Its architecture supports hybrid positioning; published claims are not TURN benchmarks.
+- [Situm infrastructure documentation](https://situm.com/docs/infrastructure-wifi-ble/) distinguishes Android Wi-Fi signal scanning from iOS restrictions. BLE is a cross-platform candidate. System-level indoor location services are a separate integration, not permission for ordinary iOS Wi-Fi scanning.
+- [Pointr FAQ](https://www.pointr.tech/technology/faq) describes deployment-dependent positioning performance. Infrastructure and installation conditions matter; vendor accuracy figures must not be interpreted as guaranteed doorway precision.
+- [Apple world tracking](https://developer.apple.com/documentation/arkit/understanding-world-tracking) combines camera features and inertial motion to estimate device translation and orientation. Darkness, featureless views and excessive motion reduce tracking quality. [Session lifecycle](https://developer.apple.com/documentation/arkit/managing-session-life-cycle-and-tracking-quality) exposes degraded tracking and potentially unsuccessful relocalization. Local AR coordinates still require alignment to the venue.
+- [RoNIN research](https://arxiv.org/abs/1905.12853) evaluates learned inertial navigation across natural phone movement. It motivates a later benchmark, not a drop-in solution or an absolute location fix. Existing reuse-registry licensing restrictions still apply; no code or weights adopted.
+- Google documents [multiple location sources](https://support.google.com/android/answer/15157297?hl=en) and an [informational speedometer](https://support.google.com/maps/answer/9356324?hl=en). Those pages do not disclose its exact speed algorithm. Neither a speed display nor integrating TURN's own step-derived speed creates independent evidence of distance. Apple's [pedometer pace](https://developer.apple.com/documentation/coremotion/cmpedometerdata/currentpace) is another estimate to evaluate, not ground truth.
+
+## Proposed next slice
+
+1. Add timestamped, user-confirmed doorway checkpoints to navigation test recordings. Keep these evaluation labels out of the estimator. Verify the physical start-to-door distances and door coordinates; retain raw and corrected paths separately. Existing recordings remain immutable.
+2. Diagnose candidate rejection and latency against manually counted normal/brisk walks and completed stationary controls. Evaluate changes on different held-out sessions; do not tune against pace labels or inflate stride to compensate for rejection.
+3. EXPERIMENT with an iOS ARKit observation adapter in an Expo SDK 57 development build. Record local metric pose, tracking state and session-origin resets using the shared monotonic timeline. Establish a measured venue transform once; do not treat QR identity as orientation. Initially compare VIO and PDR independently. Naively averaging their poses would ignore shared inertial inputs and correlated errors. No native library/version selected yet; check compatible licensed adapters before implementing the bridge. [Expo development builds](https://docs.expo.dev/develop/development-builds/introduction/) are required for native capabilities outside Expo Go.
+4. Evaluate the same short multi-turn route in both directions at normal/brisk pace, including normal screen-viewing posture, low texture, poor light, stops and tracking interruption. Report doorway error, distance error, turn lag, false displacement, tracking availability and recovery. A provisional goal is doorway error within 1 m on at least 95% of checkpoint events; this is a target, not a result or guaranteed doorway discrimination. Report sample size and worst cases.
+5. Introduce confidence-aware fusion and constraints only on verified walkable geometry. Reject impossible wall transitions while retaining alternative locations; never force the dot along the requested route. For camera-free operation, evaluate surveyed BLE/magnetic corrections or an established SDK on the same protocol. Natural visual relocalization is another candidate for reducing manual anchors, but requires a venue map and measured recovery success.
+
+QR markers remain development references and optional recovery, not the intended repeated interaction. Camera-assisted tracking is the next accuracy experiment, not a commitment that all users must hold up their camera. Venue preparation, automatic corrections and explicit uncertainty are necessary for the final product. No SDK procurement, private venue upload, native build or background monitoring was performed.
