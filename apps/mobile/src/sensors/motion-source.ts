@@ -7,6 +7,7 @@ export async function startMotionSource(
   sessionId: string,
   consume: (value: Observation) => void,
   failed: (message: string) => void,
+  beforeSubscribe: () => Promise<void>,
 ) {
   const permission = await DeviceMotion.requestPermissionsAsync();
   if (!permission.granted)
@@ -15,6 +16,7 @@ export async function startMotionSource(
     );
   if (!(await DeviceMotion.isAvailableAsync()))
     throw new Error('DeviceMotion is unavailable on this phone.');
+  await beforeSubscribe();
   const normalize = createMotionNormalizer(
     sessionId,
     Platform.OS === 'ios' ? 'ios' : 'android',

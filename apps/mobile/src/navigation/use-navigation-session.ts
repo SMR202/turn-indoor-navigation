@@ -19,6 +19,7 @@ import {
 } from '../sensors/pedometer-capture';
 import { saveRun } from './run-storage';
 import { SettledStart } from '../sensors/settled-start';
+import { waitForForeground } from '../sensors/foreground';
 
 const empty: TrackingSnapshot = {
   pose: null,
@@ -48,6 +49,8 @@ export function useNavigationSession() {
   const lastRender = useRef(0);
   const lastMotionReceived = useRef(-Infinity);
   const pendingStart = useRef(false);
+  const startupAbort = useRef<AbortController | null>(null);
+  const trackingArmed = useRef(false);
   const [trace, setTrace] = useState<{ x: number; y: number }[]>([]);
   const traceRef = useRef<{ x: number; y: number }[]>([]);
   const lastSteps = useRef(0);
@@ -60,6 +63,8 @@ export function useNavigationSession() {
   }, []);
 
   const stop = useCallback((reason = 'Paused. Re-anchor before resuming.') => {
+    startupAbort.current?.abort();
+    trackingArmed.current = false;
     const capture = nativeCapture.current;
     nativeCapture.current = null;
     const finishedRecording = recording.current;
@@ -111,11 +116,13 @@ export function useNavigationSession() {
   );
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active' && (stopSource.current || pendingStart.current))
+      if (state !== 'active' && trackingArmed.current)
         stop('App backgrounded. Re-anchor before resuming.');
     });
     return () => {
       generation.current++;
+      startupAbort.current?.abort();
+      trackingArmed.current = false;
       stopSource.current?.();
       nativeCapture.current?.dispose();
       subscription.remove();
@@ -127,6 +134,8 @@ export function useNavigationSession() {
     stepLength: number,
     trackingPolicy: 'bounded' | 'continuous-test' = 'bounded',
   ) => {
+    startupAbort.current?.abort();
+    trackingArmed.current = false;
     nativeCapture.current?.dispose();
     nativeCapture.current = null;
     setNativeCount(null);
@@ -194,6 +203,8 @@ export function useNavigationSession() {
     pendingStart.current = true;
     setStarting(true);
     const token = ++generation.current;
+    const startup = new AbortController();
+    startupAbort.current = startup;
     const activeEngine = engine.current,
       activeRecording = recording.current;
     const settledStart = new SettledStart();
@@ -256,6 +267,12 @@ export function useNavigationSession() {
         (message) => {
           if (generation.current === token) stop(message);
         },
+        async () => {
+          await waitForForeground(AppState, startup.signal);
+          if (generation.current !== token || !mounted.current)
+            throw new Error('Motion startup cancelled.');
+          trackingArmed.current = true;
+        },
       );
       if (generation.current !== token) {
         cleanup();
@@ -264,8 +281,8 @@ export function useNavigationSession() {
       stopSource.current = cleanup;
       setRunning(true);
     } catch (error) {
-      if (generation.current === token)
-        stop(error instanceof Error ? error.message : 'Motion startup failed');
+      if (generation.current !== token) return;
+      stop(error instanceof Error ? error.message : 'Motion startup failed');
       throw error;
     } finally {
       if (generation.current === token) {

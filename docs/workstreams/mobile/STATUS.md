@@ -2,6 +2,12 @@
 
 Updated: 2026-10-04.
 
+## Pixel permission lifecycle fix
+
+The reported exact reason was `App backgrounded`, identifying the session lifecycle path rather than a sensor-normalization failure. Previously `pendingStart` caused any inactive/background transition during permission requests to stop and invalidate the session. Startup now tolerates those transitions, waits for foreground after both permission checks, and only then arms background stopping and subscribes to motion. Leaving the navigation screen cancels pending startup; a 30-second foreground timeout cleans up. Active tracking still pauses on background. Regression tests cover background/inactive-to-active, cancellation and timeout. Device verification remains necessary; this supersedes the prior assumption that incomplete startup payloads explained this Pixel failure.
+
+Validation: root check passes with 62 tests, types, lint, formatting and docs links. Web export succeeds; the live Android SDK 57 bundle was fetched and contains the foreground gate. Expo/inbox continue running and launch QR was regenerated. Physical Pixel permission/start behavior is not yet confirmed.
+
 ## Android console cleanup
 
 Read Metro's actual output: positioning `index -> diagnostics -> index` require-cycle warning and React's update-before-mount error. Split positioning implementation into `engine.ts` with a one-way public export barrel; diagnostics no longer imports the barrel. Calibration and saved-history promises cancel UI delivery on blur/unmount, and late pedometer callbacks/save errors cannot update an unmounted session hook. No log suppression or dependency upgrade.
