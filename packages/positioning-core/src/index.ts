@@ -1,6 +1,7 @@
 import { z } from 'zod';
 export { evaluateWalk } from './evaluation';
 export { diagnoseRecording } from './diagnostics';
+export { appendCheckpoint } from './checkpoints';
 import {
   observationSchema,
   type Observation,
@@ -293,6 +294,18 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  checkpoints: z
+    .array(
+      z.object({
+        nodeId: z.string().min(1).max(120),
+        timestampSeconds: z.number().finite().nonnegative(),
+        afterObservationCount: z.number().int().positive().max(100000),
+        phase: z.enum(['arrival', 'after-wait']),
+        reference: z.literal('user-confirmed-map-point'),
+      }),
+    )
+    .max(100)
+    .optional(),
   navigation: z
     .object({
       destinationPoiId: z.string().min(1),

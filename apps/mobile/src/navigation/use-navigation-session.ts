@@ -5,6 +5,7 @@ import { activeVenue as sampleVenue } from '../config/active-venue';
 import {
   NavigationEngine,
   GUARDED_PDR_REVISION,
+  appendCheckpoint,
   resolveAnchorPayload,
   type Recording,
   type TrackingSnapshot,
@@ -45,6 +46,7 @@ export function useNavigationSession() {
   const generation = useRef(0);
   const lastTime = useRef(0);
   const lastRender = useRef(0);
+  const lastMotionReceived = useRef(-Infinity);
   const pendingStart = useRef(false);
   const [trace, setTrace] = useState<{ x: number; y: number }[]>([]);
   const traceRef = useRef<{ x: number; y: number }[]>([]);
@@ -198,6 +200,8 @@ export function useNavigationSession() {
         (event) => {
           if (generation.current !== token) return;
           lastTime.current = Math.max(lastTime.current, event.timestampSeconds);
+          if (event.type === 'accelerometer')
+            lastMotionReceived.current = performance.now();
           if (activeRecording.observations.length >= 30000) {
             stop('Recording limit reached. Export and re-anchor.');
             return;
@@ -267,6 +271,21 @@ export function useNavigationSession() {
     stop,
     getRecording: () => recording.current,
     getSnapshot: () => engine.current?.snapshot() ?? empty,
+    markCheckpoint: (nodeId: string, phase: 'arrival' | 'after-wait') => {
+      if (
+        !running ||
+        settling > 0 ||
+        engine.current?.snapshot().stopped ||
+        performance.now() - lastMotionReceived.current > 300 ||
+        !recording.current
+      )
+        throw new Error(
+          'Wait for active, current tracking before marking a point.',
+        );
+      const point = appendCheckpoint(recording.current, nodeId, phase);
+      saveRun(recording.current);
+      return point;
+    },
     trace,
   };
 }

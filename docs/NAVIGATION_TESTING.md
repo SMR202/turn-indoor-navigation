@@ -12,6 +12,16 @@ Start with `npm run phone:tests`, reload the app from its Expo launch QR and kee
 
 Sessions save locally with destination, source anchor, guidance revision and completion status. Open **Tests, calibration & recordings → Saved runs** to inspect/share them or send all to the computer. Recovery produces a new session; prior traces remain saved. Arrival is user-confirmed, not measured ground truth. Nothing posts to chat or starts analysis automatically.
 
+## Doorway checkpoint comparison
+
+Under the map, **Accuracy test · checkpoints** lists the route's mapped points in order. Select a recognisable doorway or other point; the amber **S** marks the selected reference on the map. Choose before approaching it. If a point cannot be identified physically, skip it; map coordinates are plan-derived until verified on site.
+
+During active tracking, tap **I’m at the selected point now** when you physically reach it, regardless of where the blue dot appears. Stay still for two seconds, then tap **Still at the same point · save check**. Continue to the next point. Use the same calibration for a normal walk and a brisk walk through the same route. A stopped/recovery session cannot accept new checkpoints; keep and upload that failed run as well.
+
+Both taps save immediately and leave the estimated position unchanged. They are evaluation annotations, not anchors or measured ground truth. Saved runs and `npm run diagnose` report the map discrepancy, accepted steps, rejected steps and pending steps at each tap. Comparing arrival with the still check helps separate transient filter delay from persistent distance loss. Timestamps refer to the most recent sensor observation on the native session timeline; the exact observation boundary is retained, and the UI rejects taps with acceleration older than 300 ms. Human tap timing and map error remain limitations.
+
+Use the existing **Send all saved tests to computer** action after pausing/finishing. The computer receives checkpoint annotations with the full recording; no separate file export or QR scan is required at each checkpoint. There is no automatic analysis or background monitoring.
+
 First acceptance walk: choose a short route through a turn, start at an existing measured location, check the turn instruction, confirm the visible destination, and send the recording. Then test Pause → scan/set a known location → restart with the same destination. Include failures. Browser previews cannot validate sensors, physical marker placement, native persistence or accuracy.
 
 The marker remains the original pose estimate. Sequential route progress is not wall-based map matching; nearby parallel corridors, backward walking and incorrect map geometry can still confuse it. Multi-floor routes are explicitly blocked in this screen. See [ADR-0005](../decisions/0005-route-progress-and-anchor-recovery.md).

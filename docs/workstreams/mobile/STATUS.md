@@ -1,6 +1,14 @@
 # Mobile workstream
 
-Updated: 2026-10-03.
+Updated: 2026-10-04.
+
+## Navigation accuracy checkpoints
+
+Added selectable route-point references (amber S), an arrival tap and a second still check after two sensor seconds. Each annotation saves immediately and transfers through the existing inbox. Saved-run replay shows discrepancy and accepted/rejected/pending counts at the exact observation boundary. Stale acceleration, settling and inactive tracking block capture. Checkpoints never reset pose or enter the estimator. SDK 57, calibration and private geometry are unchanged. [Protocol](../../NAVIGATION_TESTING.md#doorway-checkpoint-comparison).
+
+Next: collect the same short doorway route at normal/brisk pace with unchanged calibration, paired taps and failed runs included. Compare lag with persistent displacement loss before changing the filter. ARKit remains a proposed independent-motion experiment; no native adapter implemented in this slice.
+
+Validation: root check passes (57 tests, both typechecks, lint, formatting and local docs links); web export passes. Restarted the paired inbox/Expo server and fetched the SDK 57 iOS bundle over LAN; checkpoint UI and capture code are present (the middle dot is escaped in the bundle). Fresh launch QR generated. Phone execution and visual UI inspection remain unverified. No measured accuracy improvement is claimed.
 
 ## Room-to-room navigation
 

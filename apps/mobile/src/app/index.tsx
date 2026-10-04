@@ -90,6 +90,9 @@ export default function Navigate() {
   const [arrived, setArrived] = useState(false);
   const [error, setError] = useState('');
   const [guidance, setGuidance] = useState<Guidance | null>(null);
+  const [checkpointNode, setCheckpointNode] = useState<string | null>(null);
+  const [checkpointMessage, setCheckpointMessage] = useState('');
+  const [markedAt, setMarkedAt] = useState<number | null>(null);
   const busy = session.running || session.starting;
   const pose = session.snapshot.pose;
   const sessionId = session.getRecording()?.sessionId;
@@ -111,6 +114,28 @@ export default function Navigate() {
     [route, sessionId],
   );
   const heading = route ? initialRouteHeading(route) : null;
+  const checkpoint = venue.nodes.find(
+    (n) => n.id === checkpointNode && route?.nodeIds.includes(n.id),
+  );
+  useEffect(() => {
+    setCheckpointNode(null);
+    setMarkedAt(null);
+    setCheckpointMessage('');
+  }, [sessionId, destination]);
+  function markCheckpoint(phase: 'arrival' | 'after-wait') {
+    if (!checkpoint) return;
+    try {
+      const point = session.markCheckpoint(checkpoint.id, phase);
+      setMarkedAt(phase === 'arrival' ? point.timestampSeconds : null);
+      setCheckpointMessage(
+        phase === 'arrival'
+          ? 'Arrival saved. Stay at this point for 2 seconds, then save the still check.'
+          : 'Still check saved. Continue walking or choose your next checkpoint.',
+      );
+    } catch (e) {
+      report(e);
+    }
+  }
   const report = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
   useFocusEffect(
@@ -464,6 +489,9 @@ export default function Navigate() {
           pose={pose ?? undefined}
           route={route}
           trace={session.trace}
+          course={
+            checkpoint ? [{ x: checkpoint.x, y: checkpoint.y }] : undefined
+          }
           onSelectRoom={
             busy
               ? undefined
@@ -479,6 +507,70 @@ export default function Navigate() {
           locations and clearance as you go.
         </Text>
       </View>
+      {route && !arrived && (
+        <View style={card}>
+          <Text style={{ fontSize: 19, fontWeight: '700', color: ink }}>
+            Accuracy test · checkpoints
+          </Text>
+          <Text>
+            Select a point on your route. The amber S on the map marks it. Tap
+            arrival when you physically reach that point, even if the blue dot
+            is behind. These taps record the discrepancy; they do not move the
+            dot.
+          </Text>
+          <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+            {route.nodeIds.map((id, i) => (
+              <Button
+                key={id}
+                title={`${checkpointNode === id ? '✓ ' : ''}${i + 1} · ${venue.pois.find((p) => p.nodeId === id)?.name ?? id.replaceAll('-', ' ')}`}
+                onPress={() => {
+                  setCheckpointNode(id);
+                  setMarkedAt(null);
+                  setCheckpointMessage('');
+                }}
+              />
+            ))}
+          </ScrollView>
+          <Button
+            title="I’m at the selected point now"
+            primary
+            disabled={
+              !checkpoint ||
+              !session.running ||
+              session.settling > 0 ||
+              markedAt !== null
+            }
+            onPress={() => markCheckpoint('arrival')}
+          />
+          {markedAt !== null && (
+            <Button
+              title={
+                session.elapsed < markedAt + 2
+                  ? 'Stay still · waiting 2 seconds…'
+                  : 'Still at the same point · save check'
+              }
+              disabled={!session.running || session.elapsed < markedAt + 2}
+              onPress={() => markCheckpoint('after-wait')}
+            />
+          )}
+          {checkpointMessage ? (
+            <Text accessibilityLiveRegion="polite">{checkpointMessage}</Text>
+          ) : null}
+          <Text>
+            Map positions need on-site verification. Skip a point if you cannot
+            identify it confidently. Keep your calibration unchanged for this
+            comparison.
+          </Text>
+          {session.snapshot.motion && (
+            <Text>
+              {session.snapshot.motion.detected} detected ·{' '}
+              {session.snapshot.steps} accepted ·{' '}
+              {session.snapshot.motion.rejected} not used ·{' '}
+              {session.snapshot.motion.pending} pending
+            </Text>
+          )}
+        </View>
+      )}
       {stepLength === null && (
         <Text>
           Calibrate your step length once in Tests & calibration before starting

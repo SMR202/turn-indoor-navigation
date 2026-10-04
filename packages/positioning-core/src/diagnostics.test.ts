@@ -1,7 +1,13 @@
 import type { Observation } from '@turn/contracts';
 import { expect, it } from 'vitest';
 import { sampleVenue } from '@turn/venue-model';
-import { diagnoseRecording, replayRecording, type Recording } from './index';
+import {
+  appendCheckpoint,
+  diagnoseRecording,
+  replayRecording,
+  recordingSchema,
+  type Recording,
+} from './index';
 
 function recording(): Recording {
   const r: Recording = {
@@ -68,6 +74,62 @@ function recording(): Recording {
   }
   return r;
 }
+it('evaluates checkpoints at the tapped observation boundary without changing replay', () => {
+  const full = recording();
+  const r = structuredClone(full);
+  r.navigation = {
+    sourceAnchorId: 'entry-qr',
+    destinationPoiId: 'cafe',
+    guidanceRevision: 'route-progress-v1',
+    completion: 'in-progress',
+  };
+  r.observations = full.observations.slice(0, 250);
+  const atTap = replayRecording(r, sampleVenue);
+  appendCheckpoint(r, 'junction', 'arrival');
+  r.observations = full.observations;
+  appendCheckpoint(r, 'junction', 'after-wait');
+  const decoded = recordingSchema.parse(JSON.parse(JSON.stringify(r)));
+  const diagnosis = diagnoseRecording(decoded);
+  expect(diagnosis.checkpoints).toHaveLength(2);
+  const node = sampleVenue.nodes.find((n) => n.id === 'junction')!;
+  expect(diagnosis.checkpoints[0]!.discrepancyMetres).toBeCloseTo(
+    Math.hypot(
+      atTap.pose!.position.x - node.x,
+      atTap.pose!.position.y - node.y,
+    ),
+  );
+  expect(diagnosis.checkpoints[0]!.steps).toBe(atTap.steps);
+  expect(diagnosis.invalidCheckpointCount).toBe(0);
+  expect(replayRecording(decoded, sampleVenue)).toEqual(
+    replayRecording(full, sampleVenue),
+  );
+  decoded.checkpoints![0]!.nodeId = 'missing';
+  decoded.checkpoints![1]!.afterObservationCount = 99999;
+  const invalid = diagnoseRecording(decoded);
+  expect(invalid.invalidCheckpointCount).toBe(2);
+  expect(invalid.checkpoints[0]!.discrepancyMetres).toBeNull();
+});
+
+it('rejects inactive and unknown checkpoint references and invalid timing metadata', () => {
+  const r = recording();
+  expect(() => appendCheckpoint(r, 'junction', 'arrival')).toThrow(
+    'Start navigation',
+  );
+  r.navigation = {
+    sourceAnchorId: 'entry-qr',
+    destinationPoiId: 'cafe',
+    guidanceRevision: 'route-progress-v1',
+    completion: 'in-progress',
+  };
+  expect(() => appendCheckpoint(r, 'unknown', 'arrival')).toThrow(
+    'recorded venue',
+  );
+  appendCheckpoint(r, 'junction', 'arrival');
+  r.checkpoints![0]!.timestampSeconds += 5;
+  expect(diagnoseRecording(r).invalidCheckpointCount).toBe(1);
+  r.checkpoints![0]!.timestampSeconds = -1;
+  expect(recordingSchema.safeParse(r).success).toBe(false);
+});
 it('replays exactly, separates peak times from detection, and preserves unknown ground truth', () => {
   const r = recording(),
     d = diagnoseRecording(r),

@@ -186,6 +186,31 @@ export const RunHistory = memo(function RunHistory({
             {diagnostics.distanceMetres.toFixed(2)} m estimated · endpoint error{' '}
             {diagnostics.endpointErrorMetres?.toFixed(2) ?? 'not confirmed'} m
           </Text>
+          {diagnostics.checkpoints.length > 0 && (
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontWeight: '700' }}>
+                Checkpoint discrepancies · map references, not surveyed truth
+              </Text>
+              {diagnostics.checkpoints.map((point, index) => (
+                <Text key={index} selectable>
+                  {point.nodeId.replaceAll('-', ' ')} ·{' '}
+                  {point.phase === 'arrival' ? 'arrival tap' : 'after waiting'}{' '}
+                  at {point.timestampSeconds.toFixed(1)} s:{' '}
+                  {point.discrepancyMetres === null
+                    ? 'unavailable'
+                    : `${point.discrepancyMetres.toFixed(2)} m`}{' '}
+                  · {point.steps} accepted / {point.pending ?? '—'} pending /{' '}
+                  {point.rejected ?? '—'} not used
+                </Text>
+              ))}
+            </View>
+          )}
+          {diagnostics.invalidCheckpointCount > 0 && (
+            <Text>
+              {diagnostics.invalidCheckpointCount} checkpoint(s) could not be
+              evaluated.
+            </Text>
+          )}
           <Text selectable>
             Offset from initial direction:{' '}
             {diagnostics.leftOffsetMetres?.toFixed(2) ?? '—'} m left · mean step

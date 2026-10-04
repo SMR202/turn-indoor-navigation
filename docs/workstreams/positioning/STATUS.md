@@ -22,4 +22,6 @@ Unit tests cover QR revision/identity failures, replay equality, stationary/turn
 
 ## Next action
 
-Obtain navigation recordings through the existing inbox and add timestamped physical-door checkpoints for evaluation, checking actual door geometry. Follow the proposed accuracy slice above; preserve failed runs and hashes. SDK 57 remains pinned. Native VIO feasibility and licensing must be checked before selecting an adapter.
+Checkpoint evaluation is implemented: optional versioned-recording annotations retain node ID, native-session time and exact observation count. Replay evaluates map discrepancy and motion counts without feeding annotations into the estimator; malformed references/boundaries yield unavailable results. Arrival and still-check taps allow delay comparison. Historical recordings remain compatible and motion thresholds are unchanged. Synthetic tests verify round-trip persistence, replay independence and invalid-reference/timestamp handling; these do not establish physical accuracy.
+
+Obtain paired normal/brisk navigation recordings through the existing inbox, checking actual door geometry. Follow the proposed accuracy slice above; preserve failed runs and hashes. SDK 57 remains pinned. Native VIO feasibility and licensing must be checked before selecting an adapter.

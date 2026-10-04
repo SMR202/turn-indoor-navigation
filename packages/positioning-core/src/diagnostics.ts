@@ -22,9 +22,50 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     previousSteps = 0;
   let failure: string | null = null;
   const trail: { x: number; y: number }[] = [];
+  const checkpointResults: {
+    nodeId: string;
+    phase: string;
+    timestampSeconds: number;
+    discrepancyMetres: number | null;
+    steps: number;
+    pending: number | null;
+    rejected: number | null;
+    valid: boolean;
+  }[] = [];
+  let observationCount = 0;
+  let latestObservationTime = 0;
   for (const o of recording.observations) {
     const before = engine.snapshot();
     const after = engine.consume(o);
+    observationCount++;
+    latestObservationTime = Math.max(latestObservationTime, o.timestampSeconds);
+    for (const checkpoint of recording.checkpoints ?? []) {
+      if (checkpoint.afterObservationCount !== observationCount) continue;
+      const node = venue.nodes.find((n) => n.id === checkpoint.nodeId);
+      const valid =
+        !!node &&
+        !!after.pose &&
+        !after.stopped &&
+        after.pose.floorId === node.floorId &&
+        Math.abs(checkpoint.timestampSeconds - latestObservationTime) <
+          0.000001;
+      checkpointResults.push({
+        nodeId: checkpoint.nodeId,
+        phase: checkpoint.phase,
+        timestampSeconds: checkpoint.timestampSeconds,
+        discrepancyMetres:
+          valid && node && after.pose
+            ? Math.hypot(
+                after.pose.position.x - node.x,
+                after.pose.position.y - node.y,
+              )
+            : null,
+        steps: after.steps,
+        pending: after.motion?.pending ?? null,
+        rejected: after.motion?.rejected ?? null,
+        valid,
+      });
+    }
     if (o.type === 'anchor' && after.pose) {
       origin = { ...after.pose.position };
       steps.length = 0;
@@ -101,6 +142,10 @@ export function diagnoseRecording(input: unknown, fallbackVenue?: unknown) {
     algorithm: recording.algorithm,
     labels: recording.labels ?? null,
     navigation: recording.navigation ?? null,
+    checkpoints: checkpointResults,
+    invalidCheckpointCount:
+      (recording.checkpoints?.length ?? 0) -
+      checkpointResults.filter((c) => c.valid).length,
     platform: recording.metadata.platform,
     osVersion: recording.metadata.osVersion,
     stepLengthMetres: recording.stepLengthMetres,
