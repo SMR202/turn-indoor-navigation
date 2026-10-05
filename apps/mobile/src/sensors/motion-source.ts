@@ -9,11 +9,16 @@ export async function startMotionSource(
   failed: (message: string) => void,
   beforeSubscribe: () => Promise<void>,
 ) {
-  const permission = await DeviceMotion.requestPermissionsAsync();
-  if (!permission.granted)
-    throw new Error(
-      'Motion permission denied. Enable it in phone settings to test PDR.',
-    );
+  // Expo Android maps this permission API to ACTIVITY_RECOGNITION. That is
+  // required for the optional step counter, not these raw motion sensors.
+  // Check actual sensor availability/delivery on Android; preserve iOS consent.
+  if (Platform.OS !== 'android') {
+    const permission = await DeviceMotion.requestPermissionsAsync();
+    if (!permission.granted)
+      throw new Error(
+        'Motion permission denied. Enable Motion & Fitness for Expo Go in iOS settings.',
+      );
+  }
   if (!(await DeviceMotion.isAvailableAsync()))
     throw new Error('DeviceMotion is unavailable on this phone.');
   await beforeSubscribe();

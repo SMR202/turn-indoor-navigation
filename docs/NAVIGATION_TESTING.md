@@ -2,6 +2,8 @@
 
 Start with `npm run phone:tests`, reload the app from its Expo launch QR and keep the phone/computer on the same reachable network. SDK 57 remains required. Navigation itself uses the loaded venue offline; the development server/inbox are for this test build and explicit uploads.
 
+Android PDR uses raw motion sensors and does not require a Motion settings toggle. Physical activity permission is only for the optional native step-count comparison; denying it does not block navigation. iOS motion permission remains required. Missing hardware or missing sensor delivery is reported separately from permissions.
+
 1. Navigate is the home screen. Choose a destination by search/list or tapping a mapped room with a POI.
 2. Stand at a known marker. Scan its location QR, or choose **Set a known location manually → I’m at …** only when physically there. These are location markers, not the Expo launch QR. Printable markers are generated in ignored `work/phone-test/location-markers.html` by `npm run phone:qr -- <actual Expo URL>`; their placement must match the map's named locations.
 3. Calibration carries over from the existing tests. If none is saved, open **Tests, calibration & recordings**, calibrate and return. Establish the start again after changing calibration.

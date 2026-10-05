@@ -1,6 +1,14 @@
 # Mobile workstream
 
-Updated: 2026-10-04.
+Updated: 2026-10-05.
+
+## Android permission mismatch resolved in acquisition
+
+User's new exact failure was Motion permission denied, not backgrounding. Inspected installed expo-sensors 57.0.3 `DeviceMotionModule.kt`: its Android permission API requests ACTIVITY_RECOGNITION, while OnStartObserving subscribes to gyro, accelerometer, linear acceleration, rotation vector and gravity without that permission check. [Android documentation](https://developer.android.com/develop/sensors-and-location/sensors/sensors_motion) requires ACTIVITY_RECOGNITION for the step-counter/detector; it is not the runtime gate for the raw sensors TURN uses. The iOS motionPermission configuration is iOS-only ([SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/sdk/devicemotion/)).
+
+Removed the Android DeviceMotion permission request/denial gate. Hardware availability and actual sample-delivery watchdogs remain. iOS still requests and enforces motion consent. Optional native pedometer permission remains separate and denial does not stop PDR. No settings toggle, permission bypass of protected step data, native patch or dependency upgrade is needed for this fix. Earlier lifecycle/partial-payload fixes remain valid but did not address this permission mismatch.
+
+65 tests and root checks pass; web export succeeds. New acquisition integration tests mock denied permission and prove Android starts/delivers samples/cleans up, iOS denial blocks, iOS grant starts, and unavailable/no-data Android reports sensor-specific failures. These are mocked tests, not Pixel execution. Restarted correct mobile project and LAN inbox; fresh SDK 57 phone bundles/QR prepared. Next: cold reload Pixel, start navigation and send the run. Physical confirmation remains outstanding.
 
 ## Pixel permission lifecycle fix
 
