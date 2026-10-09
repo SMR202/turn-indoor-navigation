@@ -30,7 +30,7 @@ receiver.listen(port, '0.0.0.0', () => {
       'node_modules/expo/bin/cli',
       'start',
       'apps/mobile',
-      '--go',
+      process.argv.includes('--dev-client') ? '--dev-client' : '--go',
       '--lan',
       '--port',
       '8081',

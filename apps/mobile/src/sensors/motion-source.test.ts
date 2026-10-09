@@ -61,6 +61,32 @@ it('still enforces iOS motion consent', async () => {
   expect(mocks.motion.addListener).toHaveBeenCalledOnce();
   cleanup();
 });
+it('reports persistent low-rate Android delivery once, even when callbacks repeat native fields', async () => {
+  const failed = vi.fn();
+  const cleanup = await startMotionSource(
+    'slow',
+    vi.fn(),
+    failed,
+    async () => {},
+  );
+  const callback = mocks.motion.addListener.mock.calls[0]![0];
+  for (let ms = 0; ms < 6000; ms += 20) {
+    const timestamp = 10 + Math.floor(ms / 200) / 5;
+    callback({
+      accelerationIncludingGravity: { x: 0, y: 0, z: -9.81, timestamp },
+      acceleration: { x: 0, y: 0, z: 0, timestamp },
+      rotation: { alpha: 0, beta: 0, gamma: 0, timestamp },
+      rotationRate: { alpha: 0, beta: 0, gamma: 0, timestamp },
+    });
+    await vi.advanceTimersByTimeAsync(20);
+  }
+  expect(failed).toHaveBeenCalledOnce();
+  expect(failed).toHaveBeenCalledWith(
+    expect.stringContaining('Sensor data too slow'),
+  );
+  cleanup();
+  expect(vi.getTimerCount()).toBe(0);
+});
 it('reports unavailable hardware and missing Android samples instead of misreporting permission denial', async () => {
   mocks.motion.isAvailableAsync.mockResolvedValue(false);
   await expect(

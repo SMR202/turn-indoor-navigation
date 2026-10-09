@@ -1,5 +1,11 @@
 # Reuse registry
 
+## 2026-10-09 Android sampling host
+
+ADOPT expo-dev-client **57.0.19**, MIT (installed package metadata and upstream license), installed with Expo's SDK 57 version resolver. ADAPT the native manifest using supported Android permissions configuration; preserve expo-sensors **57.0.3** and the existing normalized observations. Source inspection found SENSOR_DELAY_NORMAL without HIGH_SAMPLING_RATE_SENSORS on Android 12+. Three uploaded Pixel runs confirm insufficient 4–8 Hz delivery and zero accepted steps. The dedicated native host's physical rate is still an experiment, not an accuracy result. See [Android test build](../docs/ANDROID_TEST_BUILD.md).
+
+Current npm audit reports 32 findings (11 moderate, 20 high, 1 critical), including existing Expo/React Native tooling dependencies. Do not repeat the historical no-high/critical claim below as current status. No force downgrade applied; the audit's suggested Expo/RN major downgrades conflict with SDK 57. Full current audit is retained privately in work/dependency-audit-oct9.json; dependency remediation remains separate from this sensor fix.
+
 ## 2026-10-03 motion-filter experiment
 
 ADOPT the already pinned Expo sensor acquisition and TURN step detector; IMPLEMENT original bounded motion-feature/candidate filtering in shared core, tagged `step-yaw-motion-v2`. No new dependency or copied model/code. Reviewed native counter limitations and primary motion-recognition research; exact thresholds, development evidence and known failures are recorded in [motion-filter experiment](MOTION_GUARD_EXPERIMENT.md). This is EXPERIMENTAL recognition for the existing handheld mode; camera-assisted translation remains a separate candidate if held-out trials fail.

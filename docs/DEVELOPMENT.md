@@ -7,7 +7,7 @@ SDK 57's documented native baseline is Android 7+ and iOS 16.4+; local iOS build
 
 npm run mobile starts Metro. Try matching Expo Go for the initial compatible UI/SVG slice. Its development QR launches the app; it is not a TURN position anchor. Device/computer need Metro connectivity. npm run web validates UI only.
 
-Use development builds once native acquisition/BLE/custom modules require them; install expo-dev-client with Expo's installer then build. Local Android needs Android Studio/SDK and device/emulator. Local iOS needs macOS/Xcode/signing; Windows can use compatible Expo Go or a separately configured EAS build. No EAS project/signing/native binary is configured. Record OS/capabilities and validate physical behavior before pilot claims.
+Android motion testing now uses a [TURN development build](ANDROID_TEST_BUILD.md) with fast-sensor manifest configuration; Expo Go on the tested Pixel delivered insufficient samples. Local Android needs Android Studio/SDK. Local iOS needs macOS/Xcode/signing; the iPhone can continue using compatible Expo Go. No EAS project or release signing is configured. Record OS/capabilities and validate physical behavior before pilot claims.
 
 ## Dependencies / quality
 

@@ -14,6 +14,7 @@
   "scripts": {
     "compare:motion": "tsx scripts/compare-motion.mjs",
     "phone:tests": "tsx scripts/phone-tests.mjs",
+    "phone:android:install": "node scripts/serve-android-build.mjs",
     "diagnose": "tsx scripts/diagnose-runs.mjs",
     "postinstall": "npm run venue:prepare",
     "venue:prepare": "tsx scripts/prepare-venue.mjs",

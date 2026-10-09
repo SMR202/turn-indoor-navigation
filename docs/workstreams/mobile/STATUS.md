@@ -1,6 +1,20 @@
 # Mobile workstream
 
-Updated: 2026-10-05.
+Updated: 2026-10-09.
+
+## Pixel frozen-dot diagnosis and native sampling configuration
+
+FACT: five Android uploads received; two are older permission failures. Replaying the three sensor-bearing runs reproduces zero accepted steps from 9/18/7 candidates. Motion state is unavailable; acceleration delivery is approximately 4.5/7.1/7.4 Hz and nearly all inter-sample gaps exceed 100 ms. This cannot satisfy v2's 25 paired samples in a 1.2-second window. One route run also stops on a heading gap. Raw captures/hashes and detailed reports remain private under work/.
+
+FACT: installed expo-sensors 57.0.3 SensorSubscription requests SENSOR_DELAY_NORMAL on Android 12+ without HIGH_SAMPLING_RATE_SENSORS, independently of the JS delivery interval. DECISION: configure that permission in TURN's native manifest and add SDK-compatible expo-dev-client 57.0.19 (MIT). No filter threshold relaxation, fabricated samples, stride adjustment or algorithm revision. Expo Go's host manifest cannot be fixed by reloading JS. The separate Android debug app needs its own calibration; iPhone Expo Go remains supported.
+
+Added Android sampling-health detection using fresh normalized events, startup grace and once-only actionable failure reporting. Tests cover 5–8 Hz, missing/stalled streams, healthy 50 Hz and repeated Android fields. Phone tooling supports --dev-client, separate install/launch QRs and a LAN server that serves only the debug APK. [Build and phone instructions](../../ANDROID_TEST_BUILD.md). Native compilation/phone confirmation are separate from mocked acquisition tests; physical recovery is not yet established.
+
+Validation: root check passes with 68 tests, both typechecks, lint, formatting and docs links; web export succeeds. Android/iOS SDK 57 bundles were fetched over LAN and the Android bundle contains the sampling-health check. ARM64 Android debug build succeeds; packaged manifest includes the sensor permission and APK signature verification passes. Installed precompiled sensor bytecode also confirms the permission-controlled fast/normal sampling branch. Native build required a short Windows drive alias and relocating generated outputs/cache to D: after path-length and disk-space failures; see the build guide. Physical execution remains unverified.
+
+APK integrity: ZIP checksum validation and ELF inspection of all 26 ARM64 shared libraries pass. The LAN download returns the 97,483,398-byte APK with an identical SHA-256 to the built artifact; other server paths return 404. Install and development-launch QR images are in ignored work/phone-test. These computer-side checks do not establish Pixel sensor frequency or movement accuracy.
+
+Next: install TURN on Pixel, restore calibration, repeat normal walk and bobbing control, upload both and measure delivered/paired sensor rate plus accepted/rejected steps before accuracy tuning. Expo/receiver and the restricted APK download server are local processes, not a deployed service or automatic monitoring.
 
 ## Android permission mismatch resolved in acquisition
 

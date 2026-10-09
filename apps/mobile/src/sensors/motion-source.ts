@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { DeviceMotion } from 'expo-sensors';
 import { createMotionNormalizer } from './normalize-motion';
 import type { Observation } from '@turn/contracts';
+import { createSamplingHealth } from './sampling-health';
 
 export async function startMotionSource(
   sessionId: string,
@@ -28,25 +29,41 @@ export async function startMotionSource(
   );
   DeviceMotion.setUpdateInterval(20);
   const startedAt = performance.now();
+  const health = createSamplingHealth(startedAt);
+  let failureReported = false;
+  const reportFailure = (message: string) => {
+    if (failureReported) return;
+    failureReported = true;
+    failed(message);
+  };
   let lastUsableEvent: number | null = null;
   const subscription = DeviceMotion.addListener((sample) => {
     try {
       const observations = normalize(sample);
       if (observations.some((o) => o.type === 'accelerometer'))
         lastUsableEvent = performance.now();
-      for (const observation of observations) consume(observation);
+      for (const observation of observations) {
+        health.observe(observation, performance.now());
+        consume(observation);
+      }
     } catch (error) {
-      failed(error instanceof Error ? error.message : 'Motion adapter failed');
+      reportFailure(
+        error instanceof Error ? error.message : 'Motion adapter failed',
+      );
     }
   });
   const watchdog = setInterval(() => {
     if (lastUsableEvent === null) {
       if (performance.now() - startedAt > 5000)
-        failed(
+        reportFailure(
           'Motion sensors did not initialise within 5s. This phone may lack required gravity or rotation sensors.',
         );
     } else if (performance.now() - lastUsableEvent > 1500)
-      failed('No fresh usable motion samples for 1.5s. Re-anchor.');
+      reportFailure('No fresh usable motion samples for 1.5s. Re-anchor.');
+    else if (Platform.OS === 'android') {
+      const problem = health.problem(performance.now());
+      if (problem) reportFailure(problem);
+    }
   }, 500);
   return () => {
     subscription.remove();

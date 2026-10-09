@@ -19,8 +19,10 @@ if (
   throw new Error('Supply the verified Expo LAN/tunnel URL, not localhost.');
 const directory = resolve('work/phone-test');
 await mkdir(directory, { recursive: true });
+const devClientUrl = `turn://expo-development-client/?url=${encodeURIComponent(`${url.protocol === 'exps:' ? 'https' : 'http'}://${url.host}${url.pathname}`)}`;
 for (const [name, content] of [
   ['expo-launch', url.href],
+  ['android-launch', devClientUrl],
   ...venue.anchors.map((a) => [a.id, anchorPayload(venue, a.id)]),
 ]) {
   await QRCode.toFile(resolve(directory, `${name}.png`), content, {
@@ -31,7 +33,7 @@ for (const [name, content] of [
 }
 await writeFile(
   resolve(directory, 'connection.txt'),
-  `${url.href}\nGenerated ${new Date().toISOString()}\nKeep Expo running; phone and computer must share reachable LAN for LAN URLs.\n`,
+  `Expo Go: ${url.href}\nTURN Android development build: ${devClientUrl}\nGenerated ${new Date().toISOString()}\nKeep Expo running; phone and computer must share reachable LAN for LAN URLs.\n`,
 );
 const escape = (value) =>
   value.replace(

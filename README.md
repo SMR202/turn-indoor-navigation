@@ -41,6 +41,8 @@ The home screen now offers one-floor room-to-room guidance. **Tests, calibration
 
 For one-tap test transfers, run `npm run phone:tests` instead of the plain mobile command. It starts Expo and a private LAN inbox together. In **Saved runs**, tap **Send all saved tests to computer**, then tell Codex “check the new runs”. See [phone testing](docs/PHONE_TESTING.md#one-tap-transfer-to-this-computer).
 
+For Pixel/Android motion testing, use the [TURN Android development build](docs/ANDROID_TEST_BUILD.md). Expo Go on the tested Pixel supplies too few sensor updates for the walking filter. The dedicated build enables fast native sampling; SDK 57 and the iPhone Expo Go path remain.
+
 - apps/mobile: Expo reference client.
 - packages/contracts: versioned observations, poses, anchors, routes.
 - packages/venue-model: runtime-validated venue and original synthetic fixture.

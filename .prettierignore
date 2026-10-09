@@ -4,6 +4,8 @@ dist
 .expo
 work
 apps/mobile/src/config/venue.generated.json
+apps/mobile/android
+apps/mobile/ios
 # Preserve formatting of historical evidence.
 research/ACCELERATION_AUDIT.md
 docs/CODEX_CLOUD_SETUP.md

@@ -10,6 +10,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.turn.navigation.dev",
+      "permissions": ["android.permission.HIGH_SAMPLING_RATE_SENSORS"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

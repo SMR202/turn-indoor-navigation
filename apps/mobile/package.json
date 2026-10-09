@@ -5,10 +5,13 @@
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
     "@turn/contracts": "0.1.0",
+    "@turn/pdr": "0.1.0",
+    "@turn/positioning-core": "0.1.0",
     "@turn/routing": "0.1.0",
     "@turn/venue-model": "0.1.0",
     "expo": "~57.0.24",
     "expo-camera": "~57.0.5",
+    "expo-dev-client": "~57.0.19",
     "expo-file-system": "~57.0.7",
     "expo-router": "~57.0.22",
     "expo-sensors": "~57.0.3",
@@ -22,16 +25,14 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "15.15.4",
     "react-native-web": "^0.21.2",
-    "react-native-worklets": "0.10.1",
-    "@turn/positioning-core": "0.1.0",
-    "@turn/pdr": "0.1.0"
+    "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.2"
   },
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
+    "android": "expo run:android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",

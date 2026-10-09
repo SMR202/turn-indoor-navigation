@@ -1,6 +1,6 @@
 # TURN project state
 
-Updated: 2026-10-03.
+Updated: 2026-10-09.
 
 ## Current milestone
 
@@ -18,13 +18,15 @@ Expo SDK 57; private local venue packages with room dimensions; zoomable maps; c
 
 ## Gaps
 
-Repeatable accuracy unvalidated; initial user trials show count variation and heading offset. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No map matching, continuous rerouting, floor detection, updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. Dependency audit reports 14 moderate transitive findings, no high/critical; forced downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
+Repeatable accuracy unvalidated; initial user trials show count variation and heading offset. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No map matching, continuous rerouting, floor detection, updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. October 9 dependency audit reports 32 findings (11 moderate, 20 high, 1 critical); forced Expo/RN downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
 
 ## Direction
 
 [Market review and execution plan](../research/MARKET_DIRECTION_2026_09.md) preserves multi-sensor corrections, offline venue packages, authoring and a reusable SDK. Native counts provide diagnostic evidence only. New phone sessions use experimental `step-yaw-motion-v2`; historical v1 replay is preserved. Rejection of the available bobbing control is a development result, not general accuracy. See [motion-filter experiment](../research/MOTION_GUARD_EXPERIMENT.md). One-tap LAN transfers deliver tests into the private project inbox.
 
 ## Next action
+
+Pixel recordings establish a native sampling bottleneck: 4–8 Hz and every walking candidate rejected as unavailable. Android now has a [dedicated SDK 57 test-build configuration](ANDROID_TEST_BUILD.md) with fast-sensor permission and explicit slow-stream diagnosis. Verify the installed build on Pixel with a normal walk and a bobbing control; the iPhone can retain Expo Go. See [mobile status](workstreams/mobile/STATUS.md) for actual build/validation progress. No physical improvement claimed yet.
 
 Walk a short room-to-room route through one turn, then exercise pause/re-anchor recovery with destination retained; upload both sessions via the inbox. Product flow progresses while brisk-count/stride and heading issues remain under evaluation.
 
