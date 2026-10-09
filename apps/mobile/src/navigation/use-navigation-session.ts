@@ -20,6 +20,7 @@ import {
 import { saveRun } from './run-storage';
 import { SettledStart } from '../sensors/settled-start';
 import { waitForForeground } from '../sensors/foreground';
+import TurnMotion from '../../modules/turn-motion';
 
 const empty: TrackingSnapshot = {
   pose: null,
@@ -168,6 +169,10 @@ export function useNavigationSession() {
       metadata: {
         platform: Platform.OS,
         acquisitionProtocol: 'settle-3s-warmup-v1',
+        acquisitionSource:
+          Platform.OS === 'android'
+            ? (TurnMotion?.revision ?? 'android-native-module-missing')
+            : 'expo-devicemotion-57.0.3',
         osVersion: String(Platform.Version),
         timestampBasis: 'native-boot-seconds-minus-session-origin',
         note: `${sampleVenue.provenance.kind} venue / hand-held screen-up baseline. No measured accuracy implied.`,
@@ -195,7 +200,7 @@ export function useNavigationSession() {
   const start = async (headingRad: number) => {
     if (Platform.OS === 'web')
       throw new Error(
-        'Live motion testing requires Expo Go on a phone. Browser preview does not simulate walking.',
+        'Live motion testing requires TURN on Android or Expo Go on iPhone. Browser preview does not simulate walking.',
       );
     if (!engine.current || !recording.current || snapshot.stopped)
       throw new Error('Establish a fresh anchor first.');

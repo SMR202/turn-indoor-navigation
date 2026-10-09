@@ -10,6 +10,7 @@
       "supportsTablet": true
     },
     "android": {
+      "versionCode": 2,
       "package": "com.turn.navigation.dev",
       "permissions": ["android.permission.HIGH_SAMPLING_RATE_SENSORS"],
       "adaptiveIcon": {

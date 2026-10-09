@@ -10,13 +10,17 @@ type NativeMotionSample = {
 export function createMotionNormalizer(
   sessionId: string,
   platform?: 'ios' | 'android',
+  source = 'expo-devicemotion-57.0.3',
 ) {
   let origin: number | null = null;
   let lastAcceleration = -Infinity,
     lastRotation = -Infinity;
   let lastGyro = -Infinity,
     lastLinear = -Infinity;
-  return (sample: NativeMotionSample): Observation[] => {
+  return (
+    sample: NativeMotionSample,
+    gravityVector?: [number, number, number],
+  ): Observation[] => {
     const acceleration = sample.accelerationIncludingGravity;
     const rotation = sample.rotation;
     // Android dispatches independently populated sensor fields during startup.
@@ -43,13 +47,15 @@ export function createMotionNormalizer(
     const envelope = {
       schemaVersion: 1 as const,
       sessionId,
-      source: 'expo-devicemotion-57.0.3',
+      source,
     };
     if (rotation.timestamp > lastRotation) {
       const a = sample.acceleration;
-      const gravity = a
-        ? [acceleration.x - a.x, acceleration.y - a.y, acceleration.z - a.z]
-        : [acceleration.x, acceleration.y, acceleration.z];
+      const gravity =
+        gravityVector ??
+        (a
+          ? [acceleration.x - a.x, acceleration.y - a.y, acceleration.z - a.z]
+          : [acceleration.x, acceleration.y, acceleration.z]);
       const magnitude = Math.hypot(...gravity);
       if (magnitude < 3) throw new Error('Gravity estimate unavailable');
       observations.push({

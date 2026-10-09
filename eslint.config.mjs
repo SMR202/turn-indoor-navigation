@@ -11,6 +11,8 @@ export default ts.config(
       'work/**',
       'apps/mobile/android/**',
       'apps/mobile/ios/**',
+      'apps/mobile/modules/*/android/build/**',
+      'apps/mobile/modules/*/android/.gradle/**',
     ],
   },
   js.configs.recommended,

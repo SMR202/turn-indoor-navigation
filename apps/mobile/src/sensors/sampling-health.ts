@@ -28,7 +28,7 @@ export function createSamplingHealth(startedAtMs: number) {
           (time) => nowMs - time <= 3000,
         ).length;
         if (count < 75)
-          return `Sensor data too slow: ${stream} is delivering about ${Math.round(count / 3)} updates/s; TURN needs at least 25. On Android, install the TURN development build with fast sensors enabled; reloading Expo Go cannot change native sensor configuration. If already using TURN, send this recording for diagnosis.`;
+          return `Sensor data too slow: ${stream} is delivering about ${Math.round(count / 3)} updates/s; TURN needs at least 25. The TURN background sensor capture is active, but this stream is below the required rate. Save and send this recording for diagnosis.`;
       }
       return null;
     },

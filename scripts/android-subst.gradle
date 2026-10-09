@@ -1,0 +1,21 @@
+// Optional Windows SUBST workaround for React Native codegen's relative paths.
+// Keep generated Android files and dependency sources untouched.
+def checkout = System.getenv('TURN_CANONICAL_ROOT')
+if (!checkout || !new File(checkout, 'node_modules/@react-native/codegen').isDirectory()) {
+  throw new GradleException('Set TURN_CANONICAL_ROOT to the full checkout path with installed dependencies.')
+}
+def checkoutDrive = new File(checkout).toPath().root
+gradle.projectsEvaluated {
+  allprojects { p ->
+    p.tasks.configureEach { task ->
+      if (task.name == 'generateCodegenSchemaFromJavaScript' &&
+          new File(task.nodeWorkingDir.get()).toPath().root == checkoutDrive) {
+        task.codegenDir.set(new File(checkout, 'node_modules/@react-native/codegen'))
+      }
+      if (task.name == 'generateCodegenArtifactsFromSchema' &&
+          new File(task.nodeWorkingDir.get()).toPath().root == checkoutDrive) {
+        task.reactNativeDir.set(new File(checkout, 'node_modules/react-native'))
+      }
+    }
+  }
+}

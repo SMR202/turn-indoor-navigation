@@ -390,6 +390,7 @@ export const recordingSchema = z.object({
     timestampBasis: z.literal('native-boot-seconds-minus-session-origin'),
     note: z.string(),
     acquisitionProtocol: z.string().optional(),
+    acquisitionSource: z.string().optional(),
   }),
   observations: z.array(observationSchema).max(100000),
 });

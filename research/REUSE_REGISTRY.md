@@ -1,5 +1,9 @@
 # Reuse registry
 
+## 2026-10-09 Android snapshot loss supersedes permission-only fix
+
+ADOPT Android SensorManager's Handler-based listener API and existing MIT-licensed **expo-modules-core 57.0.18**; IMPLEMENT TURN's bounded acquisition queue and adapter as a local Android Expo module, revision `turn-android-imu-1`. Local scaffold was generated with **create-expo-module 57.0.1**; the included Expo MIT notice is retained. No new runtime dependency, PDR threshold change or dependency source patch. Inspected exact installed **expo-sensors 57.0.3**: Choreographer dispatches latest-field snapshots and loses intervening native events. Two new uploaded Android runs still fail after the permission-enabled APK; burst intervals establish that faster native timestamps alone are insufficient. iOS retains DeviceMotion. Risks: a native rebuild is required, requested rate is not guaranteed, handler/event batching needs phone validation. See [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md).
+
 ## 2026-10-09 Android sampling host
 
 ADOPT expo-dev-client **57.0.19**, MIT (installed package metadata and upstream license), installed with Expo's SDK 57 version resolver. ADAPT the native manifest using supported Android permissions configuration; preserve expo-sensors **57.0.3** and the existing normalized observations. Source inspection found SENSOR_DELAY_NORMAL without HIGH_SAMPLING_RATE_SENSORS on Android 12+. Three uploaded Pixel runs confirm insufficient 4–8 Hz delivery and zero accepted steps. The dedicated native host's physical rate is still an experiment, not an accuracy result. See [Android test build](../docs/ANDROID_TEST_BUILD.md).

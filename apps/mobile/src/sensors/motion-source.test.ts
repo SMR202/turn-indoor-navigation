@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { DeviceMotionMeasurement } from 'expo-sensors';
+import type { MotionBatch, RawMotionEvent } from '../../modules/turn-motion';
 const mocks = vi.hoisted(() => ({
   platform: { OS: 'android' },
+  native: {
+    revision: 'turn-android-imu-1',
+    start: vi.fn(),
+    stop: vi.fn(),
+    acknowledge: vi.fn(),
+    addListener: vi.fn(),
+  },
   motion: {
     requestPermissionsAsync: vi.fn(),
     isAvailableAsync: vi.fn(),
@@ -11,46 +18,62 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('react-native', () => ({ Platform: mocks.platform }));
 vi.mock('expo-sensors', () => ({ DeviceMotion: mocks.motion }));
+vi.mock('../../modules/turn-motion', () => ({ default: mocks.native }));
 import { startMotionSource } from './motion-source';
+
+function samples(timestamp: number): RawMotionEvent[] {
+  return [
+    { type: 9, timestamp, values: [0, 0, 9.81] },
+    { type: 11, timestamp, values: [0, 0, 0] },
+    { type: 1, timestamp, values: [0, 0, 9.81] },
+    { type: 4, timestamp, values: [0, 0, 0] },
+    { type: 10, timestamp, values: [0, 0, 0] },
+  ];
+}
+function deliver(batch: MotionBatch) {
+  mocks.native.addListener.mock.calls.find(
+    ([event]) => event === 'onBatch',
+  )![1](batch);
+}
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
   mocks.platform.OS = 'android';
+  mocks.native.revision = 'turn-android-imu-1';
   mocks.motion.requestPermissionsAsync.mockResolvedValue({ granted: false });
   mocks.motion.isAvailableAsync.mockResolvedValue(true);
+  mocks.native.start.mockResolvedValue(undefined);
+  mocks.native.addListener.mockImplementation(() => ({ remove: vi.fn() }));
   mocks.motion.addListener.mockReturnValue({ remove: vi.fn() });
 });
 afterEach(() => vi.useRealTimers());
-it('starts Android raw motion and delivers samples even when activity permission would be denied', async () => {
+
+it('uses the native Android stream without activity permission or display-frame snapshots', async () => {
   const consume = vi.fn(),
     failed = vi.fn(),
     foreground = vi.fn(async () => {});
   const cleanup = await startMotionSource('test', consume, failed, foreground);
   expect(mocks.motion.requestPermissionsAsync).not.toHaveBeenCalled();
+  expect(mocks.motion.addListener).not.toHaveBeenCalled();
   expect(foreground).toHaveBeenCalledOnce();
-  const sample: DeviceMotionMeasurement = {
-    accelerationIncludingGravity: { x: 0, y: 0, z: -9.81, timestamp: 10 },
-    acceleration: { x: 0, y: 0, z: 0, timestamp: 10 },
-    rotation: { alpha: 0, beta: 0, gamma: 0, timestamp: 10 },
-    rotationRate: { alpha: 0, beta: 0, gamma: 0, timestamp: 10 },
-    orientation: 0,
-    interval: 20,
-  };
-  mocks.motion.addListener.mock.calls[0]![0](sample);
+  deliver({ token: 'test', sequence: 1, samples: samples(10) });
   expect(consume.mock.calls.map(([o]) => o.type)).toContain('accelerometer');
+  expect(mocks.native.acknowledge).toHaveBeenCalledWith('test', 1);
   expect(failed).not.toHaveBeenCalled();
   cleanup();
-  expect(
-    mocks.motion.addListener.mock.results[0]!.value.remove,
-  ).toHaveBeenCalledOnce();
+  expect(mocks.native.stop).toHaveBeenCalledWith('test');
+  for (const result of mocks.native.addListener.mock.results)
+    expect(result.value.remove).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
+  const count = consume.mock.calls.length;
+  deliver({ token: 'test', sequence: 2, samples: samples(11) });
+  expect(consume).toHaveBeenCalledTimes(count);
 });
-it('still enforces iOS motion consent', async () => {
+it('still enforces iOS motion consent and uses the existing iOS source', async () => {
   mocks.platform.OS = 'ios';
   await expect(
     startMotionSource('test', vi.fn(), vi.fn(), async () => {}),
   ).rejects.toThrow('Motion & Fitness');
-  expect(mocks.motion.addListener).not.toHaveBeenCalled();
   mocks.motion.requestPermissionsAsync.mockResolvedValue({ granted: true });
   const cleanup = await startMotionSource(
     'test',
@@ -59,9 +82,35 @@ it('still enforces iOS motion consent', async () => {
     async () => {},
   );
   expect(mocks.motion.addListener).toHaveBeenCalledOnce();
+  expect(mocks.native.start).not.toHaveBeenCalled();
   cleanup();
 });
-it('reports persistent low-rate Android delivery once, even when callbacks repeat native fields', async () => {
+it('preserves healthy 50 Hz readings delivered in 200 ms batches without watchdog failures', async () => {
+  const consume = vi.fn(),
+    failed = vi.fn();
+  const cleanup = await startMotionSource(
+    'test',
+    consume,
+    failed,
+    async () => {},
+  );
+  for (let batch = 0; batch < 30; batch++) {
+    await vi.advanceTimersByTimeAsync(200);
+    deliver({
+      token: 'test',
+      sequence: batch + 1,
+      samples: Array.from({ length: 10 }, (_, i) =>
+        samples(10 + (batch * 10 + i) / 50),
+      ).flat(),
+    });
+  }
+  expect(failed).not.toHaveBeenCalled();
+  expect(
+    consume.mock.calls.filter(([o]) => o.type === 'accelerometer'),
+  ).toHaveLength(300);
+  cleanup();
+});
+it('reports genuinely slow Android data only once and does not suggest reinstalling the active native capture', async () => {
   const failed = vi.fn();
   const cleanup = await startMotionSource(
     'slow',
@@ -69,31 +118,29 @@ it('reports persistent low-rate Android delivery once, even when callbacks repea
     failed,
     async () => {},
   );
-  const callback = mocks.motion.addListener.mock.calls[0]![0];
-  for (let ms = 0; ms < 6000; ms += 20) {
-    const timestamp = 10 + Math.floor(ms / 200) / 5;
-    callback({
-      accelerationIncludingGravity: { x: 0, y: 0, z: -9.81, timestamp },
-      acceleration: { x: 0, y: 0, z: 0, timestamp },
-      rotation: { alpha: 0, beta: 0, gamma: 0, timestamp },
-      rotationRate: { alpha: 0, beta: 0, gamma: 0, timestamp },
-    });
-    await vi.advanceTimersByTimeAsync(20);
+  for (let i = 0; i < 30; i++) {
+    deliver({ token: 'slow', sequence: i + 1, samples: samples(10 + i / 5) });
+    await vi.advanceTimersByTimeAsync(200);
   }
   expect(failed).toHaveBeenCalledOnce();
-  expect(failed).toHaveBeenCalledWith(
-    expect.stringContaining('Sensor data too slow'),
-  );
+  expect(failed.mock.calls[0]![0]).toContain('Sensor data too slow');
+  expect(failed.mock.calls[0]![0]).not.toContain('install');
   cleanup();
-  expect(vi.getTimerCount()).toBe(0);
 });
-it('reports unavailable hardware and missing Android samples instead of misreporting permission denial', async () => {
-  mocks.motion.isAvailableAsync.mockResolvedValue(false);
+it('reports missing hardware, missing build and absence of samples distinctly, cleaning failed starts', async () => {
+  mocks.native.start.mockRejectedValueOnce(
+    new Error('Required Android sensor unavailable: 9'),
+  );
   await expect(
     startMotionSource('test', vi.fn(), vi.fn(), async () => {}),
   ).rejects.toThrow('unavailable');
-  expect(mocks.motion.addListener).not.toHaveBeenCalled();
-  mocks.motion.isAvailableAsync.mockResolvedValue(true);
+  expect(mocks.native.stop).toHaveBeenCalledWith('test');
+  expect(vi.getTimerCount()).toBe(0);
+  mocks.native.revision = 'old';
+  await expect(
+    startMotionSource('test', vi.fn(), vi.fn(), async () => {}),
+  ).rejects.toThrow('updated TURN sensor build');
+  mocks.native.revision = 'turn-android-imu-1';
   const failed = vi.fn();
   const cleanup = await startMotionSource(
     'test',
@@ -105,5 +152,24 @@ it('reports unavailable hardware and missing Android samples instead of misrepor
   expect(failed).toHaveBeenCalledWith(
     expect.stringContaining('did not initialise'),
   );
+  cleanup();
+});
+it('ignores other sessions, rejects missing batches and propagates native failures once', async () => {
+  const consume = vi.fn(),
+    failed = vi.fn();
+  const cleanup = await startMotionSource(
+    'test',
+    consume,
+    failed,
+    async () => {},
+  );
+  deliver({ token: 'old', sequence: 20, samples: samples(10) });
+  expect(consume).not.toHaveBeenCalled();
+  deliver({ token: 'test', sequence: 2, samples: samples(10) });
+  expect(failed).toHaveBeenCalledWith(expect.stringContaining('batch missing'));
+  mocks.native.addListener.mock.calls.find(
+    ([event]) => event === 'onFailure',
+  )![1]({ token: 'test', message: 'buffer filled' });
+  expect(failed).toHaveBeenCalledOnce();
   cleanup();
 });

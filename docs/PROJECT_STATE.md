@@ -26,7 +26,7 @@ Repeatable accuracy unvalidated; initial user trials show count variation and he
 
 ## Next action
 
-Pixel recordings establish a native sampling bottleneck: 4–8 Hz and every walking candidate rejected as unavailable. Android now has a [dedicated SDK 57 test-build configuration](ANDROID_TEST_BUILD.md) with fast-sensor permission and explicit slow-stream diagnosis. Verify the installed build on Pixel with a normal walk and a bobbing control; the iPhone can retain Expo Go. See [mobile status](workstreams/mobile/STATUS.md) for actual build/validation progress. No physical improvement claimed yet.
+Pixel recordings still failed after the permission-enabled APK. Android **build 2** replaces Expo's display-frame snapshots with a dedicated 50 Hz sensor request and timestamp-preserving bounded batches; PDR thresholds and SDK 57 remain. [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md) records the evidence and limits. Install the [updated Android build](ANDROID_TEST_BUILD.md), confirm its sensor-build label, and send a normal walk plus bobbing control. The iPhone retains Expo Go. See [mobile status](workstreams/mobile/STATUS.md) for actual validation; physical recovery is not yet established.
 
 Walk a short room-to-room route through one turn, then exercise pause/re-anchor recovery with destination retained; upload both sessions via the inbox. Product flow progresses while brisk-count/stride and heading issues remain under evaluation.
 

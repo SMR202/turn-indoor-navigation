@@ -23,6 +23,8 @@ import { useNavigationSession } from '../navigation/use-navigation-session';
 import { exportRecording } from '../navigation/export-recording';
 import { saveRun } from '../navigation/run-storage';
 import { RunHistory } from '../components/run-history';
+import TurnMotion from '../../modules/turn-motion';
+import { ANDROID_MOTION_REVISION } from '../sensors/android-motion';
 import {
   loadCalibration,
   saveCalibration,
@@ -367,6 +369,13 @@ export default function Tests() {
         </View>
         {session.snapshot.motion && (
           <View style={{ gap: 6 }}>
+            {Platform.OS === 'android' && (
+              <Text style={{ color: muted }}>
+                {TurnMotion?.revision === ANDROID_MOTION_REVISION
+                  ? 'Android sensor build 2 · buffered capture ready'
+                  : 'Android sensor update required · install the latest TURN APK'}
+              </Text>
+            )}
             <Text style={{ fontWeight: '700', color: ink }}>
               {
                 {

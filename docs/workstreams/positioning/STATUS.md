@@ -1,6 +1,8 @@
 # Positioning workstream
 
-Updated: 2026-10-04.
+Updated: 2026-10-09.
+
+Android acquisition now uses a local buffered sensor module; see [ADR-0006](../../../decisions/0006-android-buffered-motion-acquisition.md) and [mobile status](../mobile/STATUS.md). Recording metadata optionally retains the installed acquisition revision for diagnosis, without changing old schemas/replay or the PDR algorithm. Synthetic raw-batch tests exercise units/frames, walking versus bobbing, full navigation movement and exact replay parity. Physical accuracy remains unvalidated.
 
 Module-boundary fix: `engine.ts` now owns NavigationEngine/recording schema/replay; `index.ts` only exports public APIs. Diagnostics imports the engine directly, removing Metro's observed runtime require cycle. Algorithms and serialized contracts are unchanged; 59 tests/root checks pass.
 

@@ -3,6 +3,7 @@ import { DeviceMotion } from 'expo-sensors';
 import { createMotionNormalizer } from './normalize-motion';
 import type { Observation } from '@turn/contracts';
 import { createSamplingHealth } from './sampling-health';
+import { startAndroidMotion } from './android-motion';
 
 export async function startMotionSource(
   sessionId: string,
@@ -20,14 +21,13 @@ export async function startMotionSource(
         'Motion permission denied. Enable Motion & Fitness for Expo Go in iOS settings.',
       );
   }
-  if (!(await DeviceMotion.isAvailableAsync()))
+  if (Platform.OS !== 'android' && !(await DeviceMotion.isAvailableAsync()))
     throw new Error('DeviceMotion is unavailable on this phone.');
   await beforeSubscribe();
   const normalize = createMotionNormalizer(
     sessionId,
     Platform.OS === 'ios' ? 'ios' : 'android',
   );
-  DeviceMotion.setUpdateInterval(20);
   const startedAt = performance.now();
   const health = createSamplingHealth(startedAt);
   let failureReported = false;
@@ -37,21 +37,32 @@ export async function startMotionSource(
     failed(message);
   };
   let lastUsableEvent: number | null = null;
-  const subscription = DeviceMotion.addListener((sample) => {
-    try {
-      const observations = normalize(sample);
-      if (observations.some((o) => o.type === 'accelerometer'))
-        lastUsableEvent = performance.now();
-      for (const observation of observations) {
-        health.observe(observation, performance.now());
-        consume(observation);
-      }
-    } catch (error) {
-      reportFailure(
-        error instanceof Error ? error.message : 'Motion adapter failed',
-      );
+  const deliver = (observations: Observation[]) => {
+    if (failureReported) return;
+    if (observations.some((o) => o.type === 'accelerometer'))
+      lastUsableEvent = performance.now();
+    for (const observation of observations) {
+      if (failureReported) break;
+      health.observe(observation, performance.now());
+      consume(observation);
     }
-  });
+  };
+  let stop: () => void;
+  if (Platform.OS === 'android') {
+    stop = await startAndroidMotion(sessionId, deliver, reportFailure);
+  } else {
+    DeviceMotion.setUpdateInterval(20);
+    const subscription = DeviceMotion.addListener((sample) => {
+      try {
+        deliver(normalize(sample));
+      } catch (error) {
+        reportFailure(
+          error instanceof Error ? error.message : 'Motion adapter failed',
+        );
+      }
+    });
+    stop = () => subscription.remove();
+  }
   const watchdog = setInterval(() => {
     if (lastUsableEvent === null) {
       if (performance.now() - startedAt > 5000)
@@ -66,7 +77,8 @@ export async function startMotionSource(
     }
   }, 500);
   return () => {
-    subscription.remove();
+    failureReported = true;
+    stop();
     clearInterval(watchdog);
   };
 }
