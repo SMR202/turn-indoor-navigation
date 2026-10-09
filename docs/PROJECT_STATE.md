@@ -26,7 +26,9 @@ Repeatable accuracy unvalidated; initial user trials show count variation and he
 
 ## Next action
 
-Pixel recordings still failed after the permission-enabled APK. Android **build 2** replaces Expo's display-frame snapshots with a dedicated 50 Hz sensor request and timestamp-preserving bounded batches; PDR thresholds and SDK 57 remain. [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md) records the evidence and limits. Install the [updated Android build](ANDROID_TEST_BUILD.md), confirm its sensor-build label, and send a normal walk plus bobbing control. The iPhone retains Expo Go. See [mobile status](workstreams/mobile/STATUS.md) for actual validation; physical recovery is not yet established.
+User now reports movement on Pixel and iPhone, with remaining distance/calibration differences. Android **build 2** replaces Expo's display-frame snapshots with a dedicated 50 Hz sensor request and timestamp-preserving bounded batches; PDR thresholds and SDK 57 remain. [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md) records the evidence and limits. This follow-up is qualitative: new-build delivered rates and accuracy still need recordings. The iPhone retains Expo Go for existing PDR.
+
+Proposed next major slice: optional camera-assisted room-to-room positioning, ARCore on Pixel first and ARKit on iPhone next, with timestamped/replayable poses and explicit session alignment/reset handling. Then evaluate verified map constraints and passive BLE/magnetic corrections for camera-off operation. [October 9 research and implementation handoff](../research/HYBRID_POSITIONING_NEXT_STEP_2026_10.md). No AR adapter or fused estimator exists yet; native integration and physical evaluation are separate gates. iPhone AR will require a signed development build.
 
 Walk a short room-to-room route through one turn, then exercise pause/re-anchor recovery with destination retained; upload both sessions via the inbox. Product flow progresses while brisk-count/stride and heading issues remain under evaluation.
 

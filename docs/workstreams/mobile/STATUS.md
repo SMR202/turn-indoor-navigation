@@ -2,6 +2,8 @@
 
 Updated: 2026-10-09.
 
+Follow-up: user now reports movement on Pixel and iPhone, with different distance/calibration behavior. Treat this as qualitative recovery, not quantitative build-2 sensor-rate or accuracy validation. The next requested research review recommends a [camera-assisted positioning milestone](../../../research/HYBRID_POSITIONING_NEXT_STEP_2026_10.md); no AR capability is installed yet. Existing upload remains button-triggered, without automatic analysis or monitoring.
+
 ## Android build 2: replace display-frame motion snapshots
 
 FACT: the user's two new Android uploads after installing the previous APK still contain only 38 accelerometer samples each over about 4.2 seconds, with zero accepted steps and the slow-stream failure. Native intervals include roughly 2.36 ms bursts followed by 200–260 ms gaps. The permission-only fix below was insufficient. Source inspection confirms expo-sensors 57.0.3 retains the latest mutable SensorEvents and dispatches snapshots on Choreographer frames. Actual Pixel frame performance/map cost is not measured.
