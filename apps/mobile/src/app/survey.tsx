@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Platform, ScrollView, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   FINGERPRINT_REVISION,
+  FINGERPRINT_MATCHER_REVISION,
   evaluateFingerprint,
   magneticFeatures,
   type FingerprintRecord,
@@ -26,6 +27,7 @@ import { sendRun } from '../navigation/send-runs';
 import { exportRecording } from '../navigation/export-recording';
 
 export default function Survey() {
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
   const [survey, setSurvey] = useState<FingerprintSurvey | null>(null);
   const [mode, setMode] = useState<'survey' | 'test'>('survey');
   const [selected, setSelected] = useState(venue.anchors[0]?.id ?? '');
@@ -48,6 +50,10 @@ export default function Survey() {
     useCallback(() => {
       focused.current = true;
       setBusy(captureLock.current);
+      if (intent === 'find') {
+        setMode('test');
+        setRecord(null);
+      }
       try {
         const deviceProfile = fingerprintProfile();
         setSurvey(
@@ -74,7 +80,7 @@ export default function Survey() {
         focused.current = false;
         abort.current?.abort();
       };
-    }, []),
+    }, [intent]),
   );
   const station = survey?.stations.find((s) => s.anchorId === selected);
   const anchor = venue.anchors.find((a) => a.id === selected);
@@ -84,8 +90,8 @@ export default function Survey() {
     () => (record ? evaluateFingerprint(record) : null),
     [record],
   );
-  const matched = result?.match.anchorId
-    ? venue.anchors.find((a) => a.id === result.match.anchorId)
+  const matched = result?.match.scores[0]
+    ? venue.anchors.find((a) => a.id === result.match.scores[0]!.anchorId)
     : null;
   const point = venue.nodes.find((n) => n.id === anchor?.nodeId);
   function persist(r: FingerprintRecord) {
@@ -155,6 +161,7 @@ export default function Survey() {
       const r: FingerprintRecord = {
         kind: 'fingerprint',
         schemaVersion: 1,
+        matcherRevision: FINGERPRINT_MATCHER_REVISION,
         sessionId: `fingerprint-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         survey: next,
         ...(mode === 'test' ? { test: sample } : {}),
@@ -399,9 +406,37 @@ export default function Survey() {
               : 'MAGNETIC MATCH'}
           </Text>
           <Text style={ui.heading}>
-            {matched ? `Possible match: ${matched.label}` : 'Not sure yet'}
+            {matched
+              ? `Closest signal match: ${matched.label}`
+              : 'No usable comparison'}
+          </Text>
+          <Text style={ui.body}>
+            {result.match.confidence === 'clear'
+              ? 'Clear lead among surveyed places'
+              : result.match.confidence === 'tentative'
+                ? 'Tentative lead · verify the place'
+                : 'Low confidence · places may overlap or this spot may be outside the survey'}
           </Text>
           <Text style={ui.body}>{result.match.reason}</Text>
+          {result.match.scores.map((s, i) => (
+            <Text key={s.anchorId} style={ui.body}>
+              {i + 1}.{' '}
+              {record.survey.stations.find((p) => p.anchorId === s.anchorId)
+                ?.name ?? s.anchorId}
+              {s.score >= 999 ? ' · needs a better survey' : ''}
+            </Text>
+          ))}
+          <Text style={ui.body}>{result.match.radioReason}</Text>
+          {!record.matcherRevision && (
+            <Text style={ui.body}>
+              Saved test uses the original matcher. Capture a new reading to
+              test the updated ranking.
+            </Text>
+          )}
+          <Text style={ui.body}>
+            Rank is relative to your surveyed spots, not a measured probability.
+            It does not move your location automatically.
+          </Text>
           <Text style={ui.heading}>Where were you actually standing?</Text>
           {record.survey.stations.map((s) => (
             <Action
@@ -419,28 +454,31 @@ export default function Survey() {
           ))}
           {record.actualAnchorId && (
             <Notice>
-              {matched
+              {result.match.anchorId
                 ? result.correct
                   ? 'Correct place. This test is saved separately from the survey.'
                   : `Different place. ${result.errorMetres?.toFixed(1) ?? 'Unknown'} m between map points; this failure is saved for diagnosis.`
-                : 'No place identified. This abstention is saved; it is not counted as a correct match.'}
+                : `No confident identification. ${matched?.id === record.actualAnchorId ? 'The top suggestion agrees with your label, but this remains an abstention.' : 'This uncertain result is saved for diagnosis.'}`}
             </Notice>
           )}
-          {matched && record.actualAnchorId === matched.id && (
-            <Action
-              title="Confirm this location & navigate"
-              primary
-              onPress={() =>
-                router.navigate({
-                  pathname: '/',
-                  params: {
-                    fingerprintAnchor: matched.id,
-                    fingerprintRecord: record.sessionId,
-                  },
-                })
-              }
-            />
-          )}
+          {matched &&
+            record.actualAnchorId === matched.id &&
+            (result.match.confidence === 'clear' ||
+              result.match.confidence === 'tentative') && (
+              <Action
+                title="I am here · correct position & navigate"
+                primary
+                onPress={() =>
+                  router.navigate({
+                    pathname: '/',
+                    params: {
+                      fingerprintAnchor: matched.id,
+                      fingerprintRecord: record.sessionId,
+                    },
+                  })
+                }
+              />
+            )}
           <Text style={ui.body}>
             This test recognizes surveyed spots. It does not continuously track
             between them. Confirming a place resets navigation there; direction

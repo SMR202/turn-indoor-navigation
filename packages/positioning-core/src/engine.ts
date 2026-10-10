@@ -11,6 +11,7 @@ import {
 } from '@turn/venue-model';
 import { StepDetector, wrapAngle, PDR_REVISION } from '@turn/pdr';
 import { MotionGuard, GUARDED_PDR_REVISION } from './motion-guard';
+import { fingerprintFixSchema } from './fingerprints';
 export { GUARDED_PDR_REVISION } from './motion-guard';
 export type PdrAlgorithm = typeof PDR_REVISION | typeof GUARDED_PDR_REVISION;
 
@@ -303,6 +304,7 @@ export class NavigationEngine {
 }
 
 export const recordingSchema = z.object({
+  positionFix: fingerprintFixSchema.optional(),
   trackingPolicy: z.enum(['bounded', 'continuous-test']).optional(),
   checkpoints: z
     .array(

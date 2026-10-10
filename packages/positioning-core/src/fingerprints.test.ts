@@ -4,6 +4,8 @@ import {
   fingerprintCaptureSchema,
   fingerprintRecordSchema,
   matchFingerprint,
+  confirmFingerprintLocation,
+  FINGERPRINT_MATCHER_REVISION,
   type FingerprintCapture,
   type FingerprintSurvey,
 } from './fingerprints';
@@ -68,10 +70,96 @@ it('recognizes a held-out station independently of orientation and evaluation la
   );
 });
 it('abstains on similar places and out-of-survey magnetic values', () => {
-  expect(matchFingerprint(survey([50, 51, 52]), capture('q', 50)).status).toBe(
-    'ambiguous',
-  );
+  expect(
+    matchFingerprint(survey([50, 50.1, 50.2]), capture('q', 50)).status,
+  ).toBe('ambiguous');
   expect(matchFingerprint(survey(), capture('q', 140)).anchorId).toBeNull();
+});
+
+it('uses measured repeatability while preserving historical v1 replay', () => {
+  const r = {
+    kind: 'fingerprint' as const,
+    schemaVersion: 1 as const,
+    sessionId: 'fingerprint-test',
+    survey: survey([48, 50, 52]),
+    test: capture('q', 50),
+    actualAnchorId: 'a1',
+  };
+  expect(evaluateFingerprint(r)?.match.status).toBe('ambiguous');
+  expect(
+    evaluateFingerprint({ ...r, matcherRevision: FINGERPRINT_MATCHER_REVISION })
+      ?.match.anchorId,
+  ).toBe('a1');
+  expect(matchFingerprint(survey([50, 50, 50]), r.test).confidence).toBe('low');
+  expect(matchFingerprint(survey(), capture('q', 140)).confidence).toBe('low');
+});
+
+it('explains partial Wi-Fi coverage without rewarding a missing station reference', () => {
+  const s = survey();
+  const wifi = [0, 1, 2].map((n) => ({
+    id: String(n).repeat(64),
+    rssi: -50,
+    ageSeconds: 1,
+    frequencyMHz: 2412,
+  }));
+  s.stations.forEach((p) =>
+    p.captures.forEach((c) => {
+      c.wifi = wifi;
+    }),
+  );
+  s.stations[0]!.captures[1]!.wifi = wifi.slice(0, 1);
+  const m = matchFingerprint(s, { ...capture('q', 50), wifi });
+  expect(m.method).toBe('magnetic');
+  expect(m.radioReason).toContain('Place 0');
+  expect(m.scores.find((p) => p.anchorId === 'a0')?.commonRadios).toBe(1);
+});
+
+it('requires a fresh same-device physical confirmation and rejects weak or stale fixes', () => {
+  const r = {
+    kind: 'fingerprint' as const,
+    schemaVersion: 1 as const,
+    sessionId: 'fingerprint-test',
+    matcherRevision: FINGERPRINT_MATCHER_REVISION,
+    survey: survey(),
+    test: capture('q', 50),
+    actualAnchorId: 'a1',
+  };
+  const context = {
+    venueId: 'demo',
+    venueRevision: '1',
+    deviceProfile: 'test-profile',
+    anchorId: 'a1',
+    now: Date.parse(r.test.createdAt) + 30000,
+  };
+  expect(confirmFingerprintLocation(r, context).fingerprintSessionId).toBe(
+    r.sessionId,
+  );
+  for (const change of [
+    { now: context.now + 120000 },
+    { now: context.now - 31000 },
+    { venueId: 'other' },
+    { venueRevision: '2' },
+    { deviceProfile: 'other' },
+    { anchorId: 'a0' },
+  ]) {
+    expect(() =>
+      confirmFingerprintLocation(r, { ...context, ...change }),
+    ).toThrow();
+  }
+  expect(() =>
+    confirmFingerprintLocation({ ...r, actualAnchorId: 'a0' }, context),
+  ).toThrow();
+  expect(() =>
+    confirmFingerprintLocation({ ...r, survey: survey([50, 50, 50]) }, context),
+  ).toThrow();
+  const tentative = {
+    ...r,
+    survey: survey([49.7, 50, 60]),
+    test: capture('q', 50.05),
+  };
+  expect(confirmFingerprintLocation(tentative, context).confidence).toBe(
+    'tentative',
+  );
 });
 it('requires repeated survey coverage, correct profile and independent test samples', () => {
   const s = survey();

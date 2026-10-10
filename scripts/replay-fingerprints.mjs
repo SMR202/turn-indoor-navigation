@@ -14,6 +14,7 @@ for (const path of process.argv.slice(2)) {
   const result = evaluateFingerprint(record);
   results.push({
     sessionId: record.sessionId,
+    matcherRevision: record.matcherRevision ?? 'station-fingerprint-v1',
     labelled: Boolean(record.actualAnchorId),
     result,
   });
@@ -22,7 +23,7 @@ const labelled = results.filter((r) => r.labelled && r.result);
 console.log(
   JSON.stringify(
     {
-      algorithm: 'station-fingerprint-v1',
+      algorithms: [...new Set(results.map((r) => r.matcherRevision))],
       records: results.length,
       labelledTests: labelled.length,
       correct: labelled.filter((r) => r.result.correct).length,

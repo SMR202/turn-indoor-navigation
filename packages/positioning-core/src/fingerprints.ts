@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 export const FINGERPRINT_REVISION = 'station-fingerprint-v1';
+export const FINGERPRINT_MATCHER_REVISION = 'station-rank-v2' as const;
+const matcherRevisionSchema = z.enum([
+  'station-fingerprint-v1',
+  FINGERPRINT_MATCHER_REVISION,
+]);
+export type FingerprintMatcherRevision = z.infer<typeof matcherRevisionSchema>;
 const id = z.string().min(1).max(160);
 const finite = z.number().finite();
 const magneticSchema = z.object({
@@ -78,6 +84,8 @@ export type FingerprintMatch = {
   reason: string;
   anchorId: string | null;
   method: 'magnetic' | 'magnetic-wifi';
+  confidence: 'clear' | 'tentative' | 'low' | 'unavailable';
+  radioReason: string;
   scores: { anchorId: string; score: number; commonRadios: number }[];
 };
 function median(values: number[]) {
@@ -103,12 +111,15 @@ export function magneticFeatures(capture: FingerprintCapture) {
 export function matchFingerprint(
   survey: FingerprintSurvey,
   query: FingerprintCapture,
+  revision: FingerprintMatcherRevision = FINGERPRINT_MATCHER_REVISION,
 ): FingerprintMatch {
   const unavailable = (reason: string): FingerprintMatch => ({
     status: 'unavailable',
     reason,
     anchorId: null,
     method: 'magnetic',
+    confidence: 'unavailable',
+    radioReason: 'Signal comparison unavailable.',
     scores: [],
   });
   if (survey.deviceProfile !== query.deviceProfile)
@@ -132,13 +143,18 @@ export function matchFingerprint(
     if (features.length < 2)
       return { anchorId: s.anchorId, score: 999, commonRadios: 0 };
     const centre = median(features.map((f) => f.strength));
-    const variation = Math.max(
-      2,
-      ...features.map((f) => Math.abs(f.strength - centre)),
-      q.spread,
-    );
+    const deviations = features.map((f) => Math.abs(f.strength - centre));
+    const variation =
+      revision === 'station-fingerprint-v1'
+        ? Math.max(2, ...deviations, q.spread)
+        : Math.max(
+            0.5,
+            2 * 1.4826 * median(deviations),
+            2 * median(features.map((f) => f.spread)),
+            2 * q.spread,
+          );
     // Repeated surveys must agree; broad/noisy signatures are not made artificially attractive.
-    if (variation > 8)
+    if (variation > 8 || Math.max(...deviations) > 8)
       return { anchorId: s.anchorId, score: 999, commonRadios: 0 };
     const magScore = Math.abs(q.strength - centre) / variation;
     const ids = [
@@ -190,6 +206,14 @@ export function matchFingerprint(
   const best = ranked[0]!;
   const margin = ranked[1]!.score - best.score;
   const candidate = best.score <= 2 && margin >= 1.25;
+  const confidence = candidate
+    ? 'clear'
+    : best.score <= 3 && margin >= 0.35
+      ? 'tentative'
+      : 'low';
+  const missingRadio = scores
+    .filter((s) => s.commonRadios < 3)
+    .map((s) => survey.stations.find((p) => p.anchorId === s.anchorId)!.name);
   return {
     status: candidate ? 'candidate' : 'ambiguous',
     reason: candidate
@@ -197,6 +221,12 @@ export function matchFingerprint(
       : 'Signals do not distinguish a known place confidently. Your location has not changed.',
     anchorId: candidate ? best.anchorId : null,
     method: useWifi ? 'magnetic-wifi' : 'magnetic',
+    confidence,
+    radioReason: useWifi
+      ? 'Fresh Wi-Fi and repeated radio references contributed to every place comparison.'
+      : query.wifi.length === 0
+        ? query.wifiStatus
+        : `Wi-Fi was captured but not used: ${query.wifi.length < 3 ? 'the new reading has fewer than three radios' : missingRadio.length ? `${missingRadio.join(', ')} lack three matching, repeatedly observed radios` : 'some survey readings are unstable'}. Record another circuit with Wi-Fi enabled; magnetic ranking is shown meanwhile.`,
     scores: ranked,
   };
 }
@@ -206,6 +236,7 @@ export const fingerprintRecordSchema = z
     kind: z.literal('fingerprint'),
     schemaVersion: z.literal(1),
     sessionId: id,
+    matcherRevision: matcherRevisionSchema.optional(),
     survey: fingerprintSurveySchema,
     test: fingerprintCaptureSchema.optional(),
     actualAnchorId: id.optional(),
@@ -236,7 +267,12 @@ export const fingerprintRecordSchema = z
 export type FingerprintRecord = z.infer<typeof fingerprintRecordSchema>;
 export function evaluateFingerprint(record: FingerprintRecord) {
   if (!record.test) return null;
-  const match = matchFingerprint(record.survey, record.test);
+  // Missing revision identifies historical records; never silently rescore them.
+  const match = matchFingerprint(
+    record.survey,
+    record.test,
+    record.matcherRevision ?? 'station-fingerprint-v1',
+  );
   const expected = record.survey.stations.find(
     (s) => s.anchorId === record.actualAnchorId,
   );
@@ -250,5 +286,55 @@ export function evaluateFingerprint(record: FingerprintRecord) {
       expected && found && expected.floorId === found.floorId
         ? Math.hypot(expected.x - found.x, expected.y - found.y)
         : null,
+  };
+}
+
+export const fingerprintFixSchema = z.object({
+  source: z.literal('user-confirmed-fingerprint'),
+  fingerprintSessionId: id,
+  matcherRevision: matcherRevisionSchema,
+  anchorId: id,
+  confidence: z.enum(['clear', 'tentative']),
+  confirmedAt: z.string().datetime(),
+  previousSessionId: id.optional(),
+  previousPosition: z.object({ floorId: id, x: finite, y: finite }).optional(),
+});
+
+/** Confirmation is a physical user assertion, never automatic pose fusion. */
+export function confirmFingerprintLocation(
+  record: FingerprintRecord,
+  context: {
+    venueId: string;
+    venueRevision: string;
+    deviceProfile: string;
+    anchorId: string;
+    now: number;
+  },
+): z.infer<typeof fingerprintFixSchema> {
+  const r = fingerprintRecordSchema.parse(record);
+  const age = r.test ? context.now - Date.parse(r.test.createdAt) : Infinity;
+  const match = evaluateFingerprint(r)?.match;
+  if (
+    r.survey.venueId !== context.venueId ||
+    r.survey.venueRevision !== context.venueRevision ||
+    r.survey.deviceProfile !== context.deviceProfile ||
+    !Number.isFinite(age) ||
+    age < 0 ||
+    age > 120000 ||
+    r.actualAnchorId !== context.anchorId ||
+    match?.scores[0]?.anchorId !== context.anchorId ||
+    (match.confidence !== 'clear' && match.confidence !== 'tentative')
+  ) {
+    throw new Error(
+      'Find your place again, then confirm the suggested spot against your surroundings within two minutes.',
+    );
+  }
+  return {
+    source: 'user-confirmed-fingerprint',
+    fingerprintSessionId: r.sessionId,
+    matcherRevision: r.matcherRevision ?? 'station-fingerprint-v1',
+    anchorId: context.anchorId,
+    confidence: match.confidence,
+    confirmedAt: new Date(context.now).toISOString(),
   };
 }

@@ -27,16 +27,24 @@ Surveys and their snapshots stay on the phone. This pilot accepts up to 12 passe
 ## Independent recognition and navigation
 
 1. Select **2 · Find my place**. Return to a surveyed spot without choosing its name and capture a new reading.
-2. TURN displays a possible match or abstains. **After** the result, label where you were actually standing. Save wrong answers and abstentions as well as successes. This label is excluded from matching.
+2. TURN displays places in signal-match order, with a clear, tentative or low-confidence lead. These are relative rankings, not calibrated probabilities. An uncertain top suggestion remains an abstention in evaluation. The result explains whether Wi-Fi contributed and which places lack repeated matching radios. **After** the result, label where you were actually standing. Save wrong answers and abstentions as well as successes. This label is excluded from matching.
 3. Collect at least two new recognition trials per spot per phone, preferably on a later circuit. This is an initial diagnostic set, not enough to certify accuracy. Repeat on another day before making reliability claims.
-4. If the proposed place is physically correct, tap **Confirm this location & navigate** while still there. The recent confirmation resets the navigation start and preserves the selected destination. Align your heading, then start walking. Confirmations older than two minutes are rejected. Existing PDR calibration still applies.
+4. If the clear or tentative suggestion is physically correct, tap **I am here · correct position & navigate** while still there. This is your physical confirmation, not automatic sensor localization. The recent confirmation resets the navigation start and preserves the selected destination. Align your heading, then start walking. Confirmations older than two minutes, future-dated captures, different device profiles and mismatched venue revisions are rejected. Existing PDR calibration still applies.
 5. In **Saved survey & tests**, tap **Send all to computer**. Wait for the acknowledged count, then tell Codex “check the fingerprint tests.” **Share file** is also available. Upload is button-triggered; there is no automatic analysis or monitoring.
 
 Labels are physical references, never proof that a candidate was accurate. Unsurveyed places are outside this station pilot's recognition scope; leave their tests unlabelled and describe them when sending. Do not accept a candidate just because the UI proposes it.
 
+## Combine a location check with a walk
+
+Walk a short route to a surveyed spot. While standing there, open **Navigate → Check location with signals**. Walking capture pauses; Find my place opens directly. Capture, label, and physically confirm the suggested place if correct, then align and resume toward the retained destination. The previous walking segment is saved. The new segment records the fingerprint test ID, matcher revision, confirmation time and previous estimated position, so drift correction can be inspected afterwards. Send the fingerprint records from Survey and the walking recordings from Tests. Upload and analysis remain user-triggered.
+
+This is a recorded, user-confirmed correction between PDR segments. It is not continuous fusion, automatic wall avoidance or a repair to step length. New trials should include fresh circuits, an unsurveyed/intermediate spot and changes of phone heading/height. On Pixel, add fresh survey passes where the result reports missing repeated radios, waiting two minutes if scanning is throttled. Additional passes cannot create radios that are not visible in the building.
+
 ## Engineering evaluation
 
 The pure matcher and replay use the same versioned survey and capture contracts. Raw samples use microteslas and monotonic seconds relative to first fresh magnetic sample; map coordinates/errors are metres. Wi-Fi readings retain RSSI dBm, frequency MHz and sample age seconds. Native scans hash BSSIDs using the installation's survey salt; SSIDs/raw BSSIDs are not stored. Hashed radio observations and mapped positions are still private venue data and remain outside Git.
+
+New records use `station-rank-v2`; records without a matcher revision retain the original v1 replay. Survey format is unchanged. V2 magnetic scale is the maximum of 0.5 microtesla, twice the scaled MAD of pass medians, twice the median within-pass spread and twice query spread. Unstable surveys remain rejected; the absolute score/margin acceptance gate is retained. This is an experimental engineering scale, not a trained or calibrated confidence model. Saved historical tests are identified in the UI; capture a new test to exercise v2. A tentative suggestion can be physically confirmed but remains an abstention in automated evaluation.
 
 Receiver: authenticated `/fingerprints` alongside existing `/runs`, bounded schema validation, exact-byte SHA-256 receipts and immutable files in ignored `work/test-inbox`. Every test includes its survey snapshot, so later survey changes cannot silently change that test's reference data.
 

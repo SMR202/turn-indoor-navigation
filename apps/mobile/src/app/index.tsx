@@ -17,8 +17,11 @@ import { FloorMap } from '../components/floor-map';
 import { AnchorScanner } from '../components/anchor-scanner';
 
 import { Action, Section, theme, ui } from '../components/ui';
-import { loadFingerprintRecords } from '../fingerprinting/storage';
-import { evaluateFingerprint } from '@turn/positioning-core';
+import {
+  fingerprintProfile,
+  loadFingerprintRecords,
+} from '../fingerprinting/storage';
+import { confirmFingerprintLocation } from '@turn/positioning-core';
 const ink = theme.ink;
 const card = ui.card;
 function instruction(g: Guidance) {
@@ -173,20 +176,36 @@ export default function Navigate() {
           r.survey.venueId === venue.venueId &&
           r.survey.venueRevision === venue.revision,
       );
-      const match = saved ? evaluateFingerprint(saved) : null;
-      if (
-        !saved?.test ||
-        Date.now() - Date.parse(saved.test.createdAt) > 120000 ||
-        saved.actualAnchorId !== params.fingerprintAnchor ||
-        match?.match.anchorId !== params.fingerprintAnchor
-      ) {
-        appliedFingerprint.current = params.fingerprintRecord;
-        throw new Error(
-          'This fingerprint confirmation is missing or older than two minutes. Find your place again in Survey.',
-        );
-      }
       appliedFingerprint.current = params.fingerprintRecord;
+      if (!saved || !params.fingerprintAnchor)
+        throw new Error(
+          'This saved fingerprint test is missing. Find your place again.',
+        );
+      const fix = confirmFingerprintLocation(saved, {
+        venueId: venue.venueId,
+        venueRevision: venue.revision,
+        deviceProfile: fingerprintProfile(),
+        anchorId: params.fingerprintAnchor,
+        now: Date.now(),
+      });
+      const previous = session.getRecording();
+      const previousPose = session.snapshot.pose;
       establish(anchorPayload(venue, params.fingerprintAnchor!));
+      const next = session.getRecording();
+      if (next) {
+        next.positionFix = {
+          ...fix,
+          previousSessionId: previous?.sessionId,
+          previousPosition: previousPose
+            ? {
+                floorId: previousPose.floorId,
+                x: previousPose.position.x,
+                y: previousPose.position.y,
+              }
+            : undefined,
+        };
+        saveRun(next);
+      }
     } catch (e) {
       report(e);
     }
@@ -384,11 +403,18 @@ export default function Navigate() {
             </Text>
             <Text style={ui.body}>{anchorName}</Text>
             <Action
-              title="Find location with fingerprints"
+              title={
+                pose
+                  ? 'Check location with signals'
+                  : 'Find location with signals'
+              }
               primary
               onPress={() => {
                 if (busy) session.stop('Paused to find a surveyed location.');
-                router.navigate('/survey');
+                router.navigate({
+                  pathname: '/survey',
+                  params: { intent: 'find' },
+                });
               }}
             />
             <Action

@@ -2,6 +2,16 @@
 
 Updated: 2026-10-10.
 
+## Fingerprint save ordering and ranked recovery — 2026-10-10
+
+FACT: SDK 57 File.copy and File.move return promises. Fingerprint storage called them synchronously, deleting the copy source and reporting success before operations completed. This is a concrete race consistent with the reported Android NoSuchFileException; the full device stack was not available in the server terminal. Replaced these with the SDK's supported copySync/moveSync to maintain the existing synchronous save contract. Errors now propagate into the capture/label error handler. Backup-only recordings are discoverable after an interrupted replacement, with deduplicated history entries. Existing phone surveys/profiles remain in place; no migration or new native module is needed.
+
+IMPLEMENTED: ranked places, relative confidence and explicit Wi-Fi fallback reasons; version-stamped new tests and preserved historical scoring. Navigate opens recognition directly. Physically confirmed clear/tentative suggestions create an auditable PDR correction with destination retained and heading alignment required. [Positioning evidence and decisions](../positioning/STATUS.md), [phone steps](../../FINGERPRINT_TESTING.md).
+
+Validation: root `npm run check` passes with 93 tests / 22 files, typechecks/lint/format/docs; web export succeeds. Native filesystem mocks test replacement ordering, copy failure, backup recovery after move failure and retry; these do not substitute for Pixel/iPhone execution. Both LAN-served native bundles include the updated paths. Browser checks verify Navigate → Find my place, web capture disabled and no warning/error logs in a fresh test tab. Physical capture, save/reload and confirmed route continuation still need phone tests. SDK remains 57; Android build 3 can reload this JavaScript update without reinstalling.
+
+Next: reload both phones with the launch QRs, perform a new capture and label change, reopen history and send it. Then test the confirmed correction during a short route. Upload is button-triggered; no automatic analysis or monitoring is running.
+
 ## Fingerprinting station pilot — 2026-10-10
 
 DECISION: user-requested fingerprinting precedes the previously proposed camera milestone. New Survey flow captures calibrated magnetic vectors on both phones and optional fresh Wi-Fi on Android build 3. Survey two passes at three or more physically verified anchors per installation; recognize a separate query without its actual-place label, then allow a recent physically confirmed candidate to re-anchor navigation. No continuous pose fusion, cross-device model or automatic correction is claimed. [Test protocol and limits](../../FINGERPRINT_TESTING.md).

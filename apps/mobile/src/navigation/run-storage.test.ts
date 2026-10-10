@@ -64,3 +64,20 @@ it('rejects unsafe paths and corrupted records, and surfaces storage failures', 
   });
   expect(() => saveRun(fixture)).toThrow('Quota exceeded');
 });
+
+it('preserves the provenance of a confirmed fingerprint correction in the next walking segment', async () => {
+  const positionFix = {
+    source: 'user-confirmed-fingerprint' as const,
+    fingerprintSessionId: 'fingerprint-123',
+    matcherRevision: 'station-rank-v2' as const,
+    anchorId: 'entry-qr',
+    confidence: 'tentative' as const,
+    confirmedAt: '2026-10-10T00:00:00.000Z',
+    previousSessionId: 'walk-122',
+    previousPosition: { floorId: 'ground', x: 4, y: 5 },
+  };
+  saveRun({ ...fixture, positionFix });
+  expect((await readRun('turn-run-v1-walk-123.json')).positionFix).toEqual(
+    positionFix,
+  );
+});

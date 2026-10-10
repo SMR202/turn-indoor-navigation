@@ -33,10 +33,12 @@ function write(name: string, value: string) {
   if (final.exists) {
     const backup = new File(dir, `${name}.backup`);
     if (backup.exists) backup.delete();
-    final.copy(backup);
+    // SDK 57 copy()/move() are asynchronous. Keep this transaction ordered so
+    // callers cannot delete the source or report success before it completes.
+    final.copySync(backup);
     final.delete();
   }
-  pending.move(final);
+  pending.moveSync(final);
 }
 export function fingerprintProfile() {
   let profile = read('profile');
@@ -73,11 +75,13 @@ export function loadFingerprintRecords(): FingerprintRecord[] {
           return dir.exists
             ? dir
                 .list()
-                .filter((f) => f instanceof File && f.name.endsWith('.json'))
-                .map((f) => f.name.slice(0, -5))
+                .filter(
+                  (f) => f instanceof File && /\.(json|backup)$/.test(f.name),
+                )
+                .map((f) => f.name.replace(/\.(json|backup)$/, ''))
             : [];
         })();
-  return names
+  return [...new Set(names)]
     .filter((n) => /^fingerprint-[a-z0-9-]+$/.test(n))
     .sort()
     .reverse()

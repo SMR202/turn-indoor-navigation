@@ -10,6 +10,8 @@ M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-com
 
 Implemented magnetic station surveys on iPhone/Android, optional fresh Wi-Fi scans in Android build 3, independent recognition tests, immutable inbox transfer and shared replay. A recent, physically confirmed candidate can establish/recover navigation at a surveyed anchor. Persistent Navigate / Survey / Tests tabs and shared accessible controls replace the previous screen navigation. [Fingerprint test protocol](FINGERPRINT_TESTING.md). No continuous fingerprint fusion or measured accuracy improvement is claimed.
 
+October 10 follow-up: fixed SDK 57 fingerprint file replacement ordering; new recognition records use versioned repeatability-based ranking with explicit confidence and Wi-Fi fallback reasons. Confirmed corrections now link the fingerprint query to preceding/new PDR segments while retaining the destination. Seven uploaded queries supplied development evidence; fresh held-out trials and physical correction tests remain the next gate. Historical replay stays unchanged. [Current positioning status](workstreams/positioning/STATUS.md).
+
 ## Capabilities
 
 One-floor room-to-room navigation is now the main user flow: destination search, known-location start, live route progress/turns, user-confirmed arrival and QR/manual recovery with recalculation. Diagnostics remain in a separate screen. [Navigation protocol](NAVIGATION_TESTING.md). This is route progress, not pose correction or verified wall-based map matching.
