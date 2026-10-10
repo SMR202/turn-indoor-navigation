@@ -2,7 +2,10 @@ import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { link, mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { recordingSchema } from '@turn/positioning-core';
+import {
+  recordingSchema,
+  fingerprintRecordSchema,
+} from '@turn/positioning-core';
 
 // Development-only, write-only receiver. Filenames never come from the client.
 export function createTestInbox(
@@ -27,7 +30,10 @@ export function createTestInbox(
       response.end();
       return;
     }
-    if (request.url !== '/runs' || request.method !== 'POST') {
+    if (
+      !['/runs', '/fingerprints'].includes(request.url ?? '') ||
+      request.method !== 'POST'
+    ) {
       reply(404, { error: 'Not found' });
       return;
     }
@@ -49,16 +55,20 @@ export function createTestInbox(
         chunks.push(chunk);
       }
       const bytes = Buffer.concat(chunks);
-      const parsed = recordingSchema.safeParse(
-        JSON.parse(bytes.toString('utf8')),
-      );
+      const parsed = (
+        request.url === '/fingerprints'
+          ? fingerprintRecordSchema
+          : recordingSchema
+      ).safeParse(JSON.parse(bytes.toString('utf8')));
       if (!parsed.success) {
         reply(400, { error: 'Invalid TURN recording' });
         return;
       }
       if (
         ['preparing', 'ready', 'collecting', 'querying'].includes(
-          parsed.data.nativePedometer?.status ?? '',
+          ('nativePedometer' in parsed.data
+            ? parsed.data.nativePedometer?.status
+            : '') ?? '',
         )
       ) {
         reply(409, {

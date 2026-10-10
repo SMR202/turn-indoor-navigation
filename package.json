@@ -12,6 +12,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "replay:fingerprints": "tsx scripts/replay-fingerprints.mjs",
     "compare:motion": "tsx scripts/compare-motion.mjs",
     "phone:tests": "tsx scripts/phone-tests.mjs",
     "phone:android:install": "node scripts/serve-android-build.mjs",

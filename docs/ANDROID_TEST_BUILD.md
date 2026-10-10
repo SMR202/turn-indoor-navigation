@@ -1,8 +1,12 @@
-# Android sensor test build
+# Android sensor and fingerprint test build
 
 Use Expo SDK 57. Pixel recordings on Android 12 delivered only approximately 4–8 unique motion updates/s through Expo Go. All detected steps were rejected by the motion filter because its 1.2-second window requires at least 25 synchronized samples. A JS reload cannot change an installed host's native manifest.
 
 The first permission-enabled APK did not resolve this: two subsequent recordings still had sparse samples. Installed expo-sensors 57.0.3 DeviceMotion dispatches latest readings on display frames rather than retaining every reading. **Build 2** replaces that Android acquisition path with TURN's dedicated sensor thread and timestamp-preserving batches, requesting 50 Hz directly. It retains the existing PDR/bobbing filter and SDK 57. See [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md). Actual delivery and accuracy still require physical verification.
+
+## Current build 3
+
+Build 3 (versionCode 3) retains build 2 motion acquisition and adds optional native Wi-Fi scanning for the Survey tab. Grant precise location when selecting Wi-Fi; keep Location services and Wi-Fi on. Scans are user-triggered, fresh-only and subject to Android throttling. Follow the [fingerprint protocol](FINGERPRINT_TESTING.md). The iPhone continues using magnetic capture in Expo Go.
 
 ## Build locally
 
@@ -27,7 +31,7 @@ If SUBST produces React Native/Kotlin errors about files having different roots,
 $env:TURN_CANONICAL_ROOT = $PWD.Path
 $env:NODE_ENV = 'development'
 Set-Location T:\apps\mobile\android
-.\gradlew.bat :app:assembleDebug -PreactNativeArchitectures=arm64-v8a -Pkotlin.incremental=false -Pkotlin.compiler.execution.strategy=in-process --init-script T:\scripts\android-subst.gradle --max-workers=2
+.\gradlew.bat :app:assembleDebug -PreactNativeArchitectures=arm64-v8a '-Pkotlin.incremental=false' '-Pkotlin.compiler.execution.strategy=in-process' --init-script T:\scripts\android-subst.gradle --max-workers=2
 ```
 
 The init script adjusts build-task CLI paths only; it does not patch dependencies or generated native source. Prefer a genuinely short checkout on future machines. The first build after disabling incremental caches recompiles Kotlin dependencies.
@@ -48,7 +52,7 @@ Keep the phone and computer on the same reachable LAN. If LAN auto-selection is 
 
 1. Scan `work/phone-test/android-install.png` with the Pixel camera/browser. Download/install the new TURN APK **over the existing TURN app**; Android may ask you to allow installation from this browser. Do not uninstall: the update keeps TURN's local tests and calibration when signed with the same development key.
 2. Open TURN and scan `work/phone-test/android-launch.png`, or use the development-client URL in `connection.txt`. Use TURN on Android for this test, not Expo Go. The iPhone can continue using `expo-launch.png` with Expo Go.
-3. In Tests, verify **Android sensor build 2 · buffered capture ready**. Try a short normal walk, then a stationary phone-bobbing control. Save and send both with the existing button. Each recording identifies `turn-android-imu-1`; the diagnostic receiver must be restarted after schema/source updates.
+3. In Tests, verify **Android buffered motion capture ready**. In Survey, confirm the **Include Wi-Fi signals** control is enabled (build 3). Try a short normal walk, then a stationary phone-bobbing control. Save and send both with the existing button. Each recording identifies `turn-android-imu-1`; the diagnostic receiver must be restarted after schema/source updates.
 
 Both connection QRs launch software; neither establishes an indoor location. Existing TURN location markers remain separate. Saved Expo Go tests are in Expo Go's storage; the new TURN installation has its own calibration/history, so set calibration again before accuracy comparisons.
 

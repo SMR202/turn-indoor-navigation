@@ -35,13 +35,15 @@ From the repository root, launch the phone app with `npm start -- --go --lan` (o
 
 The SDK 57 app supports private, locally bundled plan-derived maps, room selection, zoom, guided test courses, saved calibration, walked trails and endpoint evaluation. A fresh clone uses the fictional demo; private plans are deliberately excluded from Git. See [local venues and guided testing](docs/LOCAL_VENUES.md). Experimental step/yaw tracking and replay are implemented; physical accuracy is unmeasured. [Phone testing](docs/PHONE_TESTING.md) covers the sensor protocol.
 
+New **Survey** tab: magnetic fingerprints on both phones, optional Android Wi-Fi, independent recognition and confirmed navigation recovery. Follow the [fingerprint testing guide](docs/FINGERPRINT_TESTING.md); this station pilot does not yet continuously correct PDR. The interface now uses Navigate / Survey / Tests tabs.
+
 ## Structure
 
 The home screen now offers one-floor room-to-room guidance. **Tests, calibration & recordings** retains the diagnostic workflow and one-tap transfer. Follow the [navigation phone protocol](docs/NAVIGATION_TESTING.md) for start/alignment, turn guidance, arrival confirmation and location recovery.
 
 For one-tap test transfers, run `npm run phone:tests` instead of the plain mobile command. It starts Expo and a private LAN inbox together. In **Saved runs**, tap **Send all saved tests to computer**, then tell Codex “check the new runs”. See [phone testing](docs/PHONE_TESTING.md#one-tap-transfer-to-this-computer).
 
-For Pixel/Android motion testing, use the [TURN Android development build 2](docs/ANDROID_TEST_BUILD.md). The original permission-enabled build still delivered sparse display-frame snapshots. Build 2 captures timestamped readings on a dedicated sensor thread and sends preserved batches. SDK 57 and the iPhone Expo Go path remain; physical recovery still needs verification.
+For Pixel/Android motion testing, use the [TURN Android development build 3](docs/ANDROID_TEST_BUILD.md). The original permission-enabled build still delivered sparse display-frame snapshots. Build 2 captures timestamped readings on a dedicated sensor thread and sends preserved batches. SDK 57 and the iPhone Expo Go path remain; physical recovery still needs verification.
 
 - apps/mobile: Expo reference client.
 - packages/contracts: versioned observations, poses, anchors, routes.

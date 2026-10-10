@@ -1,0 +1,36 @@
+:root {
+  scrollbar-color: #8295ae #f2f5fa;
+  scrollbar-width: thin;
+}
+* {
+  scrollbar-color: #8295ae #f2f5fa;
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f2f5fa;
+}
+::-webkit-scrollbar-thumb {
+  background: #8295ae;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #53667a;
+}
+[role='button']:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid #245ce5;
+  outline-offset: 2px;
+}
+[role='button']:not([aria-disabled='true']):hover {
+  filter: brightness(0.96);
+}
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
+}

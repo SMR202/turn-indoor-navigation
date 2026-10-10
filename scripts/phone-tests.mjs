@@ -34,6 +34,8 @@ receiver.listen(port, '0.0.0.0', () => {
       '--lan',
       '--port',
       '8081',
+      '--max-workers',
+      '2',
     ],
     {
       stdio: 'inherit',

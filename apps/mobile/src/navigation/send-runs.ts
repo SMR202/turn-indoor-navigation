@@ -1,11 +1,11 @@
-import type { Recording } from '@turn/positioning-core';
+import type { Recording, FingerprintRecord } from '@turn/positioning-core';
 
 export const inboxConfigured = Boolean(
   process.env.EXPO_PUBLIC_TEST_INBOX_URL &&
   process.env.EXPO_PUBLIC_TEST_INBOX_TOKEN,
 );
 
-export async function sendRun(recording: Recording) {
+export async function sendRun(recording: Recording | FingerprintRecord) {
   const url = process.env.EXPO_PUBLIC_TEST_INBOX_URL;
   const token = process.env.EXPO_PUBLIC_TEST_INBOX_TOKEN;
   if (!url || !token)
@@ -14,7 +14,9 @@ export async function sendRun(recording: Recording) {
     );
   if (
     ['preparing', 'ready', 'collecting', 'querying'].includes(
-      recording.nativePedometer?.status ?? '',
+      ('nativePedometer' in recording
+        ? recording.nativePedometer?.status
+        : '') ?? '',
     )
   )
     throw new Error(
@@ -23,15 +25,18 @@ export async function sendRun(recording: Recording) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
-    const response = await fetch(`${url}/runs`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+    const response = await fetch(
+      `${url}/${'kind' in recording && recording.kind === 'fingerprint' ? 'fingerprints' : 'runs'}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(recording),
+        signal: controller.signal,
       },
-      body: JSON.stringify(recording),
-      signal: controller.signal,
-    });
+    );
     const receipt = await response.json();
     if (
       !response.ok ||

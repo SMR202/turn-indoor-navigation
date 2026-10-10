@@ -14,7 +14,7 @@ afterEach(async () => {
   for (const dir of directories.splice(0))
     await rm(dir, { recursive: true, force: true });
 });
-async function setup(maxBytes?: number) {
+async function setup(maxBytes?: number, path = '/runs') {
   const directory = await mkdtemp(join(tmpdir(), 'turn-inbox-'));
   directories.push(directory);
   const server = createTestInbox(directory, 'test-secret', maxBytes);
@@ -22,7 +22,7 @@ async function setup(maxBytes?: number) {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No port');
-  const url = `http://127.0.0.1:${address.port}/runs`;
+  const url = `http://127.0.0.1:${address.port}${path}`;
   return {
     directory,
     post: (body: string, token = 'test-secret') =>
@@ -46,6 +46,34 @@ const fixture = {
   },
   observations: [],
 };
+it('accepts fingerprint snapshots on their own authenticated endpoint and preserves raw bytes', async () => {
+  const { directory, post } = await setup(undefined, '/fingerprints');
+  const record = {
+    kind: 'fingerprint',
+    schemaVersion: 1,
+    sessionId: 'fingerprint-test',
+    survey: {
+      schemaVersion: 1,
+      revision: 'station-fingerprint-v1',
+      venueId: 'demo',
+      venueRevision: '1',
+      deviceProfile: 'phone-profile',
+      stations: [],
+    },
+  };
+  const bytes = JSON.stringify(record);
+  expect((await post(bytes, 'wrong')).status).toBe(401);
+  const receipt = await (await post(bytes)).json();
+  expect(receipt.sessionId).toBe(record.sessionId);
+  expect(
+    await readFile(join(directory, `${receipt.sha256}.json`), 'utf8'),
+  ).toBe(bytes);
+  expect((await post(JSON.stringify(fixture))).status).toBe(400);
+  expect(
+    (await post(JSON.stringify({ ...record, actualAnchorId: 'missing' })))
+      .status,
+  ).toBe(400);
+});
 it('authenticates, preserves exact bytes by hash, deduplicates and retains revised runs', async () => {
   const { directory, post } = await setup();
   const bytes = JSON.stringify(fixture, null, 2);

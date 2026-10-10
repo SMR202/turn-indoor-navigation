@@ -1,12 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Platform, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activeVenue as venue } from '../config/active-venue';
 import { calculateRoute } from '@turn/routing';
@@ -38,44 +31,9 @@ const activities = {
   typing: 'Type while standing',
   'walking-in-place': 'Walk in place',
 } as const;
-const ink = '#183d34',
-  muted = '#617369';
-function Action({
-  title,
-  onPress,
-  disabled = false,
-  primary = false,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={{
-        minHeight: 48,
-        padding: 14,
-        backgroundColor: disabled ? '#e0e5df' : primary ? ink : '#e7efe6',
-        borderRadius: 12,
-        justifyContent: 'center',
-      }}
-    >
-      <Text
-        style={{
-          color: primary && !disabled ? 'white' : ink,
-          fontWeight: '600',
-          textAlign: 'center',
-        }}
-      >
-        {title}
-      </Text>
-    </Pressable>
-  );
-}
+import { Action, Section, theme } from '../components/ui';
+const ink = theme.ink,
+  muted = theme.muted;
 export default function Tests() {
   const session = useNavigationSession();
   const insets = useSafeAreaInsets();
@@ -230,7 +188,7 @@ export default function Tests() {
     <ScrollView
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: '#f4f5ef' }}
+      style={{ backgroundColor: theme.background }}
       contentContainerStyle={{
         padding: 18,
         paddingBottom: Math.max(insets.bottom, 24),
@@ -244,15 +202,22 @@ export default function Tests() {
         <Text
           style={{
             fontSize: 12,
-            color: '#49745c',
+            color: theme.primary,
             fontWeight: '700',
             letterSpacing: 2,
           }}
         >
-          TURN / WALK TEST
+          FIELD TESTS
         </Text>
-        <Text style={{ fontSize: 29, fontWeight: '700', color: ink }}>
-          {venue.name}
+        <Text
+          style={{
+            fontSize: 30,
+            letterSpacing: -1,
+            fontWeight: '700',
+            color: ink,
+          }}
+        >
+          Make every walk count.
         </Text>
         <Text style={{ color: muted }}>
           SDK 57 ·{' '}
@@ -261,7 +226,7 @@ export default function Tests() {
             : 'Development venue'}
         </Text>
       </View>
-      {error && (
+      {!!error && (
         <Text accessibilityRole="alert" selectable style={{ color: '#9c3328' }}>
           {error}
         </Text>
@@ -276,6 +241,7 @@ export default function Tests() {
               <Action
                 key={c.id}
                 title={`${courseId === c.id ? '✓ ' : ''}${c.name}`}
+                selected={courseId === c.id}
                 disabled={busy}
                 onPress={() => chooseCourse(c.id)}
               />
@@ -290,6 +256,7 @@ export default function Tests() {
             <Action
               key={value}
               title={`${mode === value ? '✓ ' : ''}${value === 'walk' ? 'Measured walk' : 'Phone handling · 20 s'}`}
+              selected={mode === value}
               disabled={busy}
               onPress={() => {
                 setMode(value);
@@ -305,6 +272,7 @@ export default function Tests() {
               <Action
                 key={key}
                 title={`${activity === key ? '✓ ' : ''}${title}`}
+                selected={activity === key}
                 disabled={busy}
                 onPress={() => {
                   setActivity(key as keyof typeof activities);
@@ -320,6 +288,7 @@ export default function Tests() {
               <Action
                 key={value}
                 title={`${pace === value ? '✓ ' : ''}${value}`}
+                selected={pace === value}
                 disabled={busy || session.snapshot.stopped}
                 onPress={() => setPace(value)}
               />
@@ -340,7 +309,14 @@ export default function Tests() {
           gap: 12,
         }}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 16,
+            justifyContent: 'space-between',
+          }}
+        >
           {[
             [String(session.snapshot.steps), 'Accepted steps'],
             [
@@ -359,7 +335,7 @@ export default function Tests() {
               'planned',
             ],
           ].map(([value, label]) => (
-            <View key={label}>
+            <View key={label} style={{ minWidth: 100 }}>
               <Text style={{ fontSize: 25, fontWeight: '700', color: ink }}>
                 {value}
               </Text>
@@ -372,7 +348,7 @@ export default function Tests() {
             {Platform.OS === 'android' && (
               <Text style={{ color: muted }}>
                 {TurnMotion?.revision === ANDROID_MOTION_REVISION
-                  ? 'Android sensor build 2 · buffered capture ready'
+                  ? 'Android buffered motion capture ready'
                   : 'Android sensor update required · install the latest TURN APK'}
               </Text>
             )}
@@ -553,7 +529,7 @@ export default function Tests() {
             </Text>
           </View>
         )}
-        {savedMessage && (
+        {!!savedMessage && (
           <Text accessibilityLiveRegion="polite" style={{ color: ink }}>
             {savedMessage}
           </Text>
@@ -802,15 +778,8 @@ export default function Tests() {
           it below 60° tilt and keep the app open.
         </Text>
       </View>
-      <View style={{ gap: 10 }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: ink }}>
-          Explore from another location
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8 }}
-        >
+      <Section title="Explore from another location">
+        <View style={{ gap: 8 }}>
           {venue.anchors.map((a) => (
             <Action
               key={a.id}
@@ -823,7 +792,7 @@ export default function Tests() {
               }}
             />
           ))}
-        </ScrollView>
+        </View>
         <Action
           title="Scan a location marker"
           disabled={busy}
@@ -855,7 +824,7 @@ export default function Tests() {
             ))}
           </View>
         )}
-        <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {venue.pois.map((p) => (
             <Action
               key={p.id}
@@ -863,9 +832,11 @@ export default function Tests() {
               onPress={() => setDestination(p.id)}
             />
           ))}
-        </ScrollView>
-      </View>
-      <RunHistory revision={historyRevision} />
+        </View>
+      </Section>
+      <Section title="Saved walks & transfers">
+        <RunHistory revision={historyRevision} />
+      </Section>
       <Action
         title={showNotes ? 'Hide plan notes' : 'Dimensions & plan notes'}
         onPress={() => setShowNotes((v) => !v)}

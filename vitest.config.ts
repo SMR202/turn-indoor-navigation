@@ -7,6 +7,7 @@ export default defineConfig({
       'tooling/**/*.test.ts',
       'apps/mobile/src/sensors/**/*.test.ts',
       'apps/mobile/src/navigation/**/*.test.ts',
+      'apps/mobile/src/fingerprinting/**/*.test.ts',
     ],
   },
 });

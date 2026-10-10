@@ -1,5 +1,11 @@
 # Reuse registry
 
+## 2026-10-10 fingerprinting slice
+
+- **ADOPT** existing expo-sensors **57.0.3**, MIT (exact installed package and lockfile), calibrated Magnetometer API on iPhone/Android. [SDK 57 contract](https://docs.expo.dev/versions/v57.0.0/sdk/magnetometer/). No additional sensor dependency. Risk: magnetic calibration and device offsets, sensor availability and physical repeatability remain unvalidated.
+- **ADAPT** Android platform WifiManager scan APIs through the existing local Expo module; no third-party Wi-Fi library or copied implementation. [Official permission/freshness/throttling contract](https://developer.android.com/develop/connectivity/wifi/wifi-scan). Runtime OS API, not a redistributed external source revision. Requires native host update; no iOS scan equivalent.
+- **IMPLEMENT / EXPERIMENT** small pure station matcher and serialization rather than adopting a large vendor SDK before collecting venue evidence. Heuristic thresholds and RSSI weighting are unvalidated; per-device surveys, independent queries, abstention and user-confirmed re-anchoring bound this pilot. No new runtime dependency. [Protocol](../docs/FINGERPRINT_TESTING.md).
+
 ## 2026-10-09 visual positioning candidates
 
 Research only; no new dependency adopted. [Hybrid positioning plan](HYBRID_POSITIONING_NEXT_STEP_2026_10.md) records selection rationale and device gates.

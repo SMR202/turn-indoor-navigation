@@ -10,9 +10,15 @@
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 2,
+      "versionCode": 3,
       "package": "com.turn.navigation.dev",
-      "permissions": ["android.permission.HIGH_SAMPLING_RATE_SENSORS"],
+      "permissions": [
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_STATE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

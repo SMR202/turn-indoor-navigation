@@ -1,6 +1,9 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["expo.modules.turnmotion.TurnMotionModule"]
+    "modules": [
+      "expo.modules.turnmotion.TurnMotionModule",
+      "expo.modules.turnmotion.TurnWifiModule"
+    ]
   }
 }

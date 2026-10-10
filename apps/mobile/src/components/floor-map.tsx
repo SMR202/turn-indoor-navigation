@@ -9,6 +9,7 @@ import Svg, {
   Text as SvgText,
   G,
 } from 'react-native-svg';
+import { MapRoom } from './map-room';
 import type { Route, Pose } from '@turn/contracts';
 import type { VenuePackage } from '@turn/venue-model';
 type Point = { x: number; y: number };
@@ -21,6 +22,7 @@ export function FloorMap({
   trace = [],
   onSelectRoom,
   selectedRoom,
+  compact = false,
 }: {
   venue: VenuePackage;
   floorId: string;
@@ -30,6 +32,7 @@ export function FloorMap({
   trace?: Point[];
   onSelectRoom?: (id: string) => void;
   selectedRoom?: string;
+  compact?: boolean;
 }) {
   const floor = venue.floors.find((f) => f.id === floorId)!;
   const [zoom, setZoom] = useState(1);
@@ -79,28 +82,32 @@ export function FloorMap({
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-        {controls.map(([label, action]) => (
-          <Pressable
-            key={label}
-            accessibilityRole="button"
-            accessibilityLabel={`Map ${label}`}
-            onPress={action}
-            style={{
-              minWidth: 42,
-              minHeight: 42,
-              padding: 10,
-              backgroundColor: '#eef3ee',
-              borderRadius: 9,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: '#183d34', fontWeight: '600' }}>{label}</Text>
-          </Pressable>
-        ))}
+        {controls
+          .filter(([label]) => !compact || ['−', '+', 'Fit'].includes(label))
+          .map(([label, action]) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              accessibilityLabel={`Map ${label}`}
+              onPress={action}
+              style={{
+                minWidth: 48,
+                minHeight: 48,
+                padding: 10,
+                backgroundColor: '#E8EFFF',
+                borderRadius: 9,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#14283F', fontWeight: '600' }}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
       </View>
       <Svg
         width="100%"
-        height={540}
+        height={compact ? 280 : 410}
         viewBox={`${vx} ${vy} ${w} ${h}`}
         accessibilityLabel={`Map of ${floor.label}${route ? ', route highlighted' : ''}`}
       >
@@ -109,8 +116,8 @@ export function FloorMap({
           y={0}
           width={floor.widthMetres}
           height={floor.heightMetres}
-          fill="#e9e6df"
-          stroke="#a8b3a9"
+          fill="#E3EAF3"
+          stroke="#A2B3C8"
           strokeWidth={0.04}
         />
         {!floor.rooms.length &&
@@ -118,19 +125,23 @@ export function FloorMap({
             <Polygon key={i} points={points(p)} fill="white" />
           ))}
         {floor.rooms.map((room) => (
-          <G key={room.id} onPress={() => onSelectRoom?.(room.id)}>
+          <MapRoom
+            key={room.id}
+            name={room.name}
+            onSelect={onSelectRoom ? () => onSelectRoom(room.id) : undefined}
+          >
             <Polygon
               points={points(room.polygon)}
               fill={
                 room.id === selectedRoom
-                  ? '#d5ecdc'
+                  ? '#D8E5FF'
                   : room.kind === 'outdoor'
                     ? '#e0e9d5'
                     : room.kind === 'stairs'
                       ? '#dedbd3'
                       : room.kind === 'circulation'
-                        ? '#f6f4eb'
-                        : '#fffdf8'
+                        ? '#EFF4FA'
+                        : '#FFFFFF'
               }
             />
             <SvgText
@@ -154,7 +165,7 @@ export function FloorMap({
                 {room.dimensionLabel}
               </SvgText>
             )}
-          </G>
+          </MapRoom>
         ))}
         {floor.walls.map((wall, i) => (
           <Line

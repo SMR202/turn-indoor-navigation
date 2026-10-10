@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, TextInput, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   calculateRoute,
@@ -16,48 +16,11 @@ import { saveRun } from '../navigation/run-storage';
 import { FloorMap } from '../components/floor-map';
 import { AnchorScanner } from '../components/anchor-scanner';
 
-const ink = '#183d34';
-function Button({
-  title,
-  onPress,
-  disabled = false,
-  primary = false,
-}: {
-  title: string;
-  onPress: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={{
-        padding: 15,
-        minHeight: 48,
-        borderRadius: 12,
-        backgroundColor: disabled ? '#e0e5df' : primary ? ink : '#e7efe6',
-      }}
-    >
-      <Text
-        style={{
-          color: primary && !disabled ? 'white' : ink,
-          fontWeight: '600',
-          textAlign: 'center',
-        }}
-      >
-        {title}
-      </Text>
-    </Pressable>
-  );
-}
-const card = {
-  padding: 18,
-  borderRadius: 18,
-  backgroundColor: 'white',
-  gap: 12,
-} as const;
+import { Action, Section, theme, ui } from '../components/ui';
+import { loadFingerprintRecords } from '../fingerprinting/storage';
+import { evaluateFingerprint } from '@turn/positioning-core';
+const ink = theme.ink;
+const card = ui.card;
 function instruction(g: Guidance) {
   if (g.status === 'off-route') return 'Off-route estimate · still recording';
   if (g.status === 'recover' || g.status === 'unsupported')
@@ -79,10 +42,16 @@ function instruction(g: Guidance) {
 
 export default function Navigate() {
   const session = useNavigationSession();
+  const params = useLocalSearchParams<{
+    fingerprintAnchor?: string;
+    fingerprintRecord?: string;
+  }>();
+  const appliedFingerprint = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const [destination, setDestination] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [stepLength, setStepLength] = useState<number | null>(null);
+  const [calibrationLoaded, setCalibrationLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [showStarts, setShowStarts] = useState(false);
   const [anchorName, setAnchorName] = useState('Location not set');
@@ -143,7 +112,10 @@ export default function Navigate() {
     useCallback(() => {
       let active = true;
       void loadCalibration().then((value) => {
-        if (active) setStepLength(value);
+        if (active) {
+          setStepLength(value);
+          setCalibrationLoaded(true);
+        }
       });
       return () => {
         active = false;
@@ -186,6 +158,39 @@ export default function Navigate() {
     setArrived(false);
     setError('');
   }
+  useEffect(() => {
+    if (
+      !params.fingerprintRecord ||
+      appliedFingerprint.current === params.fingerprintRecord ||
+      busy ||
+      !calibrationLoaded
+    )
+      return;
+    try {
+      const saved = loadFingerprintRecords().find(
+        (r) =>
+          r.sessionId === params.fingerprintRecord &&
+          r.survey.venueId === venue.venueId &&
+          r.survey.venueRevision === venue.revision,
+      );
+      const match = saved ? evaluateFingerprint(saved) : null;
+      if (
+        !saved?.test ||
+        Date.now() - Date.parse(saved.test.createdAt) > 120000 ||
+        saved.actualAnchorId !== params.fingerprintAnchor ||
+        match?.match.anchorId !== params.fingerprintAnchor
+      ) {
+        appliedFingerprint.current = params.fingerprintRecord;
+        throw new Error(
+          'This fingerprint confirmation is missing or older than two minutes. Find your place again in Survey.',
+        );
+      }
+      appliedFingerprint.current = params.fingerprintRecord;
+      establish(anchorPayload(venue, params.fingerprintAnchor!));
+    } catch (e) {
+      report(e);
+    }
+  });
   function selectDestination(id: string) {
     setDestination(id);
     setAligned(false);
@@ -246,7 +251,7 @@ export default function Navigate() {
     <ScrollView
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: '#f4f5ef' }}
+      style={{ backgroundColor: theme.background }}
       contentContainerStyle={{
         padding: 18,
         paddingBottom: Math.max(insets.bottom, 24),
@@ -257,15 +262,22 @@ export default function Navigate() {
       }}
     >
       <View style={{ gap: 5 }}>
-        <Text style={{ color: '#49745c', fontWeight: '700', letterSpacing: 2 }}>
-          TURN / NAVIGATE
+        <Text
+          style={{ color: theme.primary, fontWeight: '700', letterSpacing: 2 }}
+        >
+          YOUR INDOOR GUIDE
         </Text>
-        <Text style={{ fontSize: 29, color: ink, fontWeight: '700' }}>
+        <Text
+          style={{
+            fontSize: 32,
+            letterSpacing: -1,
+            color: ink,
+            fontWeight: '700',
+          }}
+        >
           Where are you heading?
         </Text>
-        <Text style={{ color: '#617369' }}>
-          {venue.name} · works with your loaded map
-        </Text>
+        <Text style={{ color: theme.muted }}>{venue.name} · Offline map</Text>
       </View>
       {error ? (
         <Text accessibilityRole="alert" style={{ color: '#9c3328' }}>
@@ -275,13 +287,39 @@ export default function Navigate() {
       {session.nativeSaveError ? (
         <Text accessibilityRole="alert">{session.nativeSaveError}</Text>
       ) : null}
+      <View style={{ ...card, padding: 10 }}>
+        <FloorMap
+          venue={venue}
+          compact
+          floorId={pose?.floorId ?? venue.floors[0]!.id}
+          pose={pose ?? undefined}
+          route={route}
+          trace={session.trace}
+          course={
+            checkpoint ? [{ x: checkpoint.x, y: checkpoint.y }] : undefined
+          }
+          onSelectRoom={
+            busy
+              ? undefined
+              : (id) => {
+                  const found = venue.pois.find((p) => p.nodeId === id);
+                  if (found) selectDestination(found.id);
+                }
+          }
+          selectedRoom={poi?.nodeId}
+        />
+        <Text style={{ color: theme.muted, padding: 8 }}>
+          Your position is estimated and may drift from the route. Check door
+          locations and clearance as you go.
+        </Text>
+      </View>
       {arrived ? (
         <View style={card}>
           <Text style={{ fontSize: 25, color: ink, fontWeight: '700' }}>
             You confirmed arrival
           </Text>
           <Text>{poi?.name}. Your session is saved in Tests & recordings.</Text>
-          <Button
+          <Action
             title="Choose another destination"
             onPress={() => {
               setDestination(null);
@@ -311,23 +349,29 @@ export default function Navigate() {
                   style={{
                     padding: 14,
                     borderWidth: 1,
-                    borderColor: '#cbd5ca',
+                    borderColor: theme.border,
                     borderRadius: 10,
                   }}
                 />
-                <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+                {query.length > 0 && (
+                  <Action title="Clear search" onPress={() => setQuery('')} />
+                )}
+                <View
+                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+                >
                   {venue.pois
                     .filter((p) =>
                       p.name.toLowerCase().includes(query.toLowerCase()),
                     )
                     .map((p) => (
-                      <Button
+                      <Action
                         key={p.id}
-                        title={`${p.id === destination ? '✓ ' : ''}${p.name}`}
+                        title={p.name}
+                        selected={p.id === destination}
                         onPress={() => selectDestination(p.id)}
                       />
                     ))}
-                </ScrollView>
+                </View>
                 {!venue.pois.some((p) =>
                   p.name.toLowerCase().includes(query.toLowerCase()),
                 ) && <Text>No matching destinations.</Text>}
@@ -338,16 +382,23 @@ export default function Navigate() {
             <Text style={{ color: ink, fontSize: 19, fontWeight: '700' }}>
               2 · Establish your location
             </Text>
-            <Text>{anchorName}</Text>
-            <Button
+            <Text style={ui.body}>{anchorName}</Text>
+            <Action
+              title="Find location with fingerprints"
+              primary
+              onPress={() => {
+                if (busy) session.stop('Paused to find a surveyed location.');
+                router.navigate('/survey');
+              }}
+            />
+            <Action
               title={
                 needsRecovery ? 'Scan a marker to recover' : 'Scan location QR'
               }
-              primary
               onPress={recover}
             />
             {!busy && (
-              <Button
+              <Action
                 title={
                   showStarts
                     ? 'Hide known locations'
@@ -363,7 +414,7 @@ export default function Navigate() {
                   resets the position estimate.
                 </Text>
                 {venue.anchors.map((a) => (
-                  <Button
+                  <Action
                     key={a.id}
                     title={`I’m at ${a.label}`}
                     onPress={() => {
@@ -451,7 +502,7 @@ export default function Navigate() {
                           highlighted segment. The QR sets position, not
                           direction.
                         </Text>
-                        <Button
+                        <Action
                           title={
                             aligned
                               ? '✓ I’m facing the first route segment'
@@ -459,7 +510,7 @@ export default function Navigate() {
                           }
                           onPress={() => setAligned(!aligned)}
                         />
-                        <Button
+                        <Action
                           title={
                             stepLength === null
                               ? 'Calibration needed — open Tests & calibration'
@@ -472,7 +523,7 @@ export default function Navigate() {
                       </>
                     )}
                   {guidance.status === 'near-destination' && (
-                    <Button
+                    <Action
                       title="I can see the destination — confirm arrival"
                       primary
                       onPress={confirmArrival}
@@ -481,7 +532,7 @@ export default function Navigate() {
                 </>
               )}
               {busy && (
-                <Button
+                <Action
                   title="Pause guidance"
                   onPress={() =>
                     session.stop(
@@ -494,33 +545,8 @@ export default function Navigate() {
           )}
         </>
       )}
-      <View style={{ ...card, padding: 10 }}>
-        <FloorMap
-          venue={venue}
-          floorId={pose?.floorId ?? venue.floors[0]!.id}
-          pose={pose ?? undefined}
-          route={route}
-          trace={session.trace}
-          course={
-            checkpoint ? [{ x: checkpoint.x, y: checkpoint.y }] : undefined
-          }
-          onSelectRoom={
-            busy
-              ? undefined
-              : (id) => {
-                  const found = venue.pois.find((p) => p.nodeId === id);
-                  if (found) selectDestination(found.id);
-                }
-          }
-          selectedRoom={poi?.nodeId}
-        />
-        <Text style={{ color: '#617369', padding: 8 }}>
-          Your position is estimated and may drift from the route. Check door
-          locations and clearance as you go.
-        </Text>
-      </View>
       {route && !arrived && (
-        <View style={card}>
+        <Section title="Accuracy checkpoints">
           <Text style={{ fontSize: 19, fontWeight: '700', color: ink }}>
             Accuracy test · checkpoints
           </Text>
@@ -532,7 +558,7 @@ export default function Navigate() {
           </Text>
           <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
             {route.nodeIds.map((id, i) => (
-              <Button
+              <Action
                 key={id}
                 title={`${checkpointNode === id ? '✓ ' : ''}${i + 1} · ${venue.pois.find((p) => p.nodeId === id)?.name ?? id.replaceAll('-', ' ')}`}
                 onPress={() => {
@@ -543,7 +569,7 @@ export default function Navigate() {
               />
             ))}
           </ScrollView>
-          <Button
+          <Action
             title="I’m at the selected point now"
             primary
             disabled={
@@ -555,7 +581,7 @@ export default function Navigate() {
             onPress={() => markCheckpoint('arrival')}
           />
           {markedAt !== null && (
-            <Button
+            <Action
               title={
                 session.elapsed < markedAt + 2
                   ? 'Stay still · waiting 2 seconds…'
@@ -581,7 +607,7 @@ export default function Navigate() {
               {session.snapshot.motion.pending} pending
             </Text>
           )}
-        </View>
+        </Section>
       )}
       {stepLength === null && (
         <Text>
@@ -589,7 +615,7 @@ export default function Navigate() {
           live guidance.
         </Text>
       )}
-      <Button
+      <Action
         title="Tests, calibration & recordings"
         onPress={() => {
           if (busy)
@@ -604,7 +630,7 @@ export default function Navigate() {
           }
         }}
       />
-      <Text style={{ color: '#617369', fontSize: 12 }}>
+      <Text style={{ color: theme.muted, fontSize: 12 }}>
         Experimental one-floor guidance. Position and remaining distance are
         estimates. Use visible surroundings to confirm turns and arrival. No
         furniture or obstacle detection.

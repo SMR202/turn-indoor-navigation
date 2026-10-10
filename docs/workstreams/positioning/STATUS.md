@@ -1,6 +1,20 @@
 # Positioning workstream
 
-Updated: 2026-10-09.
+Updated: 2026-10-10.
+
+## Fingerprinting station pilot — 2026-10-10
+
+DECISION: user-requested fingerprinting precedes the previously proposed camera milestone. New Survey flow captures calibrated magnetic vectors on both phones and optional fresh Wi-Fi on Android build 3. Survey two passes at three or more physically verified anchors per installation; recognize a separate query without its actual-place label, then allow a recent physically confirmed candidate to re-anchor navigation. No continuous pose fusion, cross-device model or automatic correction is claimed. [Test protocol and limits](../../FINGERPRINT_TESTING.md).
+
+IMPLEMENTED: pure versioned matcher/replay in positioning-core; capture/storage outside screens; bounded monotonic samples, lifecycle cancellation, optional precise-location permissions, stale-scan rejection and hashed radio identifiers. Raw snapshots/test inputs are immutable after receipt through the authenticated inbox. The app saves locally and transfers only when the user taps Send. UI now has persistent Navigate/Survey/Tests tabs, map-first navigation, larger shared controls, selected/focus states and expandable details. Mobbin search was unavailable without a paid plan; no reference assets were used.
+
+EXPERIMENT: conservative magnetic magnitude and repeated RSSI references distinguish surveyed stations or abstain. Thresholds are engineering choices, not calibrated probabilities. Similar magnetic fields, sparse/throttled Wi-Fi and device/environment changes can defeat matching. Same-phone surveys are intentional; independent physical measurements are still required. The original PDR filter and stride are unchanged.
+
+Validation (2026-10-10): root `npm run check` passes: 86 tests in 21 files, both typechecks, lint, formatting and 175 local documentation targets. `npm run export:web` succeeds. Tests cover independent labels, ambiguous/out-of-coverage signals, unstable competitors, missing/throttled radio fallback, sensor clocks, permission denial and cancellation including a pending native scan. Inbox tests verify authenticated exact-byte receipt and invalid-label rejection. The replay CLI correctly processes an explicitly synthetic example; this is not a venue result. Strict UI audit and DESIGN.md lint report no errors/warnings. Browser checks exercised all three tabs, survey/test gating, disabled web capture, disclosures, handling mode, destination search/empty/clear and narrow layout. Fixed SVG web responder errors and empty-text warnings found during inspection; no new console errors after final reload. Physical touch, accessibility-reader behavior and phone sensors remain unverified.
+
+Android ARM64 build 3 assembles successfully. Packaged manifest/version/permissions and DEX Wi-Fi module revision checked; APK signature matches build 2, ZIP integrity passes, and the LAN-served download matches SHA-256 `478c7cadd3effee2048c5ee2f3d2290c1c5b07de7c0530e6db1b1df2a889cf7e` (97,499,934 bytes). SDK 57 iOS/Android bundles fetched over LAN contain the Survey and matching code. Expo, paired inbox and APK server are running locally, with regenerated launch/install QRs in ignored work/phone-test. No installation or physical accuracy success is claimed. Upstream native deprecation/toolchain warnings remain; compilation succeeds. Metro workers capped at two to reduce contention with the native build.
+
+Next action: install Android build 3 and connect both phones, collect separate surveys and held-out recognition tests, label all outcomes after prediction and send records. Evaluate wrong matches, abstentions and map-point error by device/signal method. Only then consider sequence features or automatic fusion. Native compilation and browser checks do not establish physical performance.
 
 ## Next milestone research: independent movement evidence
 

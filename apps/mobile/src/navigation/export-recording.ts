@@ -1,9 +1,11 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import type { Recording } from '@turn/positioning-core';
+import type { Recording, FingerprintRecord } from '@turn/positioning-core';
 
-export async function exportRecording(recording: Recording | null) {
+export async function exportRecording(
+  recording: Recording | FingerprintRecord | null,
+) {
   if (!recording)
     throw new Error('Establish an anchor and record a walk first.');
   const content = JSON.stringify(recording);

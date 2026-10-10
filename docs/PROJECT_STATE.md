@@ -1,10 +1,14 @@
 # TURN project state
 
-Updated: 2026-10-09.
+Updated: 2026-10-10.
 
 ## Current milestone
 
 M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-comparison` includes settled starts, labelled trials, native/manual count comparison, local history and one-tap LAN transfer. Fourteen inbox recordings were replayed; new sessions now use a versioned experimental motion filter. General localization accuracy remains unvalidated.
+
+## Fingerprinting pilot and app interface
+
+Implemented magnetic station surveys on iPhone/Android, optional fresh Wi-Fi scans in Android build 3, independent recognition tests, immutable inbox transfer and shared replay. A recent, physically confirmed candidate can establish/recover navigation at a surveyed anchor. Persistent Navigate / Survey / Tests tabs and shared accessible controls replace the previous screen navigation. [Fingerprint test protocol](FINGERPRINT_TESTING.md). No continuous fingerprint fusion or measured accuracy improvement is claimed.
 
 ## Capabilities
 
@@ -28,7 +32,7 @@ Repeatable accuracy unvalidated; initial user trials show count variation and he
 
 User now reports movement on Pixel and iPhone, with remaining distance/calibration differences. Android **build 2** replaces Expo's display-frame snapshots with a dedicated 50 Hz sensor request and timestamp-preserving bounded batches; PDR thresholds and SDK 57 remain. [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md) records the evidence and limits. This follow-up is qualitative: new-build delivered rates and accuracy still need recordings. The iPhone retains Expo Go for existing PDR.
 
-Proposed next major slice: optional camera-assisted room-to-room positioning, ARCore on Pixel first and ARKit on iPhone next, with timestamped/replayable poses and explicit session alignment/reset handling. Then evaluate verified map constraints and passive BLE/magnetic corrections for camera-off operation. [October 9 research and implementation handoff](../research/HYBRID_POSITIONING_NEXT_STEP_2026_10.md). No AR adapter or fused estimator exists yet; native integration and physical evaluation are separate gates. iPhone AR will require a signed development build.
+The user selected fingerprinting as the next implementation slice, superseding the previous immediate VIO-first action. Next: survey at least three physical stations twice on each phone, collect held-out recognition trials, send them, and measure wrong matches and abstentions before automatic fusion. Camera-assisted room-to-room positioning remains a later candidate, ARCore on Pixel and ARKit on iPhone, alongside verified map constraints and passive BLE/magnetic corrections. [October 9 research and implementation handoff](../research/HYBRID_POSITIONING_NEXT_STEP_2026_10.md). No AR adapter or fused estimator exists yet; native integration and physical evaluation are separate gates. iPhone AR will require a signed development build.
 
 Walk a short room-to-room route through one turn, then exercise pause/re-anchor recovery with destination retained; upload both sessions via the inbox. Product flow progresses while brisk-count/stride and heading issues remain under evaluation.
 
