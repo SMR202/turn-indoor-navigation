@@ -2,6 +2,16 @@
 
 Updated: 2026-10-10.
 
+## First iPhone fingerprint uploads — 2026-10-10
+
+EXPERIMENT RESULT: 16 received fingerprint records validated against the schema and their SHA-256 filenames: 12 unique survey captures (three passes at four stations), four independently captured labelled queries, one iOS installation profile. All four production replays abstain, but their top-ranked station agrees with the supplied physical label in all four. This is a small same-session diagnostic set, not established accuracy. Raw files remain unchanged in ignored work/test-inbox; reproducible analysis and hash manifest are in ignored work/fingerprint-analysis-20261010/analyze.mjs and report.json. No venue geometry, station identities or raw readings are committed.
+
+FACT: capture quality passes; the rejection is the ranking-margin gate, not missing magnetic data. All station spread estimates hit the hard-coded 2 microtesla minimum. With this survey's station separation, the best-versus-runner-up score margin is below 1.25 even for a query exactly at each station centre. The implemented gate therefore precludes recognition of these learned stations. All four actual queries pass the absolute score threshold but fail the margin threshold. A secondary leave-one-survey-pass-out diagnostic ranks the labelled place first for 12/12 survey captures; these temporally correlated checks are not independent validation. Do not report the forced nearest-choice results as accepted localization success.
+
+DECISION: keep the app/model unchanged during the user's Pixel comparison. Do not infer that the house has insufficient magnetic variation or that a larger building would solve this. Next: inspect Pixel records for fresh Wi-Fi and whether combined matching actually activates. Then replace the fixed confidence scale with an experimentally evaluated repeatability/separation-aware rule, preserving abstention and testing new held-out trials, including unsurveyed/intermediate locations and changed phone orientation/height. Current magnetic magnitude alone does not establish a unique place throughout a building. No automatic fusion or cross-device model transfer is validated.
+
+Validation: ran the shared production schema, feature extractor and matcher on all received records; verified immutable-file hashes, deduplicated capture IDs across cumulative snapshots and separated survey resampling from the four queries. Documentation formatting and local links checked. No app changes, native build or new physical test performed by the agent; no background monitoring.
+
 ## Fingerprinting station pilot — 2026-10-10
 
 DECISION: user-requested fingerprinting precedes the previously proposed camera milestone. New Survey flow captures calibrated magnetic vectors on both phones and optional fresh Wi-Fi on Android build 3. Survey two passes at three or more physically verified anchors per installation; recognize a separate query without its actual-place label, then allow a recent physically confirmed candidate to re-anchor navigation. No continuous pose fusion, cross-device model or automatic correction is claimed. [Test protocol and limits](../../FINGERPRINT_TESTING.md).
