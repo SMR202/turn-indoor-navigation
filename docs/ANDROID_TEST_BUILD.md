@@ -4,7 +4,11 @@ Use Expo SDK 57. Pixel recordings on Android 12 delivered only approximately 4â€
 
 The first permission-enabled APK did not resolve this: two subsequent recordings still had sparse samples. Installed expo-sensors 57.0.3 DeviceMotion dispatches latest readings on display frames rather than retaining every reading. **Build 2** replaces that Android acquisition path with TURN's dedicated sensor thread and timestamp-preserving batches, requesting 50 Hz directly. It retains the existing PDR/bobbing filter and SDK 57. See [ADR-0006](../decisions/0006-android-buffered-motion-acquisition.md). Actual delivery and accuracy still require physical verification.
 
-## Current build 3
+## Current build 4
+
+Build 4 (versionCode 4) adds the `TurnBle` native module and Bluetooth permissions (BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT; legacy BLUETOOTH/ADMIN for older Android): a **Beacons** tab lets a phone act as a TURN beacon and Survey can include BLE signals. See [BLE beacon protocol](FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4). Motion and Wi-Fi acquisition are unchanged. Install it over the existing app; every beacon phone also needs this build. Rebuilding with `expo prebuild` regenerates `apps/mobile/android` (ignored) and rewrites the `ios` script in `apps/mobile/package.json`; discard that incidental change.
+
+## Build 3
 
 Build 3 (versionCode 3) retains build 2 motion acquisition and adds optional native Wi-Fi scanning for the Survey tab. Grant precise location when selecting Wi-Fi; keep Location services and Wi-Fi on. Scans are user-triggered, fresh-only and subject to Android throttling. Follow the [fingerprint protocol](FINGERPRINT_TESTING.md). The iPhone continues using magnetic capture in Expo Go.
 

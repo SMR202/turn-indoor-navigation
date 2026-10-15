@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 export const FINGERPRINT_REVISION = 'station-fingerprint-v1';
-export const FINGERPRINT_MATCHER_REVISION = 'station-rank-v2' as const;
+export const FINGERPRINT_MATCHER_REVISION = 'station-rank-v3' as const;
 const matcherRevisionSchema = z.enum([
   'station-fingerprint-v1',
+  'station-rank-v2',
   FINGERPRINT_MATCHER_REVISION,
 ]);
 export type FingerprintMatcherRevision = z.infer<typeof matcherRevisionSchema>;
@@ -21,6 +22,17 @@ const wifiSchema = z.object({
   frequencyMHz: finite.positive(),
   ageSeconds: finite.min(0).max(10),
 });
+/** BLE beacon identity is the TURN beacon tag advertised by our own phones/beacons; unrelated devices are never captured. */
+export const BLE_BEACON_ID = /^[A-Za-z0-9]{1,12}$/;
+const bleBeaconSchema = z.object({
+  id: z.string().regex(BLE_BEACON_ID),
+  samples: z
+    .array(
+      z.object({ t: finite.min(0).max(31), rssi: finite.min(-127).max(20) }),
+    )
+    .min(1)
+    .max(600),
+});
 export const fingerprintCaptureSchema = z
   .object({
     id,
@@ -31,8 +43,13 @@ export const fingerprintCaptureSchema = z
     magnetic: z.array(magneticSchema).min(30).max(2000),
     wifi: z.array(wifiSchema).max(100),
     wifiStatus: z.string().max(500),
+    /** Present only when BLE scanning was attempted; an empty array means a completed scan heard no TURN beacon. */
+    ble: z.array(bleBeaconSchema).max(32).optional(),
+    bleStatus: z.string().max(500).optional(),
   })
   .superRefine((c, ctx) => {
+    if (new Set((c.ble ?? []).map((b) => b.id)).size !== (c.ble ?? []).length)
+      ctx.addIssue({ code: 'custom', message: 'Duplicate BLE beacons.' });
     if (
       c.magnetic.some(
         (s, i) =>
@@ -83,7 +100,7 @@ export type FingerprintMatch = {
   status: 'candidate' | 'ambiguous' | 'unavailable';
   reason: string;
   anchorId: string | null;
-  method: 'magnetic' | 'magnetic-wifi';
+  method: 'magnetic' | 'magnetic-wifi' | 'ble' | 'magnetic-ble';
   confidence: 'clear' | 'tentative' | 'low' | 'unavailable';
   radioReason: string;
   scores: { anchorId: string; score: number; commonRadios: number }[];
@@ -104,6 +121,112 @@ export function magneticFeatures(capture: FingerprintCapture) {
     strength,
     spread,
     usable: span >= 5 && strength >= 10 && strength <= 2000 && spread <= 8,
+  };
+}
+
+const BLE_ABSENT_DBM = -100;
+const BLE_DIFF_CAP_DB = 20;
+const BLE_SCALE_DB = 6;
+/** Median RSSI per beacon heard at least three times in one capture. */
+export function bleFeatures(capture: FingerprintCapture) {
+  const out = new Map<string, { rssi: number; count: number }>();
+  for (const b of capture.ble ?? [])
+    if (b.samples.length >= 3)
+      out.set(b.id, {
+        rssi: median(b.samples.map((s) => s.rssi)),
+        count: b.samples.length,
+      });
+  return out;
+}
+
+function matchBle(
+  survey: FingerprintSurvey,
+  query: FingerprintCapture,
+): FingerprintMatch | null {
+  const ready = survey.stations.filter((s) => s.captures.length >= 2);
+  // Every candidate must be described in the same feature space.
+  if (
+    query.ble === undefined ||
+    ready.some((s) => s.captures.filter((c) => c.ble !== undefined).length < 2)
+  )
+    return null;
+  const references = ready.map((s) => {
+    const perCapture = s.captures.map(bleFeatures);
+    const ids = new Set(perCapture.flatMap((m) => [...m.keys()]));
+    const ref = new Map<string, number>();
+    for (const id of ids) {
+      const seen = perCapture.flatMap((m) =>
+        m.has(id) ? [m.get(id)!.rssi] : [],
+      );
+      if (seen.length >= 2) ref.set(id, median(seen));
+    }
+    return { station: s, ref };
+  });
+  const universe = new Set(references.flatMap((r) => [...r.ref.keys()]));
+  const q = bleFeatures(query);
+  const heard = [...q.keys()].filter((id) => universe.has(id));
+  if (universe.size === 0 || heard.length === 0) return null;
+  const magnetic = magneticFeatures(query);
+  const scored = references.map(({ station, ref }) => {
+    const diffs = [...universe].map((id) =>
+      Math.min(
+        Math.abs(
+          (q.get(id)?.rssi ?? BLE_ABSENT_DBM) - (ref.get(id) ?? BLE_ABSENT_DBM),
+        ),
+        BLE_DIFF_CAP_DB,
+      ),
+    );
+    const ble = diffs.reduce((a, b) => a + b, 0) / diffs.length / BLE_SCALE_DB;
+    const features = station.captures
+      .map(magneticFeatures)
+      .filter((f) => f.usable);
+    let mag: number | null = null;
+    if (magnetic.usable && features.length >= 2) {
+      const centre = median(features.map((f) => f.strength));
+      const dev = features.map((f) => Math.abs(f.strength - centre));
+      const variation = Math.max(
+        0.5,
+        2 * 1.4826 * median(dev),
+        2 * median(features.map((f) => f.spread)),
+        2 * magnetic.spread,
+      );
+      if (variation <= 8 && Math.max(...dev) <= 8)
+        mag = Math.abs(magnetic.strength - centre) / variation;
+    }
+    return {
+      anchorId: station.anchorId,
+      ble,
+      mag,
+      commonRadios: heard.filter((id) => ref.has(id)).length,
+    };
+  });
+  const useMagnetic = scored.every((s) => s.mag !== null);
+  const ranked = scored
+    .map((s) => ({
+      anchorId: s.anchorId,
+      score: useMagnetic ? s.ble * 0.7 + s.mag! * 0.3 : s.ble,
+      commonRadios: s.commonRadios,
+    }))
+    .sort((a, b) => a.score - b.score);
+  if (ranked.length < 3) return null;
+  const best = ranked[0]!;
+  const margin = ranked[1]!.score - best.score;
+  const candidate = best.score <= 2 && margin >= 1.25;
+  const confidence = candidate
+    ? 'clear'
+    : best.score <= 3 && margin >= 0.35
+      ? 'tentative'
+      : 'low';
+  return {
+    status: candidate ? 'candidate' : 'ambiguous',
+    reason: candidate
+      ? 'Possible known place. Confirm against your surroundings before using it.'
+      : 'Beacon signals do not distinguish a known place confidently. Your location has not changed.',
+    anchorId: candidate ? best.anchorId : null,
+    method: useMagnetic ? 'magnetic-ble' : 'ble',
+    confidence,
+    radioReason: `Beacon signal strengths from ${heard.length} TURN beacon${heard.length === 1 ? '' : 's'} were compared at every place${useMagnetic ? ', combined with magnetic readings' : ''}. Beacons not heard count as absent.`,
+    scores: ranked,
   };
 }
 
@@ -133,6 +256,10 @@ export function matchFingerprint(
     return unavailable(
       'Record two passes at three or more known places before testing.',
     );
+  if (revision === 'station-rank-v3') {
+    const ble = matchBle(survey, query);
+    if (ble) return ble;
+  }
   const q = magneticFeatures(query);
   if (!q.usable)
     return unavailable(

@@ -2,6 +2,12 @@
 
 Updated: 2026-10-10.
 
+## Android build 4: BLE beacon mode — 2026-10-15
+
+IMPLEMENTED: local `TurnBle` Expo module (`turn-ble-1`) in the existing `turn-motion` module package. It advertises a non-connectable TURN manufacturer payload (tag B1–B6 or any 1–12 alphanumerics; high/medium/low power, screen kept awake) and scans with a controller-level TURN filter, returning timestamped RSSI per beacon and an explicit completed flag; failed/cancelled/backgrounded scans return no evidence. New **Beacons** tab: act-as-beacon controls, six-second Listen with per-beacon dBm and packet count, capability/readiness details and a test procedure. Survey gets an **Include BLE beacons** toggle (Android build 4 only; feature-detected). iPhone/web are unchanged and do not scan or advertise. Manifest adds Bluetooth/Nearby-devices permissions (versionCode 4); SDK 57 retained.
+
+Validation: root check passes (103 tests, both typechecks, lint, formatting, 183 documentation targets) and web export succeeds. Mocked adapter tests cover Android 12+/older permission sets, denial, malformed tags, cancellation and native failure. Native compilation and phone behavior: see the build result in the [build guide](../../ANDROID_TEST_BUILD.md). Protocol: [BLE beacon test](../../FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4).
+
 ## Fingerprint save ordering and ranked recovery — 2026-10-10
 
 FACT: SDK 57 File.copy and File.move return promises. Fingerprint storage called them synchronously, deleting the copy source and reporting success before operations completed. This is a concrete race consistent with the reported Android NoSuchFileException; the full device stack was not available in the server terminal. Replaced these with the SDK's supported copySync/moveSync to maintain the existing synchronous save contract. Errors now propagate into the capture/label error handler. Backup-only recordings are discoverable after an interrupted replacement, with deduplicated history entries. Existing phone surveys/profiles remain in place; no migration or new native module is needed.

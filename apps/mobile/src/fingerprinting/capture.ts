@@ -1,6 +1,7 @@
 import { AppState, PermissionsAndroid, Platform } from 'react-native';
 import { Magnetometer } from 'expo-sensors';
 import { requireOptionalNativeModule } from 'expo';
+import { scanBeacons } from './ble';
 import {
   fingerprintCaptureSchema,
   type FingerprintCapture,
@@ -34,6 +35,7 @@ export async function captureFingerprint(
   enableWifi: boolean,
   signal: AbortSignal,
   progress: (seconds: number) => void,
+  enableBle = false,
 ): Promise<FingerprintCapture> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android')
     throw new Error('Open TURN on your phone to capture real sensor readings.');
@@ -58,6 +60,8 @@ export async function captureFingerprint(
         .catch(
           (e: unknown) => ({ status: String(e), readings: [] }) as WifiResult,
         );
+  // Same 8-second window as the magnetic capture; a failed scan is recorded as unavailable, never as silence.
+  const beacons = enableBle ? scanBeacons(8000, signal) : Promise.resolve(null);
   const magnetic: FingerprintCapture['magnetic'] = [];
   const started = performance.now();
   const cancelRadio = () => wifi?.cancel();
@@ -108,6 +112,7 @@ export async function captureFingerprint(
       if (signal.aborted) abort();
     });
     const readings = await radio;
+    const bleResult = await beacons;
     if (signal.aborted || AppState.currentState !== 'active')
       throw new Error('Capture interrupted. Retry while TURN is open.');
     if (magnetic.length < 30 || (magnetic.at(-1)?.t ?? 0) < 5)
@@ -123,6 +128,12 @@ export async function captureFingerprint(
       magnetic,
       wifi: readings.readings,
       wifiStatus: readings.status,
+      ...(bleResult
+        ? {
+            bleStatus: bleResult.status,
+            ...(bleResult.completed ? { ble: bleResult.readings } : {}),
+          }
+        : {}),
     });
   } finally {
     signal.removeEventListener('abort', cancelRadio);

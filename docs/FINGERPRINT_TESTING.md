@@ -24,6 +24,17 @@ Android normally permits four foreground scans in two minutes. For this first Wi
 
 Surveys and their snapshots stay on the phone. This pilot accepts up to 12 passes per location. Survey each device independently; sharing radio hashes/models between devices and cross-device magnetic calibration are not implemented.
 
+## BLE beacons with spare Android phones (build 4)
+
+**EXPERIMENT:** until commercial beacons arrive, spare Android phones can act as fixed TURN beacons; see [ADR-0007](../decisions/0007-ble-beacon-fingerprints.md). Install [Android build 4](ANDROID_TEST_BUILD.md) on every participating phone and on the scanner/test phone. iPhone can neither act as a beacon nor scan in this slice.
+
+1. On each spare phone open **Beacons**, choose a different name (B1–B6) and **Start beacon**. Allow Nearby devices; keep Bluetooth on, TURN open and the phone charging. Tape or prop it at a fixed height, away from metal, and leave it.
+2. On the test phone open **Beacons → Listen for 6 seconds** at several spots. Every beacon you expect should appear with a plausible dBm value (about −45 to −90). A beacon not heard here will not help matching.
+3. In **Survey**, enable **Include BLE beacons** and record two passes at three or more places exactly as above, then use **Find my place** with the toggle still enabled and label the actual place afterwards.
+4. Do not move, rename or restart a beacon between survey and tests; if you do, delete the survey (or survey again) before trusting results. Different transmit power or phone models change signal strength.
+
+The result card says **BLE beacons + magnetic** when beacons contributed. A scan that fails (permission, Bluetooth off, Android throttling) is stored without beacon data and falls back to magnetic matching; it is never treated as "no beacons nearby". Android throttles repeated scan starts, so leave about 30 seconds between captures. Only TURN beacons are recorded; other Bluetooth devices are filtered out by the phone's controller. Phone-as-beacon signals differ from commercial beacons, so these tests exercise the pipeline and are not final accuracy numbers.
+
 ## Independent recognition and navigation
 
 1. Select **2 · Find my place**. Return to a surveyed spot without choosing its name and capture a new reading.

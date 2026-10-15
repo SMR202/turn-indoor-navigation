@@ -57,6 +57,13 @@ export default function Layout() {
           }}
         />
         <Tabs.Screen
+          name="beacon"
+          options={{
+            title: 'Beacons',
+            tabBarIcon: ({ color }) => <NavIcon name="beacon" color={color} />,
+          }}
+        />
+        <Tabs.Screen
           name="tests"
           options={{
             title: 'Tests',

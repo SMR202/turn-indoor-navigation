@@ -9,3 +9,4 @@ Use sequential ADR IDs. Accepted decisions remain in history; supersede rather t
 - [ADR-0004: anchored PDR evaluation baseline](0004-anchored-pdr-evaluation-baseline.md)
 - [ADR-0005: one-floor guidance and anchor recovery](0005-route-progress-and-anchor-recovery.md)
 - [ADR-0006: buffered Android motion acquisition](0006-android-buffered-motion-acquisition.md)
+- [ADR-0007: TURN BLE beacon signals in the fingerprint pipeline](0007-ble-beacon-fingerprints.md)

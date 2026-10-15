@@ -2,6 +2,16 @@
 
 Updated: 2026-10-10.
 
+## BLE beacon fingerprints (phone beacons) — 2026-10-15
+
+DECISION: BLE beacons precede the ARCore slice because commercial beacons are expected soon and spare Android phones allow immediate testing. [ADR-0007](../../../decisions/0007-ble-beacon-fingerprints.md): BLE is an optional part of the existing fingerprint capture, surveyed per place, matched by the shared `station-rank-v3`. Historical v1/v2 records replay unchanged; a v3 query without usable BLE falls back to the v2 magnetic/Wi-Fi path.
+
+IMPLEMENTED: versioned optional `ble`/`bleStatus` capture fields (per-beacon timestamped RSSI; absent when the scan failed, empty when it completed and heard nothing); BLE reference/query scoring over the surveyed beacon universe with unheard-beacon penalties and capped differences, optionally blended with magnetic; same abstention gates; result methods `ble` and `magnetic-ble`. Confirmation of a clear/tentative result still requires physical user confirmation; no continuous fusion.
+
+Validation: root `npm run check` passes (103 tests); `npm run export:web` succeeds. Synthetic tests cover places with identical magnetic fields distinguished only by BLE, absent-beacon handling, equidistant abstention, survey/query feature-space mismatch, historical revision independence and schema validation. These are synthetic and establish no venue accuracy. No physical BLE capture, RSSI measurement or recognition result exists yet.
+
+Next: place 3–4 phone beacons, confirm each is heard with **Beacons → Listen**, survey two passes at three or more places with BLE enabled, record held-out and unsurveyed-spot trials, send the records and measure wrong matches/abstentions before any automatic fusion. Re-run after commercial beacons arrive; they need an identity adapter (iBeacon/Eddystone/vendor) feeding the same observations.
+
 ## Ranked fingerprints and recorded PDR corrections — 2026-10-10
 
 IMPLEMENTED: `station-rank-v2` replaces the fixed 2 microtesla magnetic scale with a bounded repeatability-based scale. The candidate score/margin gate remains; clear, tentative and low-confidence rankings are visible even when the matcher abstains. No percentage probability is claimed. Existing records without a matcher revision retain v1 scoring. Android radio coverage failures now identify why Wi-Fi was captured but excluded; every candidate still uses the same feature space. See [updated protocol](../../FINGERPRINT_TESTING.md).

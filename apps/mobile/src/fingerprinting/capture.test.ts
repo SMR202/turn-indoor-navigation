@@ -143,3 +143,17 @@ it('deduplicates repeated native timestamps instead of fabricating samples', asy
   await vi.advanceTimersByTimeAsync(8000);
   await assertion;
 });
+it('records an unavailable BLE scan without fabricating an empty beacon list', async () => {
+  const result = captureFingerprint(
+    'phone-test',
+    false,
+    new AbortController().signal,
+    vi.fn(),
+    true,
+  );
+  await feed();
+  await vi.advanceTimersByTimeAsync(8000);
+  const capture = await result;
+  expect(capture.ble).toBeUndefined();
+  expect(capture.bleStatus).toBeTruthy();
+});

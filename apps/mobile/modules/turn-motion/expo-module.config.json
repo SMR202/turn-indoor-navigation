@@ -3,7 +3,8 @@
   "android": {
     "modules": [
       "expo.modules.turnmotion.TurnMotionModule",
-      "expo.modules.turnmotion.TurnWifiModule"
+      "expo.modules.turnmotion.TurnWifiModule",
+      "expo.modules.turnmotion.TurnBleModule"
     ]
   }
 }

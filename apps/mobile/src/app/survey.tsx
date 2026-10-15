@@ -16,6 +16,7 @@ import {
   captureFingerprint,
   wifiBuildAvailable,
 } from '../fingerprinting/capture';
+import { bleBuildAvailable } from '../fingerprinting/ble';
 import {
   fingerprintProfile,
   loadFingerprintRecords,
@@ -33,6 +34,7 @@ export default function Survey() {
   const [selected, setSelected] = useState(venue.anchors[0]?.id ?? '');
   const [confirmed, setConfirmed] = useState(false);
   const [enableWifi, setEnableWifi] = useState(false);
+  const [enableBle, setEnableBle] = useState(false);
   const [busy, setBusy] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState('');
@@ -126,6 +128,7 @@ export default function Survey() {
         enableWifi,
         controller.signal,
         setSeconds,
+        enableBle,
       );
       if (!focused.current || controller.signal.aborted) return;
       if (!magneticFeatures(sample).usable)
@@ -169,8 +172,8 @@ export default function Survey() {
       persist(r);
       setMessage(
         mode === 'survey'
-          ? `Pass saved at ${anchor!.label}. ${sample.wifiStatus}.`
-          : `Independent test saved. ${sample.wifiStatus}.`,
+          ? `Pass saved at ${anchor!.label}. ${sample.wifiStatus}.${sample.bleStatus ? ` ${sample.bleStatus}${sample.ble ? ` · ${sample.ble.length} beacon${sample.ble.length === 1 ? '' : 's'} heard` : ''}.` : ''}`
+          : `Independent test saved. ${sample.wifiStatus}.${sample.bleStatus ? ` ${sample.bleStatus}${sample.ble ? ` · ${sample.ble.length} beacon${sample.ble.length === 1 ? '' : 's'} heard` : ''}.` : ''}`,
       );
     } catch (e) {
       if (focused.current) report(e);
@@ -329,6 +332,21 @@ export default function Survey() {
             onPress={() => setEnableWifi(!enableWifi)}
           />
         )}
+        {Platform.OS === 'android' && (
+          <Action
+            title={enableBle ? '✓ Include BLE beacons' : 'Include BLE beacons'}
+            selected={enableBle}
+            disabled={busy || !bleBuildAvailable}
+            onPress={() => setEnableBle(!enableBle)}
+          />
+        )}
+        {Platform.OS === 'android' && (
+          <Text style={ui.body}>
+            {bleBuildAvailable
+              ? 'BLE hears only TURN beacons from the Beacons tab. Survey and test with the same beacons in the same places; a capture whose scan fails is recorded without beacon data.'
+              : 'Install TURN build 4 to include BLE beacons.'}
+          </Text>
+        )}
         <Text style={ui.body}>
           {Platform.OS === 'android'
             ? wifiBuildAvailable
@@ -401,9 +419,13 @@ export default function Survey() {
       {record?.test && result && (
         <View style={ui.card}>
           <Text style={ui.eyebrow}>
-            {result.match.method === 'magnetic-wifi'
-              ? 'MAGNETIC + WI-FI'
-              : 'MAGNETIC MATCH'}
+            {result.match.method === 'magnetic-ble'
+              ? 'BLE BEACONS + MAGNETIC'
+              : result.match.method === 'ble'
+                ? 'BLE BEACONS'
+                : result.match.method === 'magnetic-wifi'
+                  ? 'MAGNETIC + WI-FI'
+                  : 'MAGNETIC MATCH'}
           </Text>
           <Text style={ui.heading}>
             {matched
