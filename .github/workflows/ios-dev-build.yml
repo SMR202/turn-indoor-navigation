@@ -43,7 +43,12 @@ jobs:
         working-directory: apps/mobile/ios
         shell: bash
         run: |
-          grep -E 'error:|** BUILD FAILED' xcodebuild.log | sort -u | head -n 15 | while IFS= read -r line; do echo "::error::${line:0:900}"; done
+          set +e
+          ls -la xcodebuild.log
+          grep -a -E 'error' xcodebuild.log | sort -u | head -n 20 > errors.txt
+          tail -n 12 xcodebuild.log >> errors.txt
+          while IFS= read -r line; do echo "::error::${line:0:900}"; done < errors.txt
+          exit 0
       - name: Package IPA
         working-directory: apps/mobile/ios
         run: |
