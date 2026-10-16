@@ -23,6 +23,7 @@ import { waitForForeground } from '../sensors/foreground';
 import TurnMotion from '../../modules/turn-motion';
 import {
   startShadowRecording,
+  summarizeTrace,
   type ShadowRecorder,
 } from '../fingerprinting/shadow';
 import { bleBuildAvailable } from '../fingerprinting/ble';
@@ -62,7 +63,11 @@ export function useNavigationSession() {
       if (mounted.current)
         setShadowNote(
           trace
-            ? `Beacon shadow log saved: ${trace.events.length} proximity events (positions unchanged).`
+            ? summarizeTrace(
+                trace,
+                (id) =>
+                  sampleVenue.anchors.find((a) => a.id === id)?.label ?? id,
+              )
             : 'Beacon shadow log could not be saved.',
         );
     } catch (e) {

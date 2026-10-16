@@ -135,3 +135,25 @@ export async function startShadowRecording(options: {
     }),
   };
 }
+
+/** Plain-language result of a shadow walk so a tester can see at once what the beacons did. */
+export function summarizeTrace(
+  trace: BleTraceRecord,
+  labelOf: (anchorId: string) => string,
+): string {
+  const heard = new Map<string, number>();
+  for (const s of trace.samples) heard.set(s.tag, (heard.get(s.tag) ?? 0) + 1);
+  const heardText = heard.size
+    ? `Heard ${[...heard].map(([tag, n]) => `${tag} ×${n}`).join(', ')}.`
+    : 'No TURN beacon was heard during this walk.';
+  if (trace.events.length === 0)
+    return `Beacon shadow log saved (positions unchanged). ${heardText} No beacon came close enough to count as nearby. Check calibration if you passed one.`;
+  const lines = trace.events.map((e) => {
+    const gap =
+      e.discrepancyMetres === null
+        ? 'no position estimate to compare'
+        : `your estimate was ${e.discrepancyMetres.toFixed(1)} m from it`;
+    return `${e.tag} near ${labelOf(e.anchorId)} at ${e.t.toFixed(0)} s: ${gap}`;
+  });
+  return `Beacon shadow log saved (positions unchanged). ${heardText}\n${lines.join('\n')}`;
+}

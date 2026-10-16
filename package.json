@@ -12,6 +12,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
+    "analyze:ble": "tsx scripts/analyze-ble-traces.mjs",
     "replay:fingerprints": "tsx scripts/replay-fingerprints.mjs",
     "compare:motion": "tsx scripts/compare-motion.mjs",
     "phone:tests": "tsx scripts/phone-tests.mjs",

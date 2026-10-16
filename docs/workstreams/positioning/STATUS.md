@@ -2,6 +2,14 @@
 
 Updated: 2026-10-10.
 
+## First iPhone BLE results and shadow-log diagnostics — 2026-10-16
+
+EXPERIMENT RESULT: seven iPhone fingerprint records arrived (six survey snapshots, one labelled test; all `station-rank-v3`, three stations, two passes each). The iPhone TURN build scans beacons: 52–125 packets per 8 s pass. B1 was heard at about −65/−67 dBm at one station, about −82 dBm at another and not at the third; B2 at about −84 dBm at its station and −94/−98 dBm near B1's, so the three places are separable by beacon signal alone. The single labelled test ranked the correct place first (score 0.43 versus 1.49), but the lead is "tentative": margin 1.06 is below the 1.25 clear gate, so it abstained — the same over-conservative-margin pattern found for magnetic scoring. One test establishes nothing statistically; more held-out trials per station are needed before changing gates. Raw files remain in ignored work/test-inbox; analysis scripts in ignored work/ble-analysis-20261016.
+
+FACT: no `ble-trace` shadow log has been uploaded, so no proximity-event, miss or discrepancy result exists. The phone saved a shadow log after the walk but it must be sent from Beacons → Send beacon walk logs. Added: a plain-language summary after each walk (beacons heard, events, estimate-to-beacon distance) and `npm run analyze:ble` for uploaded logs, including a threshold sweep on the recorded samples.
+
+Next: send the saved beacon walk logs; run 5+ held-out Find my place trials per station with BLE on; then retune the BLE gate and proximity thresholds from data before any live correction.
+
 ## BLE proximity anchors, shadow mode — 2026-10-16
 
 DECISION: [ADR-0008](../../../decisions/0008-ble-proximity-anchors-shadow-mode.md) with the [BLE positioning review](../../../research/BLE_BEACON_POSITIONING_2026_10.md): calibrated passive proximity anchors, recorded in shadow mode before any live correction; trilateration deferred (RSSI shadowing, unknown phone power).
