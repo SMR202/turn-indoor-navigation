@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { activeVenue as venue } from '../config/active-venue';
 import { calculateRoute } from '@turn/routing';
@@ -226,6 +227,10 @@ export default function Tests() {
             : 'Development venue'}
         </Text>
       </View>
+      <Action
+        title="Open the classic test navigator"
+        onPress={() => router.push('/classic')}
+      />
       {!!error && (
         <Text accessibilityRole="alert" selectable style={{ color: '#9c3328' }}>
           {error}

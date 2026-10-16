@@ -1,669 +1,868 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  calculateRoute,
-  initialRouteHeading,
-  RouteGuidance,
-  type Guidance,
-} from '@turn/routing';
-import { anchorPayload, resolveAnchorPayload } from '@turn/positioning-core';
+import { calculateRoute, RouteGuidance, type Guidance } from '@turn/routing';
+import { anchorPayload } from '@turn/positioning-core';
+import type { Pose, Route } from '@turn/contracts';
 import { activeVenue as venue } from '../config/active-venue';
 import { useNavigationSession } from '../navigation/use-navigation-session';
 import { loadCalibration } from '../navigation/calibration-storage';
 import { saveRun } from '../navigation/run-storage';
-import { FloorMap } from '../components/floor-map';
-import { AnchorScanner } from '../components/anchor-scanner';
-
-import { Action, Section, theme, ui } from '../components/ui';
 import {
-  fingerprintProfile,
-  loadFingerprintRecords,
-} from '../fingerprinting/storage';
-import { confirmFingerprintLocation } from '@turn/positioning-core';
-const ink = theme.ink;
-const card = ui.card;
-function instruction(g: Guidance) {
-  if (g.status === 'off-route') return 'Off-route estimate · still recording';
-  if (g.status === 'recover' || g.status === 'unsupported')
-    return 'Check your location';
-  if (g.status === 'near-destination') return 'Check for your destination';
-  const metres = g.distanceToActionMetres.toFixed(1);
+  AssistedTracker,
+  type BeaconHealth,
+  type TrackerEstimate,
+} from '../navigation/assisted-tracker';
+import {
+  buildFusionMap,
+  etaMinutes,
+  headingAlongRoute,
+  nearestAnchor,
+  nearestRoutableNode,
+  remainingRoute,
+  roomNameAt,
+} from '../navigation/assist-helpers';
+import { fingerprintProfile, loadPlacements } from '../fingerprinting/storage';
+import { NavMap } from '../components/nav-map';
+import { theme } from '../components/ui';
+
+type Phase =
+  'idle' | 'locating' | 'confirm' | 'ready' | 'navigating' | 'arrived';
+const BLUE = '#1A73E8';
+const floorId = venue.floors[0]!.id;
+
+function maneuver(g: Guidance | null) {
+  if (!g) return { glyph: '↑', text: 'Head along the route', sub: '' };
+  if (g.status === 'off-route' || g.status === 'recover')
+    return {
+      glyph: '↻',
+      text: 'Rerouting…',
+      sub: 'Finding the best way from where you are',
+    };
+  const metres = g.distanceToActionMetres;
+  const dist =
+    metres >= 10 ? `${Math.round(metres)} m` : `${metres.toFixed(0)} m`;
+  if (g.status === 'near-destination')
+    return { glyph: '⚑', text: 'Your destination is close', sub: '' };
   if (g.action === 'arrive')
-    return `Continue · about ${metres} m to destination`;
-  const action =
+    return { glyph: '↑', text: `Continue ${dist}`, sub: 'to your destination' };
+  const glyph =
+    g.action === 'left'
+      ? '↰'
+      : g.action === 'right'
+        ? '↱'
+        : g.action === 'turn-around'
+          ? '↶'
+          : '↑';
+  const verb =
     g.action === 'turn-around'
       ? 'Turn around'
       : g.action === 'continue'
         ? 'Continue'
         : `Turn ${g.action}`;
-  return g.distanceToActionMetres <= 0.8
-    ? `${action} at the junction`
-    : `${action} in about ${metres} m`;
+  return {
+    glyph,
+    text: metres <= 1.2 ? `${verb} now` : `${verb} in ${dist}`,
+    sub: '',
+  };
 }
 
 export default function Navigate() {
-  const session = useNavigationSession();
+  const session = useNavigationSession({ shadow: false });
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     fingerprintAnchor?: string;
     fingerprintRecord?: string;
   }>();
-  const appliedFingerprint = useRef<string | null>(null);
-  const insets = useSafeAreaInsets();
+  const [phase, setPhase] = useState<Phase>('idle');
   const [destination, setDestination] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [stepLength, setStepLength] = useState<number | null>(null);
-  const [calibrationLoaded, setCalibrationLoaded] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [showStarts, setShowStarts] = useState(false);
-  const [anchorName, setAnchorName] = useState('Location not set');
-  const [aligned, setAligned] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [arrived, setArrived] = useState(false);
-  const [error, setError] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [est, setEst] = useState<TrackerEstimate | null>(null);
+  const [route, setRoute] = useState<Route | null>(null);
   const [guidance, setGuidance] = useState<Guidance | null>(null);
-  const [checkpointNode, setCheckpointNode] = useState<string | null>(null);
-  const [checkpointMessage, setCheckpointMessage] = useState('');
-  const [markedAt, setMarkedAt] = useState<number | null>(null);
-  const busy = session.running || session.starting;
-  const pose = session.snapshot.pose;
-  const sessionId = session.getRecording()?.sessionId;
-  const poi = venue.pois.find((p) => p.id === destination);
-  const routeResult = useMemo(
-    () =>
-      destination && session.anchorNodeId
-        ? calculateRoute(
-            venue,
-            session.anchorNodeId,
-            venue.pois.find((p) => p.id === destination)!.nodeId,
-          )
-        : null,
-    [destination, session.anchorNodeId],
+  const [follow, setFollow] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [stepLength, setStepLength] = useState<number | null>(null);
+  const [health, setHealth] = useState<BeaconHealth[]>([]);
+  const [tapMode, setTapMode] = useState<'destination' | 'position'>(
+    'destination',
   );
-  const route = routeResult?.status === 'ok' ? routeResult.route : undefined;
-  const guide = useMemo(
-    () => (route ? new RouteGuidance(route) : null),
-    [route, sessionId],
-  );
-  const heading = route ? initialRouteHeading(route) : null;
-  const checkpoint = venue.nodes.find(
-    (n) => n.id === checkpointNode && route?.nodeIds.includes(n.id),
-  );
-  useEffect(() => {
-    setCheckpointNode(null);
-    setMarkedAt(null);
-    setCheckpointMessage('');
-  }, [sessionId, destination]);
-  function markCheckpoint(phase: 'arrival' | 'after-wait') {
-    if (!checkpoint) return;
-    try {
-      const point = session.markCheckpoint(checkpoint.id, phase);
-      setMarkedAt(phase === 'arrival' ? point.timestampSeconds : null);
-      setCheckpointMessage(
-        phase === 'arrival'
-          ? 'Arrival saved. Stay at this point for 2 seconds, then save the still check.'
-          : 'Still check saved. Continue walking or choose your next checkpoint.',
-      );
-    } catch (e) {
-      report(e);
-    }
-  }
+  const [reroutes, setReroutes] = useState(0);
+  const tracker = useRef<AssistedTracker | null>(null);
+  const unsubscribe = useRef<(() => void) | null>(null);
+  const guide = useRef<RouteGuidance | null>(null);
+  const offRouteSince = useRef<number | null>(null);
+  const appliedFingerprint = useRef<string | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(200);
+  const phaseRef = useRef<Phase>('idle');
+  phaseRef.current = phase;
+
+  const poi = venue.pois.find((p) => p.id === destination) ?? null;
+  const destNode = poi
+    ? (venue.nodes.find((n) => n.id === poi.nodeId) ?? null)
+    : null;
+  const rawPose = session.snapshot.pose;
   const report = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      void loadCalibration().then((value) => {
-        if (active) {
-          setStepLength(value);
-          setCalibrationLoaded(true);
-        }
-      });
+      void loadCalibration().then((v) => active && setStepLength(v));
       return () => {
         active = false;
+        // Leaving the screen mid-setup: stop scanning and drop the half-finished fix.
+        if (phaseRef.current === 'locating' || phaseRef.current === 'confirm') {
+          disposeTracker();
+          setPhase('idle');
+        }
       };
     }, []),
   );
-  useEffect(() => {
-    if (!guide) {
-      setGuidance(null);
-      return;
-    }
-    const next = pose ? guide.consume(pose) : guide.snapshot();
-    setGuidance(next);
-    if (next.status === 'recover' && busy) session.stop(next.message);
-  }, [guide, pose, busy, session.stop]);
-  useEffect(() => {
-    if (!session.snapshot.stopped) return;
-    const recording = session.getRecording();
-    if (recording?.observations.some((o) => o.type === 'accelerometer')) {
-      try {
-        saveRun(recording);
-      } catch (e) {
-        report(e);
-      }
-    }
-    // Refresh the saved record when the bounded Apple query completes as well.
-  }, [session.snapshot.stopped, session.nativeCount?.status, sessionId]);
 
-  function establish(payload: string) {
-    const anchor = resolveAnchorPayload(payload, venue);
-    const previous = session.getRecording();
-    if (previous?.observations.some((o) => o.type === 'accelerometer'))
-      saveRun(previous);
-    session.anchor(payload, stepLength ?? 0.55, 'continuous-test');
-    setAnchorName(anchor.label);
-    setScanning(false);
-    setShowStarts(false);
-    setAligned(false);
-    setStarted(false);
-    setArrived(false);
-    setError('');
-  }
-  useEffect(() => {
-    if (
-      !params.fingerprintRecord ||
-      appliedFingerprint.current === params.fingerprintRecord ||
-      busy ||
-      !calibrationLoaded
-    )
-      return;
+  function ensureTracker() {
+    if (tracker.current) return tracker.current;
+    let placements = null;
     try {
-      const saved = loadFingerprintRecords().find(
-        (r) =>
-          r.sessionId === params.fingerprintRecord &&
-          r.survey.venueId === venue.venueId &&
-          r.survey.venueRevision === venue.revision,
-      );
-      appliedFingerprint.current = params.fingerprintRecord;
-      if (!saved || !params.fingerprintAnchor)
-        throw new Error(
-          'This saved fingerprint test is missing. Find your place again.',
-        );
-      const fix = confirmFingerprintLocation(saved, {
-        venueId: venue.venueId,
-        venueRevision: venue.revision,
-        deviceProfile: fingerprintProfile(),
-        anchorId: params.fingerprintAnchor,
-        now: Date.now(),
-      });
-      const previous = session.getRecording();
-      const previousPose = session.snapshot.pose;
-      establish(anchorPayload(venue, params.fingerprintAnchor!));
-      const next = session.getRecording();
-      if (next) {
-        next.positionFix = {
-          ...fix,
-          previousSessionId: previous?.sessionId,
-          previousPosition: previousPose
-            ? {
-                floorId: previousPose.floorId,
-                x: previousPose.position.x,
-                y: previousPose.position.y,
-              }
-            : undefined,
-        };
-        saveRun(next);
-      }
-    } catch (e) {
-      report(e);
+      const saved = loadPlacements(venue.venueId, venue.revision);
+      if (
+        saved &&
+        saved.deviceProfile === fingerprintProfile() &&
+        saved.beacons.some((b) => b.referenceRssi !== undefined)
+      )
+        placements = saved;
+    } catch {
+      placements = null;
     }
-  });
+    const t = new AssistedTracker({
+      floorId,
+      map: buildFusionMap(venue, floorId),
+      placements,
+      platform: Platform.OS === 'ios' ? 'ios' : 'android',
+    });
+    tracker.current = t;
+    unsubscribe.current = t.subscribe(setEst);
+    return t;
+  }
+  function disposeTracker() {
+    unsubscribe.current?.();
+    unsubscribe.current = null;
+    tracker.current?.finish();
+    tracker.current = null;
+    setEst(null);
+    setHealth([]);
+  }
+  useEffect(() => () => disposeTracker(), []);
+  useEffect(() => {
+    if (!tracker.current) return;
+    const timer = setInterval(
+      () => setHealth(tracker.current?.health() ?? []),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [phase]);
+
   function selectDestination(id: string) {
     setDestination(id);
-    setAligned(false);
-    setArrived(false);
-    setStarted(false);
+    setSearchOpen(false);
+    setQuery('');
     setError('');
+    if (phase === 'arrived') {
+      setPhase('idle');
+      setRoute(null);
+    }
   }
-  function start() {
-    const recording = session.getRecording();
-    if (!recording || !poi || heading === null || stepLength === null) return;
-    if (recording.stepLengthMetres !== stepLength) {
-      setError('Calibration changed. Set your starting location again.');
+  async function findMe() {
+    if (!poi) return;
+    setError('');
+    setMessage('Listening for your beacons…');
+    setPhase('locating');
+    try {
+      const t = ensureTracker();
+      if (t.estimate()) {
+        setPhase('confirm');
+        setMessage('');
+        return;
+      }
+      await t.begin();
+      if (t.beaconCount < 2) {
+        setTapMode('position');
+        setMessage(
+          t.beaconCount === 0
+            ? 'Beacon assist is not set up yet. Tap where you are on the map.'
+            : 'Only one beacon is set up. Tap where you are on the map.',
+        );
+        setPhase('confirm');
+        return;
+      }
+      const found = await t.locate(6000);
+      if (phaseRef.current !== 'locating') return;
+      if (!found) {
+        setTapMode('position');
+        setMessage(
+          t.streamFailure ??
+            'Could not hear enough beacons here. Tap where you are on the map.',
+        );
+      } else setMessage('');
+      setPhase('confirm');
+    } catch (e) {
+      setTapMode('position');
+      setMessage(
+        `${e instanceof Error ? e.message : String(e)} Tap where you are on the map.`,
+      );
+      setPhase('confirm');
+    }
+  }
+  function buildRoute(from: { x: number; y: number }) {
+    if (!poi) return null;
+    const start = nearestRoutableNode(venue, floorId, from);
+    const result = calculateRoute(venue, start.id, poi.nodeId);
+    if (result.status !== 'ok') return null;
+    return result.route;
+  }
+  function confirmLocation() {
+    const e = tracker.current?.estimate();
+    if (!e || !poi) return;
+    const r = buildRoute(e);
+    if (!r) {
+      setError(
+        'No walkable route from here to that destination. Tap your location again.',
+      );
       return;
     }
-    const anchor = recording.observations.find((o) => o.type === 'anchor');
-    if (anchor?.type !== 'anchor') return;
-    recording.navigation = {
-      destinationPoiId: poi.id,
-      sourceAnchorId: anchor.anchorId,
-      guidanceRevision: 'route-progress-v2',
-      completion: 'in-progress',
-    };
-    setStarted(true);
-    setError('');
-    void session.start(heading).catch(report);
+    setRoute(r);
+    guide.current = new RouteGuidance(r);
+    setGuidance(guide.current.snapshot());
+    setReroutes(0);
+    setFollow(false);
+    setPhase('ready');
   }
-  function recover() {
-    if (busy) session.stop('Paused for location recovery.');
-    setScanning(true);
-    setAligned(false);
+  function beginWalking() {
+    const e = tracker.current?.estimate();
+    if (!e || !route || !poi) return;
+    try {
+      const anchor = nearestAnchor(venue, floorId, e);
+      session.anchor(
+        anchorPayload(venue, anchor.id),
+        stepLength ?? 0.62,
+        'continuous-test',
+      );
+      tracker.current!.syncRaw(anchor.position.x, anchor.position.y);
+      const line = remainingRoute(route.geometry, e);
+      const heading = headingAlongRoute(line, e, 1) ?? 0;
+      const rec = session.getRecording();
+      if (rec)
+        rec.navigation = {
+          destinationPoiId: poi.id,
+          sourceAnchorId: anchor.id,
+          guidanceRevision: 'route-progress-v2',
+          completion: 'in-progress',
+        };
+      offRouteSince.current = null;
+      setError('');
+      setFollow(true);
+      setPhase('navigating');
+      void session.start(heading).catch(report);
+    } catch (err) {
+      report(err);
+    }
   }
-  function confirmArrival() {
-    const recording = session.getRecording();
-    const anchor = recording?.observations.find((o) => o.type === 'anchor');
-    if (recording && poi && anchor?.type === 'anchor')
-      recording.navigation = {
-        destinationPoiId: poi.id,
-        sourceAnchorId: anchor.anchorId,
-        guidanceRevision: 'route-progress-v2',
-        completion: 'user-confirmed',
-      };
-    session.stop('Destination confirmed by the user.');
-    if (recording) {
+  function reroute(from: { x: number; y: number }) {
+    const r = buildRoute(from);
+    if (!r) return;
+    setRoute(r);
+    guide.current = new RouteGuidance(r);
+    offRouteSince.current = null;
+    setReroutes((n) => n + 1);
+  }
+  function arrive() {
+    const rec = session.getRecording();
+    session.stop('Arrived at the destination.');
+    if (rec?.observations.some((o) => o.type === 'accelerometer')) {
       try {
-        saveRun(recording);
+        saveRun(rec);
       } catch (e) {
         report(e);
       }
     }
-    setArrived(true);
-    setStarted(false);
+    disposeTracker();
+    setFollow(false);
+    setPhase('arrived');
   }
-  const needsRecovery =
-    !arrived &&
-    !!pose &&
-    (session.snapshot.stopped || guidance?.status === 'recover');
-  return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={{
-        padding: 18,
-        paddingBottom: Math.max(insets.bottom, 24),
-        gap: 16,
-        maxWidth: 850,
-        width: '100%',
-        alignSelf: 'center',
+  function endNavigation() {
+    session.stop('Navigation ended.');
+    disposeTracker();
+    setRoute(null);
+    setGuidance(null);
+    setFollow(false);
+    setTapMode('destination');
+    setMessage('');
+    setPhase('idle');
+  }
+
+  // Walking sensors feed the filter as displacements.
+  useEffect(() => {
+    if (phase !== 'navigating' || !rawPose) return;
+    tracker.current?.walk(rawPose.position.x, rawPose.position.y);
+  }, [rawPose?.position.x, rawPose?.position.y, phase]);
+
+  // Guidance runs on the fused position, with automatic rerouting and arrival.
+  useEffect(() => {
+    if (phase !== 'navigating' || !guide.current || !est || !rawPose) return;
+    const fused: Pose = {
+      ...rawPose,
+      position: { x: est.x, y: est.y },
+      status: 'tracking',
+      horizontalUncertaintyMetres: est.sigmaMetres,
+    };
+    const g = guide.current.consume(fused);
+    setGuidance(g);
+    if (g.status === 'off-route' || g.status === 'recover') {
+      offRouteSince.current ??= Date.now();
+      if (Date.now() - offRouteSince.current > 2500) reroute(est);
+    } else offRouteSince.current = null;
+    if (
+      destNode &&
+      (g.status === 'near-destination' || g.remainingMetres < 1.2) &&
+      Math.hypot(est.x - destNode.x, est.y - destNode.y) < 2.4
+    )
+      arrive();
+  }, [est, rawPose?.timestampSeconds, phase]);
+
+  // Walking sensors stopped (permission, tilt, timing): keep the fused position and ask to resume.
+  useEffect(() => {
+    if (phase === 'navigating' && session.snapshot.stopped) {
+      setMessage(
+        `${session.snapshot.message} Hold the phone flat and press Resume.`,
+      );
+      setFollow(false);
+      setPhase('ready');
+    }
+  }, [session.snapshot.stopped]);
+
+  // A confirmed fingerprint match from the Survey tab sets the position.
+  useEffect(() => {
+    const id = params.fingerprintRecord;
+    if (!id || appliedFingerprint.current === id || !params.fingerprintAnchor)
+      return;
+    appliedFingerprint.current = id;
+    const anchor = venue.anchors.find((a) => a.id === params.fingerprintAnchor);
+    if (!anchor) return;
+    const t = ensureTracker();
+    void t.begin();
+    t.setPosition(anchor.position.x, anchor.position.y, 1.2);
+    setMessage(`Position set from your fingerprint at ${anchor.label}.`);
+    setPhase((p) => (p === 'idle' ? 'confirm' : p));
+  });
+
+  const displayRoute = useMemo(() => {
+    if (!route) return undefined;
+    const pts = route.geometry.map((p) => ({ x: p.x, y: p.y }));
+    if (!est) return pts;
+    const line = remainingRoute(pts, est);
+    return Math.hypot(line[0]!.x - est.x, line[0]!.y - est.y) > 0.4
+      ? [{ x: est.x, y: est.y }, ...line]
+      : line;
+  }, [route, est?.x, est?.y]);
+  const remaining =
+    guidance && guidance.status !== 'off-route'
+      ? guidance.remainingMetres
+      : null;
+  const heardCount = health.filter(
+    (h) => h.silentSeconds !== null && h.silentSeconds < 6,
+  ).length;
+  const silentBeacons = health
+    .filter((h) => h.silentSeconds === null || h.silentSeconds > 20)
+    .map((h) => h.tag);
+  const streamProblem = tracker.current?.streamFailure ?? null;
+  const matches = query
+    ? venue.pois
+        .filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 6)
+    : venue.pois.slice(0, 6);
+  const here = est ? roomNameAt(venue, floorId, est) : null;
+  const mapBeacons =
+    phase === 'idle' || phase === 'navigating' || phase === 'confirm' ? [] : [];
+
+  function onMapTap(p: { x: number; y: number }) {
+    if (phase === 'confirm' && tapMode === 'position') {
+      const t = ensureTracker();
+      void t.begin();
+      t.setPosition(p.x, p.y, 1.2);
+      setMessage('');
+      return;
+    }
+    if (phase === 'navigating' && tapMode === 'position') {
+      tracker.current?.setPosition(p.x, p.y, 1.2);
+      setTapMode('destination');
+      setMessage('Location corrected.');
+      return;
+    }
+    if (phase === 'idle' || phase === 'arrived') {
+      const nearest = venue.pois
+        .map((q) => ({ q, n: venue.nodes.find((n) => n.id === q.nodeId)! }))
+        .filter((r) => r.n.floorId === floorId)
+        .map((r) => ({ q: r.q, d: Math.hypot(r.n.x - p.x, r.n.y - p.y) }))
+        .sort((a, b) => a.d - b.d)[0];
+      if (nearest && nearest.d < 3) selectDestination(nearest.q.id);
+    }
+  }
+
+  const sheet = {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: Math.max(insets.bottom, 14) + 4,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 14,
+  };
+  const primary = (title: string, onPress: () => void, disabled = false) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={{
+        backgroundColor: disabled ? '#C9D3E0' : BLUE,
+        borderRadius: 26,
+        minHeight: 52,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 22,
       }}
     >
-      <View style={{ gap: 5 }}>
-        <Text
-          style={{ color: theme.primary, fontWeight: '700', letterSpacing: 2 }}
-        >
-          YOUR INDOOR GUIDE
-        </Text>
-        <Text
-          style={{
-            fontSize: 32,
-            letterSpacing: -1,
-            color: ink,
-            fontWeight: '700',
-          }}
-        >
-          Where are you heading?
-        </Text>
-        <Text style={{ color: theme.muted }}>{venue.name} · Offline map</Text>
-      </View>
-      {error ? (
-        <Text accessibilityRole="alert" style={{ color: '#9c3328' }}>
-          {error}
-        </Text>
-      ) : null}
-      {session.shadowNote ? (
-        <Text style={{ color: '#475467' }}>{session.shadowNote}</Text>
-      ) : null}
-      {session.nativeSaveError ? (
-        <Text accessibilityRole="alert">{session.nativeSaveError}</Text>
-      ) : null}
-      <View style={{ ...card, padding: 10 }}>
-        <FloorMap
-          venue={venue}
-          compact
-          floorId={pose?.floorId ?? venue.floors[0]!.id}
-          pose={pose ?? undefined}
-          route={route}
-          trace={session.trace}
-          course={
-            checkpoint ? [{ x: checkpoint.x, y: checkpoint.y }] : undefined
-          }
-          onSelectRoom={
-            busy
-              ? undefined
-              : (id) => {
-                  const found = venue.pois.find((p) => p.nodeId === id);
-                  if (found) selectDestination(found.id);
-                }
-          }
-          selectedRoom={poi?.nodeId}
-        />
-        <Text style={{ color: theme.muted, padding: 8 }}>
-          Your position is estimated and may drift from the route. Check door
-          locations and clearance as you go.
-        </Text>
-      </View>
-      {arrived ? (
-        <View style={card}>
-          <Text style={{ fontSize: 25, color: ink, fontWeight: '700' }}>
-            You confirmed arrival
-          </Text>
-          <Text>{poi?.name}. Your session is saved in Tests & recordings.</Text>
-          <Action
-            title="Choose another destination"
-            onPress={() => {
-              setDestination(null);
-              setArrived(false);
-              setStarted(false);
+      <Text style={{ color: 'white', fontSize: 17, fontWeight: '700' }}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+  const secondary = (title: string, onPress: () => void) => (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        borderRadius: 26,
+        minHeight: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 18,
+        backgroundColor: '#EEF3FD',
+      }}
+    >
+      <Text style={{ color: BLUE, fontSize: 16, fontWeight: '600' }}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+  const man = maneuver(guidance);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <NavMap
+        venue={venue}
+        floorId={floorId}
+        height="fill"
+        insets={{
+          top: phase === 'navigating' ? insets.top + 96 : insets.top + 70,
+          bottom: sheetHeight + 8,
+        }}
+        position={
+          est
+            ? {
+                x: est.x,
+                y: est.y,
+                sigma: est.sigmaMetres,
+                headingRad:
+                  phase === 'navigating' ? (rawPose?.headingRad ?? null) : null,
+              }
+            : null
+        }
+        route={displayRoute}
+        destination={destNode ? { x: destNode.x, y: destNode.y } : null}
+        beacons={mapBeacons}
+        follow={follow}
+        onFollowChange={setFollow}
+        onTap={onMapTap}
+        hint={
+          tapMode === 'position' &&
+          (phase === 'confirm' || phase === 'navigating')
+            ? 'Tap your exact location on the map'
+            : undefined
+        }
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: insets.top + 10,
+          left: 12,
+          right: 12,
+          gap: 8,
+        }}
+      >
+        {phase === 'navigating' ? (
+          <View
+            style={{
+              backgroundColor: '#1F3A5F',
+              borderRadius: 20,
+              padding: 14,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              shadowColor: '#000',
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              elevation: 8,
             }}
-          />
-        </View>
-      ) : (
-        <>
-          <View style={card}>
-            <Text style={{ color: ink, fontSize: 19, fontWeight: '700' }}>
-              1 · Choose a destination
+          >
+            <Text style={{ color: 'white', fontSize: 44, lineHeight: 48 }}>
+              {man.glyph}
             </Text>
-            {poi && (
-              <Text style={{ color: ink, fontWeight: '600' }}>
-                Selected: {poi.name}
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{ color: 'white', fontSize: 22, fontWeight: '700' }}
+                accessibilityLiveRegion="polite"
+              >
+                {session.settling > 0 || session.starting
+                  ? `Hold still · ${session.settling || 4}`
+                  : man.text}
               </Text>
-            )}
-            {!busy && (
-              <>
-                <TextInput
-                  accessibilityLabel="Search destinations"
-                  placeholder="Search rooms and places"
-                  value={query}
-                  onChangeText={setQuery}
-                  style={{
-                    padding: 14,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                    borderRadius: 10,
+              {man.sub ? (
+                <Text style={{ color: '#C7D6EE', fontSize: 14 }}>
+                  {man.sub}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ) : (
+          <>
+            <View
+              style={{
+                backgroundColor: 'white',
+                borderRadius: 26,
+                paddingHorizontal: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                shadowColor: '#000',
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                elevation: 8,
+              }}
+            >
+              <Text style={{ fontSize: 18, color: '#5F6368' }}>⌕</Text>
+              <TextInput
+                accessibilityLabel="Search rooms and places"
+                placeholder={poi ? poi.name : 'Search rooms and places'}
+                placeholderTextColor={poi ? theme.ink : '#80868B'}
+                value={query}
+                onFocus={() => setSearchOpen(true)}
+                onChangeText={(v) => {
+                  setQuery(v);
+                  setSearchOpen(true);
+                }}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  fontSize: 16,
+                  color: theme.ink,
+                }}
+              />
+              {(query || searchOpen) && (
+                <Pressable
+                  accessibilityLabel="Close search"
+                  onPress={() => {
+                    setQuery('');
+                    setSearchOpen(false);
                   }}
-                />
-                {query.length > 0 && (
-                  <Action title="Clear search" onPress={() => setQuery('')} />
-                )}
-                <View
-                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
                 >
-                  {venue.pois
-                    .filter((p) =>
-                      p.name.toLowerCase().includes(query.toLowerCase()),
-                    )
-                    .map((p) => (
-                      <Action
-                        key={p.id}
-                        title={p.name}
-                        selected={p.id === destination}
-                        onPress={() => selectDestination(p.id)}
-                      />
-                    ))}
-                </View>
-                {!venue.pois.some((p) =>
-                  p.name.toLowerCase().includes(query.toLowerCase()),
-                ) && <Text>No matching destinations.</Text>}
+                  <Text style={{ fontSize: 20, color: '#5F6368', padding: 6 }}>
+                    ✕
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+            {searchOpen && (
+              <View
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: 20,
+                  overflow: 'hidden',
+                  elevation: 8,
+                }}
+              >
+                {matches.length === 0 ? (
+                  <Text style={{ padding: 16, color: theme.muted }}>
+                    No matching places.
+                  </Text>
+                ) : (
+                  matches.map((p) => (
+                    <Pressable
+                      key={p.id}
+                      accessibilityRole="button"
+                      onPress={() => selectDestination(p.id)}
+                      style={{
+                        paddingVertical: 14,
+                        paddingHorizontal: 18,
+                        borderTopWidth: 1,
+                        borderColor: '#EEF1F5',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          color: theme.ink,
+                          fontWeight: '600',
+                        }}
+                      >
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            )}
+          </>
+        )}
+        {error ? (
+          <View
+            style={{
+              backgroundColor: '#FDECEA',
+              borderRadius: 14,
+              padding: 12,
+            }}
+          >
+            <Text accessibilityRole="alert" style={{ color: '#9C3328' }}>
+              {error}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View
+        style={sheet}
+        onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
+      >
+        {phase === 'idle' && (
+          <>
+            {poi ? (
+              <>
+                <Text
+                  style={{ fontSize: 24, fontWeight: '700', color: theme.ink }}
+                >
+                  {poi.name}
+                </Text>
+                <Text style={{ color: theme.muted }}>{venue.name}</Text>
+                {primary('Directions', () => void findMe())}
+              </>
+            ) : (
+              <>
+                <Text
+                  style={{ fontSize: 22, fontWeight: '700', color: theme.ink }}
+                >
+                  Where to?
+                </Text>
+                <Text style={{ color: theme.muted }}>
+                  Search above, or tap a room on the map.
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8 }}
+                >
+                  {venue.pois.slice(0, 8).map((p) => (
+                    <Pressable
+                      key={p.id}
+                      accessibilityRole="button"
+                      onPress={() => selectDestination(p.id)}
+                      style={{
+                        backgroundColor: '#EEF3FD',
+                        borderRadius: 18,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                      }}
+                    >
+                      <Text style={{ color: BLUE, fontWeight: '600' }}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </>
             )}
-          </View>
-          <View style={card}>
-            <Text style={{ color: ink, fontSize: 19, fontWeight: '700' }}>
-              2 · Establish your location
+            <Text style={{ color: theme.muted, fontSize: 12 }}>
+              {tracker.current?.beaconCount
+                ? `Beacon assist ready · ${tracker.current.beaconCount} beacons`
+                : 'Beacon assist is set up in the Beacons tab.'}
             </Text>
-            <Text style={ui.body}>{anchorName}</Text>
-            <Action
-              title={
-                pose
-                  ? 'Check location with signals'
-                  : 'Find location with signals'
-              }
-              primary
-              onPress={() => {
-                if (busy) session.stop('Paused to find a surveyed location.');
+          </>
+        )}
+        {phase === 'locating' && (
+          <>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: theme.ink }}>
+              Finding you…
+            </Text>
+            <Text style={{ color: theme.muted }}>
+              {message || 'Stand still for a few seconds.'}
+            </Text>
+            {secondary('Cancel', endNavigation)}
+          </>
+        )}
+        {phase === 'confirm' && (
+          <>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: theme.ink }}>
+              {est
+                ? here
+                  ? `You're in ${here}`
+                  : "You're here"
+                : 'Where are you?'}
+            </Text>
+            <Text style={{ color: theme.muted }}>
+              {est
+                ? `Accuracy about ±${Math.max(0.5, est.sigmaMetres).toFixed(1)} m${est.beaconsUsed ? ` · ${est.beaconsUsed} beacons heard` : ''}`
+                : message || 'Tap your location on the map.'}
+            </Text>
+            {est && message ? (
+              <Text style={{ color: theme.muted }}>{message}</Text>
+            ) : null}
+            {primary(
+              est
+                ? 'Yes, start directions'
+                : 'Tap the map to set your location',
+              confirmLocation,
+              !est,
+            )}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                {secondary('Not here · tap map', () => setTapMode('position'))}
+              </View>
+              <View style={{ flex: 1 }}>
+                {secondary('Try again', () => {
+                  disposeTracker();
+                  void findMe();
+                })}
+              </View>
+            </View>
+            <Pressable
+              onPress={() =>
                 router.navigate({
                   pathname: '/survey',
                   params: { intent: 'find' },
-                });
-              }}
-            />
-            <Action
-              title={
-                needsRecovery ? 'Scan a marker to recover' : 'Scan location QR'
+                })
               }
-              onPress={recover}
-            />
-            {!busy && (
-              <Action
-                title={
-                  showStarts
-                    ? 'Hide known locations'
-                    : 'Set a known location manually'
-                }
-                onPress={() => setShowStarts(!showStarts)}
-              />
-            )}
-            {showStarts && !busy && (
-              <>
-                <Text>
-                  Only choose a location where you are physically standing. This
-                  resets the position estimate.
-                </Text>
-                {venue.anchors.map((a) => (
-                  <Action
-                    key={a.id}
-                    title={`I’m at ${a.label}`}
-                    onPress={() => {
-                      try {
-                        establish(anchorPayload(venue, a.id));
-                      } catch (e) {
-                        report(e);
-                      }
-                    }}
-                  />
-                ))}
-              </>
-            )}
-            {scanning && (
-              <AnchorScanner
-                onScan={establish}
-                onClose={() => setScanning(false)}
-              />
-            )}
-          </View>
-          {routeResult && routeResult.status !== 'ok' && (
-            <Text accessibilityRole="alert">
-              No route connects these locations. Choose another destination or
-              starting point.
-            </Text>
-          )}
-          {route && guidance && (
-            <View
-              style={{
-                ...card,
-                backgroundColor: needsRecovery ? '#fff0de' : '#e7efe6',
-              }}
+              accessibilityRole="button"
             >
               <Text
-                style={{ color: ink, fontSize: 23, fontWeight: '700' }}
-                accessibilityLiveRegion="polite"
+                style={{ color: BLUE, textAlign: 'center', paddingVertical: 4 }}
               >
-                {needsRecovery
-                  ? 'Tracking paused'
-                  : session.starting || (busy && session.settling > 0)
-                    ? `Hold still · ${session.settling || 4}`
-                    : !started && heading !== null
-                      ? '3 · Face the route to begin'
-                      : instruction(guidance)}
+                Use a surveyed spot (fingerprint) instead
               </Text>
-              {needsRecovery ? (
-                <Text>
-                  {session.snapshot.message} Scan a known marker or set a known
-                  location to recalculate your route.
-                </Text>
-              ) : (
-                <>
-                  {guidance.status !== 'off-route' && (
-                    <Text style={{ color: ink, fontSize: 20 }}>
-                      About {guidance.remainingMetres.toFixed(1)} m remaining
-                    </Text>
-                  )}
-                  {session.snapshot.warning && (
-                    <Text>{session.snapshot.warning}</Text>
-                  )}
-                  <Text>{guidance.message}</Text>
-                  {busy && session.settling === 0 && (
-                    <Text>
-                      Walk when ready. Keep the phone screen-up, top edge facing
-                      forward.
-                    </Text>
-                  )}
-                  {busy &&
-                    session.snapshot.motion &&
-                    !['walking-like', 'checking'].includes(
-                      session.snapshot.motion.state,
-                    ) && (
-                      <Text>
-                        Position held while motion is unclear or no walking is
-                        detected.
-                      </Text>
-                    )}
-                  {!busy &&
-                    !session.snapshot.stopped &&
-                    guidance.status !== 'unsupported' &&
-                    heading !== null && (
-                      <>
-                        <Text>
-                          At the starting marker, face along the first
-                          highlighted segment. The QR sets position, not
-                          direction.
-                        </Text>
-                        <Action
-                          title={
-                            aligned
-                              ? '✓ I’m facing the first route segment'
-                              : 'I’m facing the first route segment'
-                          }
-                          onPress={() => setAligned(!aligned)}
-                        />
-                        <Action
-                          title={
-                            stepLength === null
-                              ? 'Calibration needed — open Tests & calibration'
-                              : 'Start guidance'
-                          }
-                          primary
-                          disabled={!aligned || stepLength === null || scanning}
-                          onPress={start}
-                        />
-                      </>
-                    )}
-                  {guidance.status === 'near-destination' && (
-                    <Action
-                      title="I can see the destination — confirm arrival"
-                      primary
-                      onPress={confirmArrival}
-                    />
-                  )}
-                </>
-              )}
-              {busy && (
-                <Action
-                  title="Pause guidance"
-                  onPress={() =>
-                    session.stop(
-                      'Guidance paused. Set a known location before resuming.',
-                    )
-                  }
-                />
-              )}
-            </View>
-          )}
-        </>
-      )}
-      {route && !arrived && (
-        <Section title="Accuracy checkpoints">
-          <Text style={{ fontSize: 19, fontWeight: '700', color: ink }}>
-            Accuracy test · checkpoints
-          </Text>
-          <Text>
-            Select a point on your route. The amber S on the map marks it. Tap
-            arrival when you physically reach that point, even if the blue dot
-            is behind. These taps record the discrepancy; they do not move the
-            dot.
-          </Text>
-          <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
-            {route.nodeIds.map((id, i) => (
-              <Action
-                key={id}
-                title={`${checkpointNode === id ? '✓ ' : ''}${i + 1} · ${venue.pois.find((p) => p.nodeId === id)?.name ?? id.replaceAll('-', ' ')}`}
-                onPress={() => {
-                  setCheckpointNode(id);
-                  setMarkedAt(null);
-                  setCheckpointMessage('');
-                }}
-              />
-            ))}
-          </ScrollView>
-          <Action
-            title="I’m at the selected point now"
-            primary
-            disabled={
-              !checkpoint ||
-              !session.running ||
-              session.settling > 0 ||
-              markedAt !== null
-            }
-            onPress={() => markCheckpoint('arrival')}
-          />
-          {markedAt !== null && (
-            <Action
-              title={
-                session.elapsed < markedAt + 2
-                  ? 'Stay still · waiting 2 seconds…'
-                  : 'Still at the same point · save check'
-              }
-              disabled={!session.running || session.elapsed < markedAt + 2}
-              onPress={() => markCheckpoint('after-wait')}
-            />
-          )}
-          {checkpointMessage ? (
-            <Text accessibilityLiveRegion="polite">{checkpointMessage}</Text>
-          ) : null}
-          <Text>
-            Map positions need on-site verification. Skip a point if you cannot
-            identify it confidently. Keep your calibration unchanged for this
-            comparison.
-          </Text>
-          {session.snapshot.motion && (
-            <Text>
-              {session.snapshot.motion.detected} detected ·{' '}
-              {session.snapshot.steps} accepted ·{' '}
-              {session.snapshot.motion.rejected} not used ·{' '}
-              {session.snapshot.motion.pending} pending
+            </Pressable>
+          </>
+        )}
+        {phase === 'ready' && route && (
+          <>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: theme.ink }}>
+              {poi?.name} ·{' '}
+              {Math.round(guidance?.remainingMetres ?? route.distanceMetres)} m
             </Text>
-          )}
-        </Section>
-      )}
-      {stepLength === null && (
-        <Text>
-          Calibrate your step length once in Tests & calibration before starting
-          live guidance.
-        </Text>
-      )}
-      <Action
-        title="Tests, calibration & recordings"
-        onPress={() => {
-          if (busy)
-            session.stop('Navigation paused to open tests and recordings.');
-          const recording = session.getRecording();
-          try {
-            if (recording?.observations.some((o) => o.type === 'accelerometer'))
-              saveRun(recording);
-            router.push('/tests');
-          } catch (e) {
-            report(e);
-          }
-        }}
-      />
-      <Text style={{ color: theme.muted, fontSize: 12 }}>
-        Experimental one-floor guidance. Position and remaining distance are
-        estimates. Use visible surroundings to confirm turns and arrival. No
-        furniture or obstacle detection.
-      </Text>
-    </ScrollView>
+            <Text style={{ color: theme.muted }}>
+              {message ||
+                'Hold the phone flat with its top edge pointing the way you will walk first, along the blue line.'}
+            </Text>
+            {stepLength === null && (
+              <Text style={{ color: theme.warning, fontSize: 13 }}>
+                Using a default step length. Calibrate once under Tests for
+                better distance.
+              </Text>
+            )}
+            {primary(
+              session.snapshot.stopped ? 'Resume' : 'Start walking',
+              beginWalking,
+            )}
+            {secondary('Cancel', endNavigation)}
+          </>
+        )}
+        {phase === 'navigating' && (
+          <>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}
+            >
+              <Text
+                style={{ fontSize: 28, fontWeight: '700', color: theme.ink }}
+              >
+                {remaining !== null
+                  ? `${Math.max(1, Math.round(remaining))} m`
+                  : '…'}
+              </Text>
+              <Text style={{ color: theme.muted, fontSize: 16 }}>
+                {remaining !== null
+                  ? `${etaMinutes(remaining)} min · ${poi?.name}`
+                  : poi?.name}
+              </Text>
+            </View>
+            <Text style={{ color: theme.muted, fontSize: 13 }}>
+              {est
+                ? `±${Math.max(0.5, est.sigmaMetres).toFixed(1)} m · ${heardCount}/${health.length || tracker.current?.beaconCount || 0} beacons${reroutes ? ` · rerouted ${reroutes}×` : ''}`
+                : 'Positioning…'}
+              {message ? ` · ${message}` : ''}
+            </Text>
+            {streamProblem ? (
+              <Text style={{ color: theme.danger, fontSize: 13 }}>
+                Beacon scanning stopped: {streamProblem} Positioning continues
+                from walking and the map only.
+              </Text>
+            ) : silentBeacons.length ? (
+              <Text style={{ color: theme.warning, fontSize: 13 }}>
+                Not hearing {silentBeacons.join(', ')}. Check those phones are
+                on and nearby.
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                {secondary('Fix my location', () => {
+                  setTapMode('position');
+                  setMessage('Tap where you really are');
+                })}
+              </View>
+              <View style={{ flex: 1 }}>{secondary('End', endNavigation)}</View>
+            </View>
+          </>
+        )}
+        {phase === 'arrived' && (
+          <>
+            <Text style={{ fontSize: 24, fontWeight: '700', color: theme.ink }}>
+              You've arrived
+            </Text>
+            <Text style={{ color: theme.muted }}>{poi?.name}</Text>
+            {primary('Done', () => {
+              setDestination(null);
+              setRoute(null);
+              setGuidance(null);
+              setPhase('idle');
+            })}
+          </>
+        )}
+      </View>
+    </View>
   );
 }

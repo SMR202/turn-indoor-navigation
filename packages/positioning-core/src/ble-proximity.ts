@@ -8,11 +8,14 @@ const finite = z.number().finite();
 /** Where a TURN beacon is physically mounted. RSSI reference is measured about 1 m from the beacon on the same phone model that will scan. */
 export const beaconPlacementSchema = z.object({
   tag: z.string().regex(BLE_BEACON_ID),
-  anchorId: id,
-  nodeId: id,
+  /** Optional links to named venue points; placements set on the map need only floor and coordinates. */
+  anchorId: id.optional(),
+  nodeId: id.optional(),
   floorId: id,
   x: finite,
   y: finite,
+  /** Path-loss exponent (about 2 in free space, 2-3.5 indoors); the fusion default applies when absent. */
+  exponent: finite.min(1.5).max(4).optional(),
   /** Median RSSI (dBm) one metre from the beacon, measured with the scanning phone. Required for proximity decisions. */
   referenceRssi: finite.min(-110).max(0).optional(),
   calibratedAt: z.string().datetime().optional(),
@@ -148,7 +151,7 @@ export class ProximityDetector {
     return {
       t: now,
       tag: best.tag,
-      anchorId: placement.anchorId,
+      anchorId: placement.anchorId ?? placement.tag,
       smoothedRssi: best.rssi,
       referenceRssi: placement.referenceRssi!,
       marginDb: margin,
@@ -166,7 +169,7 @@ export const bleTraceRecordSchema = z
     schemaVersion: z.literal(1),
     sessionId: z.string().regex(/^ble-trace-[a-z0-9-]+$/),
     detectorRevision: z.literal(BLE_PROXIMITY_REVISION),
-    mode: z.literal('shadow'),
+    mode: z.enum(['shadow', 'assist']),
     navigationSessionId: id.optional(),
     startedAt: z.string().datetime(),
     platform: z.enum(['ios', 'android']),
@@ -210,6 +213,23 @@ export const bleTraceRecordSchema = z
       )
       .max(2000),
     droppedSamples: finite.nonnegative(),
+    /** Raw walking-sensor positions (assist mode), for offline replay and tuning. */
+    pdr: z
+      .array(z.object({ t: finite.min(0), x: finite, y: finite }))
+      .max(20000)
+      .optional(),
+    /** Fused estimate over time (assist mode). */
+    fused: z
+      .array(
+        z.object({
+          t: finite.min(0),
+          x: finite,
+          y: finite,
+          sigma: finite.nonnegative(),
+        }),
+      )
+      .max(20000)
+      .optional(),
   })
   .superRefine((r, ctx) => {
     if (

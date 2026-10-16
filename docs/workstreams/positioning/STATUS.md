@@ -2,6 +2,16 @@
 
 Updated: 2026-10-10.
 
+## Assisted navigation: fusion, map-first navigator — 2026-10-16
+
+IMPLEMENTED: ParticleFusion (walls/walkable constraints, RSSI range likelihood with heavy-tailed noise, proximity and position fixes, heading-bias and step-scale states, cold start from radio), AssistedTracker (live stream → filter → recorder), trace replay for offline tuning, beacon site recommendation, assisted ble-trace records (raw walking, samples, events, fused path). [ADR-0009](../../../decisions/0009-particle-filter-fusion.md); [master plan](../../../plans/active/2026-10-16-assisted-navigation-master-plan.md).
+
+EXPERIMENT RESULT (synthetic): with 20° heading bias and 10% step overestimate, mean error 2.1 m raw walking → 1.0 m fused (1.2 m from the map alone), 0.85 m at the end of the route versus 3.9 m raw; robust to 8 dB shadowing. Not venue accuracy.
+
+Validation: root check passes (129 tests); web export succeeds; maps-style screen inspected in the browser pane with simulated taps (no phone sensors). Android/iPhone bundles served by Metro. No physical assisted walk has been run.
+
+Next: place and calibrate three beacons (suggested sites), walk end-to-end routes, send logs (Beacons → Send walk logs), run `npm run analyze:ble`, label landmark passes, tune from replay.
+
 ## First iPhone BLE results and shadow-log diagnostics — 2026-10-16
 
 EXPERIMENT RESULT: seven iPhone fingerprint records arrived (six survey snapshots, one labelled test; all `station-rank-v3`, three stations, two passes each). The iPhone TURN build scans beacons: 52–125 packets per 8 s pass. B1 was heard at about −65/−67 dBm at one station, about −82 dBm at another and not at the third; B2 at about −84 dBm at its station and −94/−98 dBm near B1's, so the three places are separable by beacon signal alone. The single labelled test ranked the correct place first (score 0.43 versus 1.49), but the lead is "tentative": margin 1.06 is below the 1.25 clear gate, so it abstained — the same over-conservative-margin pattern found for magnetic scoring. One test establishes nothing statistically; more held-out trials per station are needed before changing gates. Raw files remain in ignored work/test-inbox; analysis scripts in ignored work/ble-analysis-20261016.

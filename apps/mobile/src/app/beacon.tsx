@@ -2,15 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Platform, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Action, Notice, Section, dataFont, theme, ui } from '../components/ui';
-import type { BeaconPlacementSet } from '@turn/positioning-core';
-import { activeVenue as venue } from '../config/active-venue';
-import {
-  fingerprintProfile,
-  loadBleTraces,
-  loadPlacements,
-  savePlacements,
-} from '../fingerprinting/storage';
-import { sendRun } from '../navigation/send-runs';
+import { BeaconLayoutEditor } from '../components/beacon-layout';
 import {
   beaconState,
   bleBuildAvailable,
@@ -48,28 +40,11 @@ export default function Beacons() {
   const [scanNote, setScanNote] = useState('');
   const [error, setError] = useState('');
   const abort = useRef<AbortController | null>(null);
-  const [placements, setPlacements] = useState<BeaconPlacementSet | null>(null);
-  const [placeTag, setPlaceTag] = useState('B1');
-  const [placeAnchor, setPlaceAnchor] = useState(venue.anchors[0]?.id ?? '');
-  const [calibrating, setCalibrating] = useState(false);
-  const [placeNote, setPlaceNote] = useState('');
-  const [traceCount, setTraceCount] = useState(0);
-  const [sending, setSending] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       setCaps(bleCapabilities());
       setOn(beaconState().tag);
-      try {
-        setPlacements(loadPlacements(venue.venueId, venue.revision));
-      } catch {
-        setPlacements(null);
-      }
-      try {
-        setTraceCount(loadBleTraces().length);
-      } catch {
-        setTraceCount(0);
-      }
       return () => abort.current?.abort();
     }, []),
   );
@@ -117,78 +92,6 @@ export default function Beacons() {
     }
   }
 
-  function writePlacements(beacons: BeaconPlacementSet['beacons']) {
-    const next: BeaconPlacementSet = {
-      schemaVersion: 1,
-      venueId: venue.venueId,
-      venueRevision: venue.revision,
-      deviceProfile: fingerprintProfile(),
-      beacons,
-    };
-    savePlacements(next);
-    setPlacements(next);
-  }
-  async function calibratePlacement() {
-    if (calibrating) return;
-    const anchor = venue.anchors.find((a) => a.id === placeAnchor);
-    const node = venue.nodes.find((n) => n.id === anchor?.nodeId);
-    if (!anchor || !node) return;
-    const controller = new AbortController();
-    abort.current = controller;
-    setCalibrating(true);
-    setError('');
-    setPlaceNote('');
-    try {
-      const r = await scanBeacons(6000, controller.signal);
-      if (!r.completed) throw new Error(r.status);
-      const b = r.readings.find((x) => x.id === placeTag);
-      if (!b || b.samples.length < 8)
-        throw new Error(
-          `Beacon ${placeTag} was barely heard. Stand about 1 metre from it with the phone held as you walk, then retry.`,
-        );
-      const level = Math.round(median(b.samples.map((x) => x.rssi)) * 10) / 10;
-      const rest = (placements?.beacons ?? []).filter(
-        (x) => x.tag !== placeTag,
-      );
-      writePlacements([
-        ...rest,
-        {
-          tag: placeTag,
-          anchorId: anchor.id,
-          nodeId: node.id,
-          floorId: node.floorId,
-          x: node.x,
-          y: node.y,
-          referenceRssi: level,
-          calibratedAt: new Date().toISOString(),
-        },
-      ]);
-      setPlaceNote(
-        `Saved ${placeTag} at ${anchor.label}: ${level} dBm at 1 m from ${b.samples.length} packets.`,
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCalibrating(false);
-    }
-  }
-  async function sendTraces() {
-    if (sending) return;
-    setSending(true);
-    setError('');
-    try {
-      const traces = loadBleTraces();
-      for (let i = 0; i < traces.length; i++) {
-        setPlaceNote(`Sending ${i + 1} of ${traces.length} beacon logs…`);
-        await sendRun(traces[i]!);
-      }
-      setPlaceNote(`${traces.length} beacon logs confirmed on your computer.`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSending(false);
-    }
-  }
   const supported = bleBuildAvailable;
   const canBeacon = bleCanAdvertise;
   return (
@@ -317,99 +220,8 @@ export default function Beacons() {
           );
         })}
       </View>
-      <Section
-        title="Where are the beacons? (for walking corrections)"
-        initiallyOpen
-      >
-        <Text style={ui.body}>
-          Tell TURN where each beacon is mounted, then stand about 1 metre from
-          it, holding the phone the way you walk, and calibrate. With beacons
-          placed, every walk also records a shadow log of when beacons would
-          have corrected your position. Your dot is not moved by it yet.
-        </Text>
-        <Text style={ui.body}>Beacon name</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {TAGS.map((t) => (
-            <View key={t} style={{ minWidth: 76 }}>
-              <Action
-                title={t}
-                selected={placeTag === t}
-                disabled={calibrating}
-                onPress={() => setPlaceTag(t)}
-              />
-            </View>
-          ))}
-        </View>
-        <Text style={ui.body}>Mounted at</Text>
-        <ScrollView
-          style={{ maxHeight: 220 }}
-          nestedScrollEnabled
-          contentContainerStyle={{ gap: 8 }}
-        >
-          {venue.anchors.map((a) => (
-            <Action
-              key={a.id}
-              title={a.label}
-              selected={placeAnchor === a.id}
-              disabled={calibrating}
-              onPress={() => setPlaceAnchor(a.id)}
-            />
-          ))}
-        </ScrollView>
-        {placeNote ? <Notice>{placeNote}</Notice> : null}
-        <Action
-          title={
-            calibrating
-              ? 'Measuring 1 m reference…'
-              : `Calibrate ${placeTag} here (6 s, stand 1 m away)`
-          }
-          primary
-          busy={calibrating}
-          disabled={!supported}
-          onPress={() => void calibratePlacement()}
-        />
-        {placements?.beacons.map((b) => (
-          <View
-            key={b.tag}
-            style={{
-              ...ui.row,
-              justifyContent: 'space-between',
-              borderTopWidth: 1,
-              borderColor: theme.border,
-              paddingTop: 10,
-            }}
-          >
-            <Text style={{ ...ui.body, flex: 1 }}>
-              {b.tag} ·{' '}
-              {venue.anchors.find((a) => a.id === b.anchorId)?.label ??
-                b.anchorId}
-              {' — '}
-              {b.referenceRssi === undefined
-                ? 'not calibrated'
-                : `${b.referenceRssi} dBm at 1 m`}
-            </Text>
-            <Action
-              title="Remove"
-              onPress={() =>
-                writePlacements(
-                  (placements?.beacons ?? []).filter((x) => x.tag !== b.tag),
-                )
-              }
-            />
-          </View>
-        ))}
-        <Action
-          title={sending ? 'Sending…' : `Send beacon walk logs · ${traceCount}`}
-          busy={sending}
-          disabled={traceCount === 0}
-          onPress={() => void sendTraces()}
-        />
-        {placements && placements.deviceProfile !== fingerprintProfile() ? (
-          <Notice error>
-            These placements were measured on a different phone. Calibrate again
-            on this phone.
-          </Notice>
-        ) : null}
+      <Section title="Beacon layout and calibration" initiallyOpen>
+        <BeaconLayoutEditor />
       </Section>
       <Section title="Environment and ready-check">
         <Text style={ui.body}>

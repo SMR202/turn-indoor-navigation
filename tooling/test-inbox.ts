@@ -32,7 +32,7 @@ export function createTestInbox(
       return;
     }
     if (
-      !['/runs', '/fingerprints'].includes(request.url ?? '') ||
+      !['/runs', '/fingerprints', '/ble-traces'].includes(request.url ?? '') ||
       request.method !== 'POST'
     ) {
       reply(404, { error: 'Not found' });

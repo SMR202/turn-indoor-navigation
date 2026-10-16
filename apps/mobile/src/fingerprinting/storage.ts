@@ -111,9 +111,36 @@ export function savePlacements(set: BeaconPlacementSet) {
     JSON.stringify(beaconPlacementSetSchema.parse(set)),
   );
 }
+const MAX_SAVED_TRACES = 30;
+export function deleteBleTrace(sessionId: string) {
+  if (!/^ble-trace-[a-z0-9-]+$/.test(sessionId)) return;
+  if (Platform.OS === 'web') {
+    localStorage.removeItem(sessionId);
+    return;
+  }
+  const dir = new Directory(Paths.document, 'turn-fingerprints');
+  for (const ext of ['json', 'backup', 'pending']) {
+    const f = new File(dir, `${sessionId}.${ext}`);
+    if (f.exists) f.delete();
+  }
+}
 export function saveBleTrace(trace: BleTraceRecord) {
   const value = bleTraceRecordSchema.parse(trace);
+  // A walk that heard nothing and fired nothing carries no evidence worth keeping or sending.
+  if (
+    value.samples.length === 0 &&
+    value.events.length === 0 &&
+    !value.fused?.length
+  )
+    return;
   write(value.sessionId, JSON.stringify(value));
+  // Bound local storage: keep the newest traces only; older ones are never needed on the phone.
+  try {
+    for (const old of loadBleTraces().slice(MAX_SAVED_TRACES))
+      deleteBleTrace(old.sessionId);
+  } catch {
+    // Pruning is best effort.
+  }
 }
 export function loadBleTraces(): BleTraceRecord[] {
   const names =

@@ -2,6 +2,10 @@
 
 Updated: 2026-10-10.
 
+## Maps-style navigator and map beacon layout — 2026-10-16
+
+IMPLEMENTED: new Navigate screen (`index.tsx`) with the NavMap component (pan, pinch, tap, follow-me, blue dot with accuracy halo and heading cone, cased route, destination pin), search, auto-locate from beacons, confirm/tap-to-set, align/start, banner and bottom sheet, rerouting, automatic arrival, beacon-health warnings. The previous screen is `classic.tsx` (Tests → classic test navigator). Beacons tab now has a map layout editor (suggested sites, tap to move, 1 m and 4 m calibration, send logs; delivered logs are deleted from the phone, empty ones are not saved, at most 30 are kept). Fixed: the inbox rejected `/ble-traces` (404 "Not found") and each walk used to keep every log. JavaScript only: reload the existing Android build 5 and iPhone build. Validation: root check passes (129 tests).
+
 ## Beacon placement and shadow logging — 2026-10-16
 
 IMPLEMENTED: Beacons tab placement + 1 m calibration per beacon (local, per venue revision and phone), continuous beacon stream during walks, saved/sent `ble-trace` logs, a Navigate status line when logging. Android versionCode 5 / `turn-ble-2`; iPhone needs a rebuilt unsigned IPA (`turn-ble-ios-2`). Shadow mode never alters the dot. See [protocol](../../FINGERPRINT_TESTING.md#beacon-walk-test-shadow-proximity-log-build-5--matching-iphone-build) and [ADR-0008](../../../decisions/0008-ble-proximity-anchors-shadow-mode.md). Validation: root check passes (112 tests), builds recorded below when complete.

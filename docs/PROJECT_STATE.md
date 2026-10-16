@@ -12,6 +12,10 @@ Implemented magnetic station surveys on iPhone/Android, optional fresh Wi-Fi sca
 
 October 10 follow-up: fixed SDK 57 fingerprint file replacement ordering; new recognition records use versioned repeatability-based ranking with explicit confidence and Wi-Fi fallback reasons. Confirmed corrections now link the fingerprint query to preceding/new PDR segments while retaining the destination. Seven uploaded queries supplied development evidence; fresh held-out trials and physical correction tests remain the next gate. Historical replay stays unchanged. [Current positioning status](workstreams/positioning/STATUS.md).
 
+## Assisted navigation — 2026-10-16
+
+The default Navigate tab is now a maps-style navigator: search/tap a destination, find your start from beacons (or tap the map), start, turn-by-turn with automatic rerouting and arrival. Positioning is a map-aware particle filter fusing walking sensors, calibrated BLE signal strengths (probabilistic trilateration), proximity and fingerprint fixes, with heading-drift states ([ADR-0009](../decisions/0009-particle-filter-fusion.md), [master plan](../plans/active/2026-10-16-assisted-navigation-master-plan.md)). Beacon sites are suggested on the map and calibrated in the Beacons tab. The previous test navigator is kept under Tests. Only synthetic simulation supports the algorithm; no accuracy has been measured on real end-to-end walks yet.
+
 ## Capabilities
 
 One-floor room-to-room navigation is now the main user flow: destination search, known-location start, live route progress/turns, user-confirmed arrival and QR/manual recovery with recalculation. Diagnostics remain in a separate screen. [Navigation protocol](NAVIGATION_TESTING.md). This is route progress, not pose correction or verified wall-based map matching.

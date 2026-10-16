@@ -64,6 +64,10 @@ export default function Layout() {
           }}
         />
         <Tabs.Screen
+          name="classic"
+          options={{ href: null, title: 'Classic' }}
+        />
+        <Tabs.Screen
           name="tests"
           options={{
             title: 'Tests',

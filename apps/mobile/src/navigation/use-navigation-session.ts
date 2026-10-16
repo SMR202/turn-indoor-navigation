@@ -36,7 +36,8 @@ const empty: TrackingSnapshot = {
   message: 'Choose a test walk or establish your starting point.',
   stopped: false,
 };
-export function useNavigationSession() {
+export function useNavigationSession(options: { shadow?: boolean } = {}) {
+  const shadowEnabled = options.shadow !== false;
   const [snapshot, setSnapshot] = useState(empty);
   const [anchorNodeId, setAnchorNodeId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -236,7 +237,13 @@ export function useNavigationSession() {
   // Shadow mode: record what beacons would correct; never changes the navigation estimate.
   const beginShadow = async (navigationSessionId: string, token: number) => {
     setShadowNote('');
-    if (!bleBuildAvailable || Platform.OS === 'web' || shadow.current) return;
+    if (
+      !shadowEnabled ||
+      !bleBuildAvailable ||
+      Platform.OS === 'web' ||
+      shadow.current
+    )
+      return;
     try {
       const placements = loadPlacements(
         sampleVenue.venueId,

@@ -112,3 +112,48 @@ it('rejects malformed and oversized uploads without saving files', async () => {
   expect((await post('x'.repeat(1001))).status).toBe(413);
   expect(await readdir(directory)).toHaveLength(0);
 });
+
+it('accepts assisted-navigation beacon traces on their own endpoint', async () => {
+  const { directory, post } = await setup(undefined, '/ble-traces');
+  const trace = {
+    kind: 'ble-trace',
+    schemaVersion: 1,
+    sessionId: 'ble-trace-1-abc',
+    detectorRevision: 'ble-proximity-v1',
+    mode: 'assist',
+    startedAt: '2026-10-16T00:00:00.000Z',
+    platform: 'android',
+    placements: {
+      schemaVersion: 1,
+      venueId: 'v',
+      venueRevision: '1',
+      deviceProfile: 'p',
+      beacons: [{ tag: 'B1', floorId: 'f', x: 1, y: 2, referenceRssi: -60 }],
+    },
+    config: {
+      windowSeconds: 2,
+      minSamples: 3,
+      nearDeltaDb: 8,
+      marginDb: 6,
+      holdSeconds: 1,
+      releaseDeltaDb: 14,
+    },
+    samples: [{ t: 0.1, tag: 'B1', rssi: -61 }],
+    events: [],
+    droppedSamples: 0,
+    pdr: [{ t: 1, x: 1, y: 1 }],
+    fused: [{ t: 1, x: 1, y: 1.2, sigma: 0.9 }],
+  };
+  const body = JSON.stringify(trace);
+  const response = await post(body);
+  expect(response.status).toBe(200);
+  const receipt = await response.json();
+  expect(receipt.sessionId).toBe('ble-trace-1-abc');
+  const files = await readdir(directory);
+  expect(files).toEqual([
+    `${createHash('sha256').update(body).digest('hex')}.json`,
+  ]);
+  expect((await post(JSON.stringify({ ...trace, mode: 'other' }))).status).toBe(
+    400,
+  );
+});
