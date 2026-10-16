@@ -47,7 +47,7 @@ jobs:
           ls -la xcodebuild.log
           {
             echo "== diagnostics =="
-            grep -a -n -E 'error:|warning: .*(Swift|swift)|BUILD FAILED|failed with a nonzero|Command .* failed|(in target' xcodebuild.log | grep -v -- '-ferror-limit' | cut -c1-260 | head -n 40
+            grep -a -n -E 'error:|warning: .*(Swift|swift)|BUILD FAILED|failed with a nonzero|Command .* failed|in target' xcodebuild.log | grep -v -- '-ferror-limit' | cut -c1-260 | head -n 40
             echo "== tail =="
             tail -n 25 xcodebuild.log | cut -c1-260
           } > summary.txt
