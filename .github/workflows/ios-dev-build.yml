@@ -47,7 +47,7 @@ jobs:
           ls -la xcodebuild.log
           {
             echo "== diagnostics =="
-            grep -a -E "error:|BUILD FAILED|nonzero exit|build commands failed" xcodebuild.log | grep -v -- -ferror-limit | cut -c1-200 | sort -u | head -n 15
+            N=$(grep -a -n "Could not resolve package" xcodebuild.log | head -1 | cut -d: -f1); if [ -n "$N" ]; then sed -n "$((N>30?N-30:1)),$((N+14))p" xcodebuild.log | cut -c1-220; fi
             echo "== tail =="
             tail -n 8 xcodebuild.log | cut -c1-200
           } > summary.txt
