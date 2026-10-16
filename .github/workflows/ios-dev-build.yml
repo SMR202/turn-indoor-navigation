@@ -28,14 +28,16 @@ jobs:
         run: pod install
       - name: Build unsigned device app
         working-directory: apps/mobile/ios
+        shell: bash
         run: |
+          set -o pipefail
           WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
           SCHEME="${WORKSPACE%.xcworkspace}"
           xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
             -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build | tee xcodebuild.log | tail -n 40
+            build 2>&1 | tee xcodebuild.log | tail -n 40
       - name: Package IPA
         working-directory: apps/mobile/ios
         run: |
@@ -45,13 +47,16 @@ jobs:
           cp -R "$APP" Payload/
           zip -qry TURN-dev-unsigned.ipa Payload
           ls -la TURN-dev-unsigned.ipa
+          SIZE=$(stat -f%z TURN-dev-unsigned.ipa)
+          echo "IPA bytes: $SIZE"
+          test "$SIZE" -gt 5000000
       - uses: actions/upload-artifact@v4
         with:
           name: TURN-dev-unsigned-ipa
           path: apps/mobile/ios/TURN-dev-unsigned.ipa
           retention-days: 7
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: xcodebuild-log
           path: apps/mobile/ios/xcodebuild.log
