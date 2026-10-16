@@ -8,6 +8,8 @@ The first permission-enabled APK did not resolve this: two subsequent recordings
 
 Build 4 (versionCode 4) adds the `TurnBle` native module and Bluetooth permissions (BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT; legacy BLUETOOTH/ADMIN for older Android): a **Beacons** tab lets a phone act as a TURN beacon and Survey can include BLE signals. See [BLE beacon protocol](FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4). Motion and Wi-Fi acquisition are unchanged. Install it over the existing app; every beacon phone also needs this build. Rebuilding with `expo prebuild` regenerates `apps/mobile/android` (ignored) and rewrites the `ios` script in `apps/mobile/package.json`; discard that incidental change.
 
+Build 5 (versionCode 5, `turn-ble-2`) adds a continuous TURN-beacon stream and beacon placement/calibration for shadow-mode proximity logging ([ADR-0008](../decisions/0008-ble-proximity-anchors-shadow-mode.md)). Install it over build 4 on the walking phone; beacon phones only need an installed beacon-capable build.
+
 ## Build 3
 
 Build 3 (versionCode 3) retains build 2 motion acquisition and adds optional native Wi-Fi scanning for the Survey tab. Grant precise location when selecting Wi-Fi; keep Location services and Wi-Fi on. Scans are user-triggered, fresh-only and subject to Android throttling. Follow the [fingerprint protocol](FINGERPRINT_TESTING.md). The iPhone continues using magnetic capture in Expo Go.

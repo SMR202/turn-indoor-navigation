@@ -4,6 +4,7 @@ import { link, mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   recordingSchema,
+  bleTraceRecordSchema,
   fingerprintRecordSchema,
 } from '@turn/positioning-core';
 
@@ -58,7 +59,9 @@ export function createTestInbox(
       const parsed = (
         request.url === '/fingerprints'
           ? fingerprintRecordSchema
-          : recordingSchema
+          : request.url === '/ble-traces'
+            ? bleTraceRecordSchema
+            : recordingSchema
       ).safeParse(JSON.parse(bytes.toString('utf8')));
       if (!parsed.success) {
         reply(400, { error: 'Invalid TURN recording' });

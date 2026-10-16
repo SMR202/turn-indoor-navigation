@@ -18,6 +18,12 @@ export type BleCapabilities = {
 };
 export type BeaconPower = 'high' | 'medium' | 'low';
 
+type StreamEvent = {
+  token: string;
+  samples: { t: number; id: string; rssi: number }[];
+  dropped: number;
+  failure?: string;
+};
 type Native = {
   revision: string;
   capabilities(): BleCapabilities;
@@ -28,6 +34,12 @@ type Native = {
     power: BeaconPower,
   ): Promise<{ advertising: boolean; tag: string }>;
   stopAdvertising(): void;
+  startStream(token: string): Promise<{ token: string }>;
+  stopStream(): void;
+  addListener(
+    event: 'onSamples',
+    listener: (e: StreamEvent) => void,
+  ): { remove(): void };
   advertisingState(): { advertising: boolean; tag: string | null };
 };
 
@@ -129,4 +141,53 @@ export function beaconState() {
   } catch {
     return { advertising: false, tag: null };
   }
+}
+
+export type StreamSample = { t: number; tag: string; rssi: number };
+/**
+ * Continuous foreground TURN-beacon stream (batched natively every 500 ms). The returned function
+ * stops it. Timestamps are seconds on the native stream clock, starting near zero.
+ */
+export async function startBeaconStream(
+  onSamples: (samples: StreamSample[], dropped: number) => void,
+  onFailure: (message: string) => void,
+): Promise<() => void> {
+  if (!ble)
+    throw new Error(
+      'Install the latest TURN development build to scan beacons.',
+    );
+  const denied = await requestBlePermissions('scan');
+  if (denied) throw new Error(denied);
+  const token = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const subscription = ble.addListener('onSamples', (e) => {
+    if (e.token !== token) return;
+    if (e.failure) {
+      onFailure(e.failure);
+      return;
+    }
+    onSamples(
+      e.samples
+        .filter(
+          (s) =>
+            BLE_BEACON_ID.test(s.id) &&
+            Number.isFinite(s.t) &&
+            Number.isFinite(s.rssi),
+        )
+        .map((s) => ({ t: s.t, tag: s.id, rssi: s.rssi })),
+      e.dropped ?? 0,
+    );
+  });
+  try {
+    await ble.startStream(token);
+  } catch (e) {
+    subscription.remove();
+    throw e;
+  }
+  let stopped = false;
+  return () => {
+    if (stopped) return;
+    stopped = true;
+    subscription.remove();
+    ble.stopStream();
+  };
 }

@@ -42,14 +42,35 @@ class TurnBleModule : Module() {
   private val samples = LinkedHashMap<String, MutableList<Map<String, Double>>>()
   private val finishScan = Runnable { finish(okStatus) }
 
+  // Continuous TURN-only stream for proximity detection: batches every 500 ms, bounded, token-checked.
+  private var streamCallback: ScanCallback? = null
+  private var streamToken: String? = null
+  private var streamStartNanos = 0L
+  private val streamBuffer = ArrayList<Map<String, Any>>()
+  private var streamDropped = 0
+  private val flushStream = object : Runnable {
+    override fun run() {
+      val token = streamToken ?: return
+      if (streamBuffer.isNotEmpty() || streamDropped > 0) {
+        sendEvent("onSamples", mapOf("token" to token, "samples" to streamBuffer.toList(), "dropped" to streamDropped))
+        streamBuffer.clear()
+        streamDropped = 0
+      }
+      handler.postDelayed(this, 500)
+    }
+  }
+
   private var advertiser: BluetoothLeAdvertiser? = null
   private var advertiseCallback: AdvertiseCallback? = null
   private var advertisedTag: String? = null
 
   override fun definition() = ModuleDefinition {
     Name("TurnBle")
-    Constant("revision") { "turn-ble-1" }
+    Constant("revision") { "turn-ble-2" }
+    Events("onSamples")
     Function("capabilities") { capabilities() }
+    AsyncFunction("startStream") { token: String, promise: Promise -> handler.post { beginStream(token, promise) } }
+    Function("stopStream") { handler.post { endStream("stopped") }; Unit }
     AsyncFunction("scan") { durationMs: Int, promise: Promise -> handler.post { beginScan(durationMs, promise) } }
     Function("cancelScan") { handler.post { finish("BLE scan cancelled.", failed = true) }; Unit }
     AsyncFunction("startAdvertising") { tag: String, power: String, promise: Promise ->
@@ -58,9 +79,10 @@ class TurnBleModule : Module() {
     Function("stopAdvertising") { handler.post { endAdvertising() }; Unit }
     Function("advertisingState") { mapOf("advertising" to (advertisedTag != null), "tag" to advertisedTag) }
     OnActivityEntersBackground {
+      handler.post { endStream("backgrounded") }
       handler.post { finish("BLE scan interrupted when the app left the foreground.", failed = true) }
     }
-    OnDestroy { handler.post { finish("BLE scan stopped.", failed = true); endAdvertising() } }
+    OnDestroy { handler.post { finish("BLE scan stopped.", failed = true); endStream("stopped"); endAdvertising() } }
   }
 
   private fun context(): Context? = appContext.reactContext?.applicationContext
@@ -124,6 +146,73 @@ class TurnBleModule : Module() {
       handler.postDelayed(finishScan, durationMs.toLong())
     } catch (error: Exception) {
       finish(error.message ?: "BLE unavailable.", failed = true)
+    }
+  }
+
+  private fun parseTag(result: ScanResult): String? {
+    val payload = result.scanRecord?.getManufacturerSpecificData(companyId) ?: return null
+    if (payload.size < 6 || payload.size > 5 + 12 || payload[4] != version) return null
+    for (i in magic.indices) if (payload[i] != magic[i]) return null
+    val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
+    return if (tagPattern.matches(tag)) tag else null
+  }
+
+  private fun beginStream(token: String, promise: Promise) {
+    val context = context()
+    try {
+      check(context != null) { "Android context unavailable." }
+      check(pending == null) { "A BLE scan is already running." }
+      check(token.length in 8..80) { "Invalid stream token." }
+      if (Build.VERSION.SDK_INT >= 31)
+        check(granted(context, Manifest.permission.BLUETOOTH_SCAN)) { "Nearby devices permission is required for beacon scanning." }
+      check(granted(context, Manifest.permission.ACCESS_FINE_LOCATION)) { "Precise location permission is required for beacon scanning." }
+      val location = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+      check(location.isLocationEnabled) { "Turn on phone Location services to scan beacons." }
+      val adapter = adapterOf(context)
+      check(adapter != null && adapter.isEnabled) { "Turn on Bluetooth, then retry." }
+      val scanner = adapter.bluetoothLeScanner
+      check(scanner != null) { "Bluetooth LE scanning is unavailable." }
+      endStream("restarted")
+      val filter = ScanFilter.Builder().setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build()
+      val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
+      val callback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+          val tag = parseTag(result) ?: return
+          val t = (result.timestampNanos - streamStartNanos) / 1e9
+          if (t < 0.0) return
+          if (streamBuffer.size >= 2000) { streamDropped++; return }
+          streamBuffer.add(mapOf("t" to t, "id" to tag, "rssi" to result.rssi.toDouble()))
+        }
+        override fun onScanFailed(errorCode: Int) {
+          val failedToken = streamToken
+          endStream("failed")
+          if (failedToken != null) sendEvent("onSamples", mapOf("token" to failedToken, "samples" to emptyList<Map<String, Any>>(), "dropped" to 0, "failure" to "BLE stream failed (code $errorCode)."))
+        }
+      }
+      streamCallback = callback
+      streamToken = token
+      streamStartNanos = SystemClock.elapsedRealtimeNanos()
+      streamBuffer.clear()
+      streamDropped = 0
+      scanner.startScan(listOf(filter), settings, callback)
+      handler.postDelayed(flushStream, 500)
+      promise.resolve(mapOf("token" to token))
+    } catch (error: Exception) {
+      promise.reject("STREAM_FAILED", error.message ?: "BLE unavailable.", null)
+    }
+  }
+
+  private fun endStream(reason: String) {
+    val callback = streamCallback
+    handler.removeCallbacks(flushStream)
+    streamCallback = null
+    streamToken = null
+    streamBuffer.clear()
+    if (callback != null) {
+      try {
+        val context = context()
+        if (context != null) adapterOf(context)?.bluetoothLeScanner?.stopScan(callback)
+      } catch (_: Exception) {}
     }
   }
 

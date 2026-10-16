@@ -1,6 +1,10 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 import {
+  beaconPlacementSetSchema,
+  bleTraceRecordSchema,
+  type BeaconPlacementSet,
+  type BleTraceRecord,
   fingerprintRecordSchema,
   fingerprintSurveySchema,
   type FingerprintRecord,
@@ -86,4 +90,49 @@ export function loadFingerprintRecords(): FingerprintRecord[] {
     .sort()
     .reverse()
     .map((n) => fingerprintRecordSchema.parse(JSON.parse(read(n)!)));
+}
+
+export function loadPlacements(
+  venueId: string,
+  revision: string,
+): BeaconPlacementSet | null {
+  const raw = read('beacon-placements');
+  if (!raw) return null;
+  const parsed = beaconPlacementSetSchema.safeParse(JSON.parse(raw));
+  return parsed.success &&
+    parsed.data.venueId === venueId &&
+    parsed.data.venueRevision === revision
+    ? parsed.data
+    : null;
+}
+export function savePlacements(set: BeaconPlacementSet) {
+  write(
+    'beacon-placements',
+    JSON.stringify(beaconPlacementSetSchema.parse(set)),
+  );
+}
+export function saveBleTrace(trace: BleTraceRecord) {
+  const value = bleTraceRecordSchema.parse(trace);
+  write(value.sessionId, JSON.stringify(value));
+}
+export function loadBleTraces(): BleTraceRecord[] {
+  const names =
+    Platform.OS === 'web'
+      ? Object.keys(localStorage)
+      : (() => {
+          const dir = new Directory(Paths.document, 'turn-fingerprints');
+          return dir.exists
+            ? dir
+                .list()
+                .filter(
+                  (f) => f instanceof File && /.(json|backup)$/.test(f.name),
+                )
+                .map((f) => f.name.replace(/.(json|backup)$/, ''))
+            : [];
+        })();
+  return [...new Set(names)]
+    .filter((n) => /^ble-trace-[a-z0-9-]+$/.test(n))
+    .sort()
+    .reverse()
+    .map((n) => bleTraceRecordSchema.parse(JSON.parse(read(n)!)));
 }

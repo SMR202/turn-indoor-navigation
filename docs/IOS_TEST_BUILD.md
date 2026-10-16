@@ -26,4 +26,6 @@ Expo Go cannot scan Bluetooth beacons; TURN's iOS `TurnBle` module (CoreBluetoot
 4. Run `npm run phone:tests -- --dev-client` on the computer, open the TURN app and scan `work/phone-test/android-launch.png` with the iPhone camera (this QR opens the dev client at the same Metro server), or enter `http://YOUR_LAN_IP:8081`. Allow Bluetooth when asked.
 5. Open **Beacons → Listen for 6 seconds** within a few metres of the Android beacons.
 
+After a code change that touches iOS native code (such as the beacon stream, `turn-ble-ios-2`), push to `ios-dev-build`, download the new IPA and sideload it again. JavaScript-only changes need no new IPA.
+
 The iPhone survey is separate from every Android survey (device profiles are never mixed). See the [fingerprint protocol](FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4).

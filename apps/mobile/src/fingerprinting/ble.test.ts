@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
     startAdvertising: vi.fn(),
     stopAdvertising: vi.fn(),
     advertisingState: vi.fn(),
+    stopStream: vi.fn(),
+    startStream: vi.fn(),
+    addListener: vi.fn(),
   },
 }));
 vi.mock('react-native', () => ({
@@ -107,4 +110,51 @@ it('scans on iOS without Android permission APIs and refuses to advertise', asyn
   );
   expect(mocks.native.startAdvertising).not.toHaveBeenCalled();
   mocks.platform.OS = 'android';
+});
+
+it('streams only valid TURN samples for its own token and stops cleanly', async () => {
+  const remove = vi.fn();
+  let listener: (e: unknown) => void = () => {};
+  mocks.native.addListener.mockImplementation(
+    (_event: string, fn: (e: unknown) => void) => {
+      listener = fn;
+      return { remove };
+    },
+  );
+  mocks.native.startStream.mockResolvedValue({ token: 'x' });
+  const batches: unknown[] = [];
+  const failures: string[] = [];
+  const { startBeaconStream } = await import('./ble');
+  const stop = await startBeaconStream(
+    (s) => batches.push(s),
+    (m) => failures.push(m),
+  );
+  const token = (mocks.native.startStream as ReturnType<typeof vi.fn>).mock
+    .calls[0]![0];
+  listener({
+    token: 'other',
+    samples: [{ t: 1, id: 'B1', rssi: -50 }],
+    dropped: 0,
+  });
+  listener({
+    token,
+    samples: [
+      { t: 1, id: 'B1', rssi: -50 },
+      { t: 1, id: 'bad id', rssi: -50 },
+      { t: Number.NaN, id: 'B2', rssi: -50 },
+    ],
+    dropped: 0,
+  });
+  listener({
+    token,
+    samples: [],
+    dropped: 0,
+    failure: 'Turn on Bluetooth, then retry.',
+  });
+  expect(batches).toEqual([[{ t: 1, tag: 'B1', rssi: -50 }]]);
+  expect(failures).toEqual(['Turn on Bluetooth, then retry.']);
+  stop();
+  stop();
+  expect(remove).toHaveBeenCalledOnce();
+  expect(mocks.native.stopStream).toHaveBeenCalledOnce();
 });

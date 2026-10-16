@@ -35,6 +35,17 @@ Surveys and their snapshots stay on the phone. This pilot accepts up to 12 passe
 
 The result card says **BLE beacons + magnetic** when beacons contributed. A scan that fails (permission, Bluetooth off, Android throttling) is stored without beacon data and falls back to magnetic matching; it is never treated as "no beacons nearby". Android throttles repeated scan starts, so leave about 30 seconds between captures. Only TURN beacons are recorded; other Bluetooth devices are filtered out by the phone's controller. Phone-as-beacon signals differ from commercial beacons, so these tests exercise the pipeline and are not final accuracy numbers.
 
+## Beacon walk test: shadow proximity log (build 5 / matching iPhone build)
+
+**EXPERIMENT:** [ADR-0008](../decisions/0008-ble-proximity-anchors-shadow-mode.md). Walks record when beacons _would_ correct your position; the dot is never moved.
+
+1. Mount 3–4 Android beacon phones along a walkable route at spots that match named map anchors. Leave them there and running.
+2. On the walking phone open **Beacons → Where are the beacons?**. For each beacon pick its name and the anchor where it is mounted, stand about 1 m away holding the phone as you walk, and tap **Calibrate**. Repeat after moving any beacon or changing phone.
+3. Walk a route past the beacons from **Navigate** as usual. The Navigate screen says when the beacon shadow log is running; it saves when tracking stops.
+4. In **Beacons**, tap **Send beacon walk logs**. Note, outside the app, when you actually passed each beacon so events can be labelled afterwards.
+
+A false event is one that fires where you were not near that beacon; a miss is passing a beacon with no event. Both matter equally. No result is established until logs from real walks are analysed.
+
 ## Independent recognition and navigation
 
 1. Select **2 · Find my place**. Return to a surveyed spot without choosing its name and capture a new reading.

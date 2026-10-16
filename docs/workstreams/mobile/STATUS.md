@@ -2,6 +2,10 @@
 
 Updated: 2026-10-10.
 
+## Beacon placement and shadow logging — 2026-10-16
+
+IMPLEMENTED: Beacons tab placement + 1 m calibration per beacon (local, per venue revision and phone), continuous beacon stream during walks, saved/sent `ble-trace` logs, a Navigate status line when logging. Android versionCode 5 / `turn-ble-2`; iPhone needs a rebuilt unsigned IPA (`turn-ble-ios-2`). Shadow mode never alters the dot. See [protocol](../../FINGERPRINT_TESTING.md#beacon-walk-test-shadow-proximity-log-build-5--matching-iphone-build) and [ADR-0008](../../../decisions/0008-ble-proximity-anchors-shadow-mode.md). Validation: root check passes (112 tests), builds recorded below when complete.
+
 ## iPhone BLE scanning build (CI, unsigned IPA) — 2026-10-16
 
 IMPLEMENTED: scan-only iOS `TurnBle` Swift module, Info.plist Bluetooth usage text, bundle ID `com.turn.navigation.dev`, and a macOS GitHub Actions workflow producing an unsigned debug dev-client IPA for Sideloadly/free-Apple-ID install ([instructions and limits](../../IOS_TEST_BUILD.md)). EAS rejected: paid Apple account required. JS and the private venue stay on the local Metro server. Root check passes (104 tests), web export passes. The Swift code and CI build have not been compiled or run yet; result recorded below once the workflow finishes.

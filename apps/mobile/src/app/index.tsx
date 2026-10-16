@@ -303,6 +303,9 @@ export default function Navigate() {
           {error}
         </Text>
       ) : null}
+      {session.shadowNote ? (
+        <Text style={{ color: '#475467' }}>{session.shadowNote}</Text>
+      ) : null}
       {session.nativeSaveError ? (
         <Text accessibilityRole="alert">{session.nativeSaveError}</Text>
       ) : null}

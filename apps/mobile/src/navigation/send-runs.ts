@@ -1,11 +1,17 @@
-import type { Recording, FingerprintRecord } from '@turn/positioning-core';
+import type {
+  Recording,
+  FingerprintRecord,
+  BleTraceRecord,
+} from '@turn/positioning-core';
 
 export const inboxConfigured = Boolean(
   process.env.EXPO_PUBLIC_TEST_INBOX_URL &&
   process.env.EXPO_PUBLIC_TEST_INBOX_TOKEN,
 );
 
-export async function sendRun(recording: Recording | FingerprintRecord) {
+export async function sendRun(
+  recording: Recording | FingerprintRecord | BleTraceRecord,
+) {
   const url = process.env.EXPO_PUBLIC_TEST_INBOX_URL;
   const token = process.env.EXPO_PUBLIC_TEST_INBOX_TOKEN;
   if (!url || !token)
@@ -26,7 +32,7 @@ export async function sendRun(recording: Recording | FingerprintRecord) {
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
     const response = await fetch(
-      `${url}/${'kind' in recording && recording.kind === 'fingerprint' ? 'fingerprints' : 'runs'}`,
+      `${url}/${'kind' in recording ? (recording.kind === 'fingerprint' ? 'fingerprints' : 'ble-traces') : 'runs'}`,
       {
         method: 'POST',
         headers: {

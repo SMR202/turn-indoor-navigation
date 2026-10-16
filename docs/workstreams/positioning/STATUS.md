@@ -2,6 +2,14 @@
 
 Updated: 2026-10-10.
 
+## BLE proximity anchors, shadow mode — 2026-10-16
+
+DECISION: [ADR-0008](../../../decisions/0008-ble-proximity-anchors-shadow-mode.md) with the [BLE positioning review](../../../research/BLE_BEACON_POSITIONING_2026_10.md): calibrated passive proximity anchors, recorded in shadow mode before any live correction; trilateration deferred (RSSI shadowing, unknown phone power).
+
+IMPLEMENTED: placement/calibration schema, pure `ble-proximity-v1` detector, versioned `ble-trace` record with offline `replayBleTrace`, native continuous TURN-only streams (Android `turn-ble-2`, iOS `turn-ble-ios-2`), recorder that logs events with the navigation estimate and beacon distance without changing the pose, Beacons-tab placement UI and upload (`/ble-traces`). Root check: 112 tests. Thresholds are starting values. No physical shadow log exists yet.
+
+Next: place/calibrate 3–4 phone beacons, walk past them, send logs, label passes and measure false events, misses and PDR-to-beacon discrepancy; only then decide live correction.
+
 ## BLE beacon fingerprints (phone beacons) — 2026-10-15
 
 DECISION: BLE beacons precede the ARCore slice because commercial beacons are expected soon and spare Android phones allow immediate testing. [ADR-0007](../../../decisions/0007-ble-beacon-fingerprints.md): BLE is an optional part of the existing fingerprint capture, surveyed per place, matched by the shared `station-rank-v3`. Historical v1/v2 records replay unchanged; a v3 query without usable BLE falls back to the v2 magnetic/Wi-Fi path.

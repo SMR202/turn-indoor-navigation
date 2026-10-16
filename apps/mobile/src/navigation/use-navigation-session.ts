@@ -21,6 +21,12 @@ import { saveRun } from './run-storage';
 import { SettledStart } from '../sensors/settled-start';
 import { waitForForeground } from '../sensors/foreground';
 import TurnMotion from '../../modules/turn-motion';
+import {
+  startShadowRecording,
+  type ShadowRecorder,
+} from '../fingerprinting/shadow';
+import { bleBuildAvailable } from '../fingerprinting/ble';
+import { fingerprintProfile, loadPlacements } from '../fingerprinting/storage';
 
 const empty: TrackingSnapshot = {
   pose: null,
@@ -45,6 +51,25 @@ export function useNavigationSession() {
   const engine = useRef<NavigationEngine | null>(null);
   const recording = useRef<Recording | null>(null);
   const stopSource = useRef<(() => void) | null>(null);
+  const shadow = useRef<ShadowRecorder | null>(null);
+  const [shadowNote, setShadowNote] = useState('');
+  const finishShadow = useCallback(() => {
+    const active = shadow.current;
+    shadow.current = null;
+    if (!active) return;
+    try {
+      const trace = active.finish();
+      if (mounted.current)
+        setShadowNote(
+          trace
+            ? `Beacon shadow log saved: ${trace.events.length} proximity events (positions unchanged).`
+            : 'Beacon shadow log could not be saved.',
+        );
+    } catch (e) {
+      if (mounted.current)
+        setShadowNote(`Beacon shadow log failed: ${String(e)}`);
+    }
+  }, []);
   const generation = useRef(0);
   const lastTime = useRef(0);
   const lastRender = useRef(0);
@@ -63,49 +88,53 @@ export function useNavigationSession() {
     };
   }, []);
 
-  const stop = useCallback((reason = 'Paused. Re-anchor before resuming.') => {
-    startupAbort.current?.abort();
-    trackingArmed.current = false;
-    const capture = nativeCapture.current;
-    nativeCapture.current = null;
-    const finishedRecording = recording.current;
-    if (finishedRecording?.navigation?.completion === 'in-progress')
-      finishedRecording.navigation.completion = 'stopped';
-    void capture?.finish().then(() => {
-      if (finishedRecording) {
-        try {
-          saveRun(finishedRecording);
-        } catch (e) {
-          if (mounted.current && recording.current === finishedRecording)
-            setNativeSaveError(String(e));
+  const stop = useCallback(
+    (reason = 'Paused. Re-anchor before resuming.') => {
+      startupAbort.current?.abort();
+      trackingArmed.current = false;
+      finishShadow();
+      const capture = nativeCapture.current;
+      nativeCapture.current = null;
+      const finishedRecording = recording.current;
+      if (finishedRecording?.navigation?.completion === 'in-progress')
+        finishedRecording.navigation.completion = 'stopped';
+      void capture?.finish().then(() => {
+        if (finishedRecording) {
+          try {
+            saveRun(finishedRecording);
+          } catch (e) {
+            if (mounted.current && recording.current === finishedRecording)
+              setNativeSaveError(String(e));
+          }
         }
+      });
+      generation.current++;
+      pendingStart.current = false;
+      stopSource.current?.();
+      stopSource.current = null;
+      if (mounted.current) {
+        setRunning(false);
+        setStarting(false);
+        setSettling(0);
       }
-    });
-    generation.current++;
-    pendingStart.current = false;
-    stopSource.current?.();
-    stopSource.current = null;
-    if (mounted.current) {
-      setRunning(false);
-      setStarting(false);
-      setSettling(0);
-    }
-    if (engine.current && recording.current) {
-      const event: Observation = {
-        schemaVersion: 1,
-        sessionId: recording.current.sessionId,
-        source: 'lifecycle',
-        timestampSeconds: lastTime.current + 0.000001,
-        type: 'capability',
-        capability: 'motion',
-        status: 'degraded',
-        reason,
-      };
-      recording.current.observations.push(event);
-      const next = engine.current.consume(event);
-      if (mounted.current) setSnapshot(next);
-    }
-  }, []);
+      if (engine.current && recording.current) {
+        const event: Observation = {
+          schemaVersion: 1,
+          sessionId: recording.current.sessionId,
+          source: 'lifecycle',
+          timestampSeconds: lastTime.current + 0.000001,
+          type: 'capability',
+          capability: 'motion',
+          status: 'degraded',
+          reason,
+        };
+        recording.current.observations.push(event);
+        const next = engine.current.consume(event);
+        if (mounted.current) setSnapshot(next);
+      }
+    },
+    [finishShadow],
+  );
   useFocusEffect(
     useCallback(
       () => () => {
@@ -125,6 +154,8 @@ export function useNavigationSession() {
       startupAbort.current?.abort();
       trackingArmed.current = false;
       stopSource.current?.();
+      shadow.current?.finish();
+      shadow.current = null;
       nativeCapture.current?.dispose();
       subscription.remove();
     };
@@ -196,6 +227,44 @@ export function useNavigationSession() {
     lastSteps.current = 0;
     setTrace([...traceRef.current]);
     setAnchorNodeId(resolved.nodeId);
+  };
+  // Shadow mode: record what beacons would correct; never changes the navigation estimate.
+  const beginShadow = async (navigationSessionId: string, token: number) => {
+    setShadowNote('');
+    if (!bleBuildAvailable || Platform.OS === 'web' || shadow.current) return;
+    try {
+      const placements = loadPlacements(
+        sampleVenue.venueId,
+        sampleVenue.revision,
+      );
+      if (
+        !placements ||
+        placements.deviceProfile !== fingerprintProfile() ||
+        !placements.beacons.some((b) => b.referenceRssi !== undefined)
+      )
+        return;
+      const recorder = await startShadowRecording({
+        placements,
+        navigationSessionId,
+        getEstimate: () => {
+          const pose = engine.current?.snapshot().pose;
+          return pose
+            ? { floorId: pose.floorId, x: pose.position.x, y: pose.position.y }
+            : undefined;
+        },
+      });
+      if (generation.current !== token || !mounted.current) {
+        recorder.finish();
+        return;
+      }
+      shadow.current = recorder;
+      setShadowNote('Beacon shadow log running (positions unchanged).');
+    } catch (e) {
+      if (mounted.current)
+        setShadowNote(
+          `Beacon shadow log unavailable: ${e instanceof Error ? e.message : String(e)}`,
+        );
+    }
   };
   const start = async (headingRad: number) => {
     if (Platform.OS === 'web')
@@ -285,6 +354,7 @@ export function useNavigationSession() {
       }
       stopSource.current = cleanup;
       setRunning(true);
+      void beginShadow(activeRecording.sessionId, token);
     } catch (error) {
       if (generation.current !== token) return;
       stop(error instanceof Error ? error.message : 'Motion startup failed');
@@ -306,6 +376,7 @@ export function useNavigationSession() {
     activeSeconds,
     nativeCount,
     nativeSaveError,
+    shadowNote,
     anchor,
     start,
     stop,
