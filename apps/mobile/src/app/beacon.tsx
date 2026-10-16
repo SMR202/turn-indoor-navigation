@@ -5,6 +5,7 @@ import { Action, Notice, Section, dataFont, theme, ui } from '../components/ui';
 import {
   beaconState,
   bleBuildAvailable,
+  bleCanAdvertise,
   bleCapabilities,
   scanBeacons,
   startBeacon,
@@ -90,7 +91,8 @@ export default function Beacons() {
     }
   }
 
-  const supported = Platform.OS === 'android' && bleBuildAvailable;
+  const supported = bleBuildAvailable;
+  const canBeacon = bleCanAdvertise;
   return (
     <ScrollView
       style={{ backgroundColor: theme.background }}
@@ -111,7 +113,9 @@ export default function Beacons() {
         <Notice>
           {Platform.OS === 'android'
             ? 'This TURN installation has no BLE module. Install Android build 4.'
-            : 'BLE beacons need the TURN Android build. The iPhone can still survey magnetic signals.'}
+            : Platform.OS === 'ios'
+              ? 'This iPhone installation has no BLE module. Install the TURN iPhone development build; Expo Go cannot scan Bluetooth.'
+              : 'BLE beacons need the TURN phone app.'}
         </Notice>
       ) : null}
       <View style={ui.card}>
@@ -151,11 +155,21 @@ export default function Beacons() {
             Beacon {on} is transmitting. Do not close TURN or lock the phone.
           </Notice>
         ) : null}
+        {supported && !canBeacon ? (
+          <Notice>
+            This phone can scan for beacons but cannot act as one. Use an
+            Android phone as the beacon.
+          </Notice>
+        ) : null}
         <Action
           title={on ? `Stop beacon ${on}` : `Start beacon ${tag}`}
           primary={!on}
           busy={busy}
-          disabled={!supported || (!on && caps !== null && !caps.canAdvertise)}
+          disabled={
+            !supported ||
+            !canBeacon ||
+            (!on && caps !== null && !caps.canAdvertise)
+          }
           onPress={() => void toggle()}
         />
         {caps && !caps.canAdvertise ? (

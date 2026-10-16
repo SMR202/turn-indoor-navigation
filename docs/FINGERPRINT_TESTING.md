@@ -26,7 +26,7 @@ Surveys and their snapshots stay on the phone. This pilot accepts up to 12 passe
 
 ## BLE beacons with spare Android phones (build 4)
 
-**EXPERIMENT:** until commercial beacons arrive, spare Android phones can act as fixed TURN beacons; see [ADR-0007](../decisions/0007-ble-beacon-fingerprints.md). Install [Android build 4](ANDROID_TEST_BUILD.md) on every participating phone and on the scanner/test phone. iPhone can neither act as a beacon nor scan in this slice.
+**EXPERIMENT:** until commercial beacons arrive, spare Android phones can act as fixed TURN beacons; see [ADR-0007](../decisions/0007-ble-beacon-fingerprints.md). Install [Android build 4](ANDROID_TEST_BUILD.md) on every participating phone and on the scanner/test phone. iPhone cannot act as a beacon; it can scan only with the separately installed [iPhone development build](IOS_TEST_BUILD.md), never in Expo Go.
 
 1. On each spare phone open **Beacons**, choose a different name (B1–B6) and **Start beacon**. Allow Nearby devices; keep Bluetooth on, TURN open and the phone charging. Tape or prop it at a fixed height, away from metal, and leave it.
 2. On the test phone open **Beacons → Listen for 6 seconds** at several spots. Every beacon you expect should appear with a plausible dBm value (about −45 to −90). A beacon not heard here will not help matching.

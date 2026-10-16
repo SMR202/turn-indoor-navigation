@@ -1,0 +1,58 @@
+name: iOS development build (unsigned IPA)
+# Builds the TURN development client for a physical iPhone without Apple credentials.
+# The IPA is UNSIGNED: sign and install it from Windows/Linux with Sideloadly or AltStore
+# using a free Apple ID (7-day certificate). JavaScript and any private venue are NOT in the
+# build; the dev client loads them from the developer's own Metro server over the LAN.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ios-dev-build]
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Generate native iOS project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install pods
+        working-directory: apps/mobile/ios
+        run: pod install
+      - name: Build unsigned device app
+        working-directory: apps/mobile/ios
+        run: |
+          WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
+          SCHEME="${WORKSPACE%.xcworkspace}"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
+            -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | tail -n 40
+      - name: Package IPA
+        working-directory: apps/mobile/ios
+        run: |
+          APP=$(find build/Build/Products/Debug-iphoneos -maxdepth 1 -name '*.app' | head -n 1)
+          test -n "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry TURN-dev-unsigned.ipa Payload
+          ls -la TURN-dev-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TURN-dev-unsigned-ipa
+          path: apps/mobile/ios/TURN-dev-unsigned.ipa
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcodebuild-log
+          path: apps/mobile/ios/xcodebuild.log
+          retention-days: 7

@@ -7,7 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.turn.navigation.dev",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "TURN listens for its own indoor-navigation beacons to recognize known places. Other Bluetooth devices are ignored."
+      }
     },
     "android": {
       "versionCode": 4,

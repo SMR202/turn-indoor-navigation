@@ -332,7 +332,7 @@ export default function Survey() {
             onPress={() => setEnableWifi(!enableWifi)}
           />
         )}
-        {Platform.OS === 'android' && (
+        {(Platform.OS === 'android' || Platform.OS === 'ios') && (
           <Action
             title={enableBle ? '✓ Include BLE beacons' : 'Include BLE beacons'}
             selected={enableBle}
@@ -340,11 +340,11 @@ export default function Survey() {
             onPress={() => setEnableBle(!enableBle)}
           />
         )}
-        {Platform.OS === 'android' && (
+        {(Platform.OS === 'android' || Platform.OS === 'ios') && (
           <Text style={ui.body}>
             {bleBuildAvailable
               ? 'BLE hears only TURN beacons from the Beacons tab. Survey and test with the same beacons in the same places; a capture whose scan fails is recorded without beacon data.'
-              : 'Install TURN build 4 to include BLE beacons.'}
+              : 'Install the latest TURN development build to include BLE beacons.'}
           </Text>
         )}
         <Text style={ui.body}>

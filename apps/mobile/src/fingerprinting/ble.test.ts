@@ -37,6 +37,7 @@ const granted = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.platform.Version = 34;
+  mocks.platform.OS = 'android';
   mocks.request.mockResolvedValue(granted);
 });
 
@@ -89,4 +90,21 @@ it('validates the beacon name before touching Bluetooth', async () => {
   });
   await expect(startBeacon('B2', 'low')).resolves.toMatchObject({ tag: 'B2' });
   expect(mocks.native.startAdvertising).toHaveBeenCalledWith('B2', 'low');
+});
+
+it('scans on iOS without Android permission APIs and refuses to advertise', async () => {
+  mocks.platform.OS = 'ios';
+  mocks.native.scan.mockResolvedValue({
+    status: 'Fresh BLE scan',
+    completed: true,
+    readings: [{ id: 'B1', samples: [{ t: 0.2, rssi: -58 }] }],
+  });
+  const result = await scanBeacons(8000);
+  expect(result.completed).toBe(true);
+  expect(mocks.request).not.toHaveBeenCalled();
+  await expect(startBeacon('B1', 'high')).rejects.toThrow(
+    'cannot act as a beacon',
+  );
+  expect(mocks.native.startAdvertising).not.toHaveBeenCalled();
+  mocks.platform.OS = 'android';
 });

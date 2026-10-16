@@ -18,7 +18,7 @@ IMPLEMENT BLE as an additional, optional feature of the existing fingerprint cap
 
 ## Alternatives and limits
 
-REJECT a separate BLE positioning engine now: no evidence yet that proximity alone beats fingerprints, and it would duplicate survey/replay/confirmation. REJECT scanning all BLE devices: privacy exposure and no benefit. REJECT iOS phones as beacons: foreground-only advertising and limited payload. iOS scanning needs a signed development build and is not implemented.
+REJECT a separate BLE positioning engine now: no evidence yet that proximity alone beats fingerprints, and it would duplicate survey/replay/confirmation. REJECT scanning all BLE devices: privacy exposure and no benefit. REJECT iOS phones as beacons: foreground-only advertising and limited payload. iOS scanning (CoreBluetooth, unfiltered because iOS cannot filter manufacturer data, discarding non-TURN packets immediately) is implemented as a scan-only Swift module installed through an unsigned CI-built IPA; see [iPhone build](../docs/IOS_TEST_BUILD.md). It has not been compiled locally or run on hardware.
 
 The thresholds are engineering choices, not calibrated probabilities. Phone transmit power, antennas, orientation, body shadowing and OS scan throttling differ from commercial beacons, so phone-beacon results exercise the pipeline and must not be reported as final beacon accuracy. RSSI-to-distance, per-model calibration and cross-phone transfer are not validated.
 

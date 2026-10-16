@@ -2,6 +2,10 @@
 
 Updated: 2026-10-10.
 
+## iPhone BLE scanning build (CI, unsigned IPA) — 2026-10-16
+
+IMPLEMENTED: scan-only iOS `TurnBle` Swift module, Info.plist Bluetooth usage text, bundle ID `com.turn.navigation.dev`, and a macOS GitHub Actions workflow producing an unsigned debug dev-client IPA for Sideloadly/free-Apple-ID install ([instructions and limits](../../IOS_TEST_BUILD.md)). EAS rejected: paid Apple account required. JS and the private venue stay on the local Metro server. Root check passes (104 tests), web export passes. The Swift code and CI build have not been compiled or run yet; result recorded below once the workflow finishes.
+
 ## Android build 4: BLE beacon mode — 2026-10-15
 
 IMPLEMENTED: local `TurnBle` Expo module (`turn-ble-1`) in the existing `turn-motion` module package. It advertises a non-connectable TURN manufacturer payload (tag B1–B6 or any 1–12 alphanumerics; high/medium/low power, screen kept awake) and scans with a controller-level TURN filter, returning timestamped RSSI per beacon and an explicit completed flag; failed/cancelled/backgrounded scans return no evidence. New **Beacons** tab: act-as-beacon controls, six-second Listen with per-beacon dBm and packet count, capability/readiness details and a test procedure. Survey gets an **Include BLE beacons** toggle (Android build 4 only; feature-detected). iPhone/web are unchanged and do not scan or advertise. Manifest adds Bluetooth/Nearby-devices permissions (versionCode 4); SDK 57 retained.

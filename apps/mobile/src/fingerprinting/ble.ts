@@ -33,14 +33,17 @@ type Native = {
 
 const native = requireOptionalNativeModule<Native>('TurnBle');
 // Feature-detect by method: other mocked/optional modules must not be mistaken for BLE support.
+// Scanning exists on Android and iOS; advertising only on Android.
 const ble =
-  Platform.OS === 'android' &&
+  (Platform.OS === 'android' || Platform.OS === 'ios') &&
   native &&
-  typeof native.startAdvertising === 'function' &&
+  typeof native.scan === 'function' &&
   typeof native.capabilities === 'function'
     ? native
     : null;
 export const bleBuildAvailable = Boolean(ble);
+export const bleCanAdvertise =
+  Platform.OS === 'android' && typeof native?.startAdvertising === 'function';
 
 export function bleCapabilities(): BleCapabilities | null {
   try {
@@ -54,8 +57,11 @@ export function bleCapabilities(): BleCapabilities | null {
 export async function requestBlePermissions(
   use: 'scan' | 'advertise',
 ): Promise<string | null> {
-  if (Platform.OS !== 'android') return 'BLE beacons need the Android build';
-  if (!ble) return 'Install Android build 4 to use BLE beacons';
+  if (!ble)
+    return 'Install the latest TURN development build to use BLE beacons';
+  // iOS asks for Bluetooth access itself the first time a scan starts.
+  if (Platform.OS === 'ios')
+    return use === 'scan' ? null : 'iPhone cannot act as a beacon';
   const P = PermissionsAndroid.PERMISSIONS;
   const needed: string[] = [P.ACCESS_FINE_LOCATION];
   if (Number(Platform.Version) >= 31)
@@ -84,7 +90,8 @@ export async function scanBeacons(
     completed: false,
     readings: [],
   });
-  if (!ble) return failure('Install Android build 4 to scan beacons');
+  if (!ble)
+    return failure('Install the latest TURN development build to scan beacons');
   const denied = await requestBlePermissions('scan');
   if (denied) return failure(denied);
   if (signal?.aborted) return failure('BLE scan cancelled.');
@@ -105,12 +112,13 @@ export async function scanBeacons(
 }
 
 export async function startBeacon(tag: string, power: BeaconPower) {
-  if (!ble) throw new Error('Install Android build 4 to act as a beacon.');
+  if (!ble || !bleCanAdvertise || !native)
+    throw new Error('Only the Android TURN build can act as a beacon.');
   if (!BLE_BEACON_ID.test(tag))
     throw new Error('Beacon names use 1–12 letters or digits.');
   const denied = await requestBlePermissions('advertise');
   if (denied) throw new Error(denied);
-  return ble.startAdvertising(tag, power);
+  return native.startAdvertising(tag, power);
 }
 export function stopBeacon() {
   ble?.stopAdvertising();
