@@ -51,8 +51,7 @@ jobs:
             echo "== tail =="
             tail -n 25 xcodebuild.log | cut -c1-260
           } > summary.txt
-          ENC=$(sed ':a;N;$!ba;s/%/%25/g;s///g;s/
-/%0A/g' summary.txt)
+          ENC=$(awk '{gsub(/%/,"%25"); gsub(//,""); printf "%s%%0A", $0}' summary.txt)
           echo "::error title=xcodebuild summary::$ENC"
           exit 0
       - name: Package IPA
