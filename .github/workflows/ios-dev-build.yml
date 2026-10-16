@@ -47,9 +47,9 @@ jobs:
           ls -la xcodebuild.log
           {
             echo "== diagnostics =="
-            grep -a -n -E 'error:|warning: .*(Swift|swift)|BUILD FAILED|failed with a nonzero|Command .* failed|in target' xcodebuild.log | grep -v -- '-ferror-limit' | cut -c1-260 | head -n 40
+            grep -a -E "error:|BUILD FAILED|nonzero exit|build commands failed" xcodebuild.log | grep -v -- -ferror-limit | cut -c1-200 | sort -u | head -n 15
             echo "== tail =="
-            tail -n 25 xcodebuild.log | cut -c1-260
+            tail -n 8 xcodebuild.log | cut -c1-200
           } > summary.txt
           ENC=$(sed "s/[[:cntrl:]]//g" summary.txt | awk '{gsub(/%/,"%25"); printf "%s%%0A", $0}')
           echo "::error title=xcodebuild summary::$ENC"
