@@ -1,0 +1,12 @@
+{
+  "name": "@turn/map-scene",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@turn/design": "0.1.0",
+    "@turn/venue-model": "0.1.0"
+  }
+}

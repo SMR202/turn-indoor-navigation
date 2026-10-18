@@ -35,7 +35,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "docs:check": "node scripts/check-doc-links.mjs",
-    "check": "npm run typecheck && npm test && npm run lint && npm run format:check && npm run docs:check"
+    "check": "npm run typecheck && npm test && npm run lint && npm run format:check && npm run docs:check",
+    "brand:assets": "tsx scripts/generate-brand-assets.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -43,6 +44,7 @@
     "globals": "^16.5.0",
     "prettier": "^3.6.2",
     "qrcode": "1.5.4",
+    "sharp": "0.34.4",
     "tsx": "4.23.15",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.46.0",
