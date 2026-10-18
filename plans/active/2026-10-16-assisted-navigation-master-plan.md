@@ -1,5 +1,7 @@
 # Assisted indoor navigation: master plan
 
+> Superseded for task tracking by [Plan 002](002-turn-masterplan.md) (2026-10-18). Research and decisions below remain valid.
+
 Date: 2026-10-16. Goal: navigate through the home like a mainstream maps app, without running tests, using phones as beacons now and commercial beacons later. Status labels follow the repository convention: IMPLEMENTED, EXPERIMENT, PROPOSED, DECISION.
 
 ## Product shape (IMPLEMENTED)
