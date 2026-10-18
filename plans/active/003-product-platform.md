@@ -110,3 +110,11 @@ Shared packages: `@turn/design` (brand tokens, logo), `@turn/map-scene` (one map
 - Hosting and real authentication (for example Supabase or a managed Postgres) before any public deployment; until then everything runs on the LAN.
 - The App Store/Play identity and the final bundle IDs.
 - Whether venue owners may upload CAD (DWG/DXF) directly, or only the map module's GeoJSON.
+
+## Progress (2026-10-18)
+
+- DONE: A1/A2 API (`apps/api`, `npm run api`, port 8090, data in ignored `work/api-data`), tests in `apps/api/src/app.test.ts`.
+- DONE: Visitor app `apps/navigator` (`npm run navigator`, port 8082): onboarding, venue catalog (API + offline cache + bundled demo), new map renderer, search, categories, place sheet, route preview with named steps, Demo walk and Step-by-step guidance, arrival, saved places, settings, QR scan. Verified in the web build (browser pane) only, not yet on a phone.
+- DONE: Console `apps/console` (`npm run console`, port 5173): TURN Studio (checklist, map + GeoJSON import, QR entry markers, places, beacon planner with coverage, publish/versions/QR print, analytics) and TURN Ops (pipeline, accuracy entry, organisations). Verified in the browser pane.
+- NOT DONE: R1 live positioning in the visitor app ("Live" option is disabled). Next action: extract `apps/mobile/src/{navigation/assisted-tracker,display-pose,assist-helpers,use-navigation-session}.ts`, `sensors/*` and `fingerprinting/ble.ts` into `packages/positioning-runtime` with re-export shims in the test app, then wire a `useLivePosition` hook into `apps/navigator/src/app/venue/[id].tsx`.
+- NOT DONE: STATUS/PROJECT_STATE/reuse registry updates (hono, @vitejs/plugin-react, Inter OFL), native build of the visitor app (R2), phone test of the visitor app.
