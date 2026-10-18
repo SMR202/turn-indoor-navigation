@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "TURN",
+    "slug": "turn",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "turnapp",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.turn.app.dev",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "TURN listens for the venue's indoor-navigation beacons to show where you are. Other Bluetooth devices are ignored."
+      }
+    },
+    "android": {
+      "package": "com.turn.app.dev",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1220",
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "monochromeImage": "./assets/adaptive-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.HIGH_SAMPLING_RATE_SENSORS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "TURN",
+      "shortName": "TURN",
+      "themeColor": "#0B1220",
+      "backgroundColor": "#F6F4F0"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TURN to scan location markers in the venue.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Allow TURN to follow your steps while you navigate indoors."
+        }
+      ]
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}

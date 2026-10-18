@@ -103,3 +103,22 @@ describe('route helpers', () => {
     expect(cam.focusY).toBeGreaterThan(80);
   });
 });
+
+describe('slicePolyline', () => {
+  it('cuts a polyline between two distances', async () => {
+    const { slicePolyline, polylineLength } = await import('./route');
+    const line = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ];
+    const part = slicePolyline(line, 5, 15);
+    expect(part).toEqual([
+      { x: 5, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 5 },
+    ]);
+    expect(polylineLength(part)).toBeCloseTo(10);
+    expect(slicePolyline(line, 30, 40)).toEqual([]);
+  });
+});

@@ -94,3 +94,20 @@ export function roundedRoutePath(points: P[], radius = 0.9, flipY = true) {
   const last = points.at(-1)!;
   return `${path} L ${last.x} ${Y(last.y)}`;
 }
+
+/** The part of a polyline between two distances along it (metres), for walked/remaining styling. */
+export function slicePolyline(points: P[], from: number, to: number): P[] {
+  const total = polylineLength(points);
+  const a = Math.max(0, Math.min(total, from));
+  const b = Math.max(a, Math.min(total, to));
+  if (points.length < 2 || b - a < 1e-6) return [];
+  const out: P[] = [pointAlong(points, a)];
+  let travelled = 0;
+  for (let i = 1; i < points.length; i++) {
+    travelled += d(points[i - 1]!, points[i]!);
+    if (travelled > a && travelled < b) out.push(points[i]!);
+  }
+  const end = pointAlong(points, b);
+  out.push({ x: end.x, y: end.y });
+  return out.map(({ x, y }) => ({ x, y }));
+}

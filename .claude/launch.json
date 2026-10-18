@@ -1,0 +1,30 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "api"],
+      "port": 8090
+    },
+    {
+      "name": "navigator-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "expo",
+        "start",
+        "apps/navigator",
+        "--web",
+        "--port",
+        "8082"
+      ],
+      "port": 8082
+    },
+    {
+      "name": "console",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@turn/console"],
+      "port": 5173
+    }
+  ]
+}

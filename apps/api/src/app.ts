@@ -732,6 +732,7 @@ export function createApp(
           publishedAt: r.published_at,
           places: pkg.pois.length,
           floors: pkg.floors.length,
+          private: r.visibility === 'private-lan',
           accent:
             venueContentSchema.parse(JSON.parse(r.content)).branding.accent ??
             null,

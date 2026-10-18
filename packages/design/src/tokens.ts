@@ -242,12 +242,30 @@ export const placeCategories = {
   other: { label: 'Other', icon: 'pin' },
 } as const;
 export type PlaceCategory = keyof typeof placeCategories;
+/** Muted category hues for small icon badges only (never large fills), legible on light and dark. */
+export const categoryColors: Record<PlaceCategory, string> = {
+  room: '#6E7787',
+  circulation: '#6E7787',
+  restroom: '#3D7AB8',
+  food: '#C0662A',
+  shop: '#8256C2',
+  service: '#2F5AF2',
+  health: '#C2412D',
+  exit: '#1F8A5B',
+  stairs: '#566782',
+  meeting: '#24857F',
+  desk: '#6A7A35',
+  outdoor: '#4A8A3A',
+  parking: '#4A5A78',
+  other: '#6E7787',
+};
 export function normaliseCategory(raw: string | undefined): PlaceCategory {
   const k = (raw ?? '').toLowerCase();
   if (k in placeCategories) return k as PlaceCategory;
   if (/bath|toilet|wc|rest ?room|powder/.test(k)) return 'restroom';
   if (/food|drink|cafe|café|kitchen|dining|restaurant/.test(k)) return 'food';
-  if (/shop|store|retail/.test(k)) return 'shop';
+  if (/^store( ?room)?$|storage|utility|laundry/.test(k)) return 'room';
+  if (/shop|store|retail|boutique/.test(k)) return 'shop';
   if (/stair|lift|elevator|escalator/.test(k)) return 'stairs';
   if (/exit|entrance|lobby|door/.test(k)) return 'exit';
   if (/meet|conference/.test(k)) return 'meeting';
