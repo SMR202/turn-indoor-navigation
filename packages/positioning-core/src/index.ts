@@ -6,5 +6,7 @@ export * from './fingerprints';
 export * from './ble-proximity';
 export * from './fusion';
 export * from './beacon-plan';
+export * from './beacon-planner';
+export * from './beacon-zones';
 export * from './fusion-replay';
 export * from './assist-fusion';

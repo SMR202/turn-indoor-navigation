@@ -183,13 +183,15 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
 - [ ] **B2. Eddystone-UID adapter.** (M, native) Parse service 0xFEAA, frame type 0x00 (namespace plus instance) in `TurnBleModule.kt` and `TurnBleModule.swift` into `{t, tag, rssi}`, with tag = short instance ID mapped in the venue. Keep TURN phone beacons. Add a filter so only configured namespaces are recorded (privacy).
   - Needs: Android build 6 and the iPhone CI IPA.
   - Accept: both phones list commercial beacons in Beacons → Listen.
-- [ ] **B3. Placement planner v2.** (M) Replace farthest-point node sampling with geometry-aware optimisation over walkable space:
+- [~] **B3. Placement planner v2.** (M) Replace farthest-point node sampling with geometry-aware optimisation over walkable space:
+  - **Done:** 2026-10-18: `positioning-core/src/beacon-planner.ts` (`planBeacons`): simulated coverage on a 1 m grid with a log-distance model and 4 dB per wall, diminishing marginal value per extra audible beacon, ≥ 3 m spacing, spread bonus and a roundness (collinearity) measure; the Beacons tab offers 3/4/6/8 sites and shows predicted coverage. For the home with commercial-class beacons (−59 dBm at 1 m, heard above −88 dBm): 8 beacons → 82% of the floor hears 3+, 45% hears 4+; 6 beacons → 64% / 28%; 3 beacons → 20% / 0%. So 3 beacons cannot give trilateration-grade geometry anywhere in this house; plan on 8 and verify with live readings. Heatmap overlay not yet built; prediction not validated against real readings.
   - maximise the minimum number of beacons heard (≥ 3, target 4) under a wall-attenuation model (–4 dB per wall);
   - penalise collinearity (GDOP);
   - prefer room centres and corridor ends at about 2 m height.
     Show a coverage heatmap on the map. Files: `positioning-core/src/beacon-plan.ts`, `components/beacon-layout.tsx`.
   - Accept: for the house, ≥ 3 beacons predicted at 90% of walkable points with 8 beacons; no three sites within 1 m of a line.
-- [ ] **B4. Room-zone classifier.** (M) Strongest-beacon-per-room with hysteresis (3 dB, 2 s) and a "between rooms" state. It constrains the filter softly (particles outside the room's polygon down-weighted). Robust even with weak beacons.
+- [~] **B4. Room-zone classifier.** (M) Strongest-beacon-per-room with hysteresis (3 dB, 2 s) and a "between rooms" state. It constrains the filter softly (particles outside the room's polygon down-weighted). Robust even with weak beacons.
+  - **Done:** 2026-10-18: `positioning-core/src/beacon-zones.ts` (`RoomZoneClassifier`): strongest beacon per room with a 3 dB / 2 s switch rule and a high/low confidence flag; 3 tests. Not yet used to constrain the filter or the UI: that waits for labelled walks (E1/E2) to show it helps; the filter hook is `ParticleFusion` region down-weighting, to be added with that evidence.
   - Accept: correct room ≥ 95% on labelled walks (E3).
 - [ ] **B5. Device RSSI offset calibration.** (S) A per-phone-model offset learned from beacon proximity during setup or the survey, so an iPhone survey works for Android users and vice versa.
 - [ ] **B6. Beacon health and fleet.** (S) Last-seen and battery (Eddystone-TLM) per beacon, and a warning when a beacon is missing or moved (its RSSI profile changed versus the survey).

@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
   exponentFromReading,
-  recommendBeaconSites,
+  planBeacons,
+  type PlanQuality,
   worstCoverageMetres,
   type BeaconPlacement,
   type BeaconPlacementSet,
@@ -63,16 +64,7 @@ export function BeaconLayoutEditor() {
   );
 
   const floor = venue.floors[0]!;
-  const sites = useMemo(
-    () =>
-      recommendBeaconSites(
-        venue.nodes.filter((n) => n.floorId === floorId),
-        floor.rooms,
-        floor.doors.map((d) => d.position),
-        3,
-      ),
-    [],
-  );
+  const [quality, setQuality] = useState<PlanQuality | null>(null);
   function persist(next: BeaconPlacement[]) {
     const set: BeaconPlacementSet = {
       schemaVersion: 1,
@@ -86,24 +78,37 @@ export function BeaconLayoutEditor() {
     setStale(false);
   }
   function useRecommended(count: number) {
-    const chosen = recommendBeaconSites(
-      venue.nodes.filter((n) => n.floorId === floorId),
-      floor.rooms,
-      floor.doors.map((d) => d.position),
-      count,
+    // Candidate mounting points: routing nodes plus room label positions (never doorways).
+    const candidates = [
+      ...venue.nodes
+        .filter((n) => n.floorId === floorId)
+        .map((n) => ({ x: n.x, y: n.y, id: n.id })),
+      ...floor.rooms
+        .filter((r) => r.kind === 'room' || r.kind === 'circulation')
+        .map((r) => ({ x: r.labelPosition.x, y: r.labelPosition.y })),
+    ];
+    const plan = planBeacons(
+      {
+        rooms: floor.rooms,
+        walls: floor.walls,
+        candidates,
+        doors: floor.doors.map((d) => d.position),
+      },
+      { count },
     );
     persist(
-      chosen.map((s) => ({
+      plan.sites.map((s) => ({
         tag: s.tag,
         floorId,
         x: s.x,
         y: s.y,
-        nodeId: s.nodeId,
+        ...(s.id ? { nodeId: s.id } : {}),
       })),
     );
-    setSelected(chosen[0]?.tag ?? null);
+    setQuality(plan.quality);
+    setSelected(plan.sites[0]?.tag ?? null);
     setNote(
-      `${chosen.length} beacon sites suggested. Put one phone at each marker, then calibrate each.`,
+      `${plan.sites.length} sites planned. Predicted: ${Math.round(plan.quality.coverage3 * 100)}% of the floor hears 3+ beacons, ${Math.round(plan.quality.coverageTarget * 100)}% hears 4+. Prediction only; check with Listen after mounting.`,
     );
   }
   const current = beacons.find((b) => b.tag === selected) ?? null;
@@ -224,9 +229,12 @@ export function BeaconLayoutEditor() {
   return (
     <View style={{ gap: 12 }}>
       <Text style={ui.body}>
-        Put phones at the numbered markers. {sites.length} sites are suggested
-        so beacons surround the walking area. Beacons need a clear line, about
-        chest height, away from metal, screen on and charging.
+        Put a beacon at each numbered marker. Choose how many to plan: more
+        beacons means every spot hears more of them. Keep them about chest
+        height or higher, away from metal, and never in a straight line.
+        {quality
+          ? ` Predicted: ${Math.round(quality.coverage3 * 100)}% of the floor hears 3 or more, ${Math.round(quality.coverageTarget * 100)}% hears 4 or more, layout roundness ${quality.collinearity.toFixed(2)} (above 0.3 is good).`
+          : ''}
       </Text>
       {stale ? (
         <Notice error>
@@ -259,16 +267,15 @@ export function BeaconLayoutEditor() {
         />
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Action
-            title="Suggest 3 sites"
-            primary
-            onPress={() => useRecommended(3)}
-          />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Action title="Suggest 4 sites" onPress={() => useRecommended(4)} />
-        </View>
+        {[3, 4, 6, 8].map((n) => (
+          <View key={n} style={{ flex: 1 }}>
+            <Action
+              title={`${n} sites`}
+              primary={n === 6}
+              onPress={() => useRecommended(n)}
+            />
+          </View>
+        ))}
       </View>
       {beacons.map((b) => (
         <Action
