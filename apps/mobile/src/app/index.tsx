@@ -31,6 +31,7 @@ import {
   roomNameAt,
 } from '../navigation/assist-helpers';
 import { fingerprintProfile, loadPlacements } from '../fingerprinting/storage';
+import { DisplayPose } from '../navigation/display-pose';
 import { NavMap } from '../components/nav-map';
 import { theme } from '../components/ui';
 
@@ -99,6 +100,10 @@ export default function Navigate() {
   );
   const [reroutes, setReroutes] = useState(0);
   const [markOpen, setMarkOpen] = useState(false);
+  const display = useRef(new DisplayPose()).current;
+  const [shown, setShown] = useState<{ x: number; y: number } | null>(null);
+  const lowConfidenceSince = useRef<number | null>(null);
+  const [notSure, setNotSure] = useState(false);
   const [lastMark, setLastMark] = useState('');
   const tracker = useRef<AssistedTracker | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
@@ -257,7 +262,7 @@ export default function Navigate() {
       session.anchor(
         anchorPayload(venue, anchor.id),
         stepLength ?? 0.62,
-        'continuous-test',
+        'resilient',
       );
       tracker.current!.syncRaw(anchor.position.x, anchor.position.y);
       const line = remainingRoute(route.geometry, e);
@@ -312,6 +317,39 @@ export default function Navigate() {
     setPhase('idle');
   }
 
+  // What the dot shows: snapped to the route, smoothed, and still while the user stands (Plan 002 A3).
+  useEffect(() => {
+    if (!est) {
+      display.reset();
+      setShown(null);
+      return;
+    }
+    display.update(
+      { x: est.x, y: est.y },
+      Date.now() / 1000,
+      est.source === 'walking',
+      est.source === 'fix' || phaseRef.current === 'confirm',
+    );
+  }, [est]);
+  useEffect(() => {
+    display.setRoute(
+      route ? route.geometry.map((q) => ({ x: q.x, y: q.y })) : null,
+    );
+  }, [route]);
+  useEffect(() => {
+    if (!est) return;
+    const timer = setInterval(() => {
+      const before = display.current();
+      const next = display.step(0.08);
+      if (
+        next &&
+        (!before || Math.hypot(next.x - before.x, next.y - before.y) > 0.01)
+      )
+        setShown({ x: next.x, y: next.y });
+    }, 80);
+    return () => clearInterval(timer);
+  }, [!!est]);
+
   // Walking sensors feed the filter as displacements.
   useEffect(() => {
     if (phase !== 'navigating' || !rawPose) return;
@@ -331,8 +369,20 @@ export default function Navigate() {
     setGuidance(g);
     if (g.status === 'off-route' || g.status === 'recover') {
       offRouteSince.current ??= Date.now();
-      if (Date.now() - offRouteSince.current > 2500) reroute(est);
+      if (
+        Date.now() - offRouteSince.current > 4000 &&
+        est.displaySigmaMetres < 3
+      )
+        reroute(est);
     } else offRouteSince.current = null;
+    // A4: do not give turn instructions while we genuinely do not know where the user is.
+    if (est.displaySigmaMetres > 4) {
+      lowConfidenceSince.current ??= Date.now();
+      if (Date.now() - lowConfidenceSince.current > 10000) setNotSure(true);
+    } else {
+      lowConfidenceSince.current = null;
+      setNotSure(false);
+    }
     if (
       destNode &&
       (g.status === 'near-destination' || g.remainingMetres < 1.2) &&
@@ -518,8 +568,8 @@ export default function Navigate() {
         position={
           est
             ? {
-                x: est.x,
-                y: est.y,
+                x: shown?.x ?? est.x,
+                y: shown?.y ?? est.y,
                 sigma: est.displaySigmaMetres,
                 headingRad:
                   phase === 'navigating' ? (rawPose?.headingRad ?? null) : null,
@@ -564,7 +614,7 @@ export default function Navigate() {
             }}
           >
             <Text style={{ color: 'white', fontSize: 44, lineHeight: 48 }}>
-              {man.glyph}
+              {notSure ? '?' : man.glyph}
             </Text>
             <View style={{ flex: 1 }}>
               <Text
@@ -573,9 +623,15 @@ export default function Navigate() {
               >
                 {session.settling > 0 || session.starting
                   ? `Hold still · ${session.settling || 4}`
-                  : man.text}
+                  : notSure
+                    ? 'Not sure where you are'
+                    : man.text}
               </Text>
-              {man.sub ? (
+              {notSure ? (
+                <Text style={{ color: '#C7D6EE', fontSize: 14 }}>
+                  Tap Fix my location below, then tap where you are.
+                </Text>
+              ) : man.sub ? (
                 <Text style={{ color: '#C7D6EE', fontSize: 14 }}>
                   {man.sub}
                 </Text>

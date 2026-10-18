@@ -138,7 +138,8 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
   - Accept: unit tests; replay of the six traces shows drift while standing ≤ 0.3 m per minute (from metres) without losing walking corrections; record before/after numbers.
 - [x] **A2. Never move without evidence.** (S) The displayed position changes only on a walking step, an applied radio update, a proximity/fingerprint fix or a user fix. Show an "estimating…" state rather than wandering.
   - **Done:** 2026-10-18: the estimate only changes on a walking displacement, an applied radio update, a proximity/fingerprint fix or a user fix (policy test "does not move while the user stands still": < 0.3 m over 60 s with noisy radio).
-- [ ] **A3. Maps-grade display.** (M)
+- [x] **A3. Maps-grade display.** (M)
+  - **Done:** 2026-10-18: `navigation/display-pose.ts` (`DisplayPose`): snaps to the route within 2 m, animates at ≤ 2.5 m/s, freezes while no step for 3 s (deadband 0.6 m), teleports only on explicit fixes; wired into the Navigate screen. 5 tests. Heading-up rotation and medial-axis snapping when off-route remain optional follow-ups; **not yet seen on a phone**.
   - Snap to the route polyline when within 2 m and moving along it.
   - Otherwise snap to the walkable centreline (medial-axis graph from `venue.edges`).
   - Animate between positions (200–400 ms ease).
@@ -146,15 +147,18 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
   - Accuracy halo from the displayed uncertainty.
   - Files: `components/nav-map.tsx`, `navigation/assist-helpers.ts`.
   - Accept: helper tests; browser-pane visual check; no jumps above 1.5 m between frames unless a fix occurred.
-- [ ] **A4. Confidence-driven UX.** (S) When uncertainty is above 4 m for 10 s, show "Not sure where you are", offer "Tap your spot" and keep guidance paused. When it recovers, resume. Never give turn instructions with high uncertainty.
-- [ ] **A5. Rerouting hygiene.** (S) Reroute only when off-route for 4 s and uncertainty is under 3 m; debounce; count reroutes in the trace.
+- [x] **A4. Confidence-driven UX.** (S) When uncertainty is above 4 m for 10 s, show "Not sure where you are", offer "Tap your spot" and keep guidance paused. When it recovers, resume. Never give turn instructions with high uncertainty.
+  - **Done:** 2026-10-18: after 10 s above 4 m uncertainty the banner reads "Not sure where you are" with the Fix-my-location instruction; turn text is suppressed. Needs phone check.
+- [x] **A5. Rerouting hygiene.** (S) Reroute only when off-route for 4 s and uncertainty is under 3 m; debounce; count reroutes in the trace.
+  - **Done:** 2026-10-18: reroute only after 4 s off route and uncertainty under 3 m.
 
 ### Track P: PDR v3, the motion backbone (largest lever)
 
 - [ ] **P1. Orientation-independent step detection.** (L) Detect steps from the gravity-removed acceleration magnitude (or vertical component in the earth frame using attitude): band-pass 1–3 Hz, adaptive peak threshold, 0.25–1.0 s refractory. Works flat, tilted and swinging in hand. Keep `step-yaw-motion-v2` for historical replay; add a new revision `step-v3`.
   - Files: `packages/pdr/src/*`, `positioning-core/src/engine.ts` (new path), `motion-guard.ts` (soft, not stopping).
   - Accept: on recorded walks (inbox runs with manual footfall counts, see `research/MOTION_GUARD_EXPERIMENT.md`), count error ≤ 5% for normal pace on both phones; bobbing control produces ≤ 2 false steps per 20 s.
-- [ ] **P2. Never stop; degrade.** (M) Replace hard stops (tilt over 60°, heading gap, clock issues) with soft states: hold position, widen uncertainty, resume automatically. Only permission/hardware loss stops, with a visible reason.
+- [x] **P2. Never stop; degrade.** (M) Replace hard stops (tilt over 60°, heading gap, clock issues) with soft states: hold position, widen uncertainty, resume automatically. Only permission/hardware loss stops, with a visible reason.
+  - **Done:** 2026-10-18: new recorded policy `resilient` (`TrackingPolicy`). Clock repeats are skipped, tilt up to 80° is tolerated and a steeper tilt pauses walking updates until recovery, heading jumps are accepted with a short step distrust window, stale-heading steps are dropped and counted (`droppedSteps`). Historical policies unchanged (tests). The Navigate screen uses `resilient`. Replay of historical failing recordings not yet done (needs motion runs from the inbox).
   - Accept: replay of historical failing runs shows no stops except hardware loss.
 - [ ] **P3. Heading from attitude.** (M) Heading = yaw of the device's forward axis projected to the horizontal plane from the full attitude quaternion/rotation matrix, not raw alpha. Use the Android rotation vector (magnetometer-fused, absolute) and, on iOS, DeviceMotion with a magnetic-north reference where available (check SDK 57 docs; otherwise a native module change in M2). Add gyro-only short-term smoothing.
 - [ ] **P4. Automatic map alignment, no "face the route" step.** (M)

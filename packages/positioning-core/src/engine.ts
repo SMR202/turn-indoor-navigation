@@ -61,13 +61,26 @@ export type TrackingSnapshot = {
   warning?: string;
   motion?: ReturnType<MotionGuard['snapshot']>;
   lastStepAtSeconds?: number;
+  /** Steps discarded by the resilient policy (stale heading, tilt); 0 for historical policies. */
+  droppedSteps?: number;
   pose: Pose | null;
   steps: number;
   distanceMetres: number;
   message: string;
   stopped: boolean;
 };
+/**
+ * bounded: historical (stops at 30 m and on any sensor irregularity).
+ * continuous-test: historical, but the 30 m limit is only a warning.
+ * resilient (Plan 002 P2): irregularities degrade (a step or a reading is dropped and the cause is
+ * reported) instead of stopping; only permission or hardware loss stops tracking.
+ */
+export type TrackingPolicy = 'bounded' | 'continuous-test' | 'resilient';
+
 export class NavigationEngine {
+  private droppedSteps = 0;
+  private holdReason: string | null = null;
+  private headingFreshAfter = -Infinity;
   private pose: Pose | null = null;
   private detector = new StepDetector();
   private guard = new MotionGuard();
@@ -86,7 +99,7 @@ export class NavigationEngine {
     readonly sessionId: string,
     readonly stepLengthMetres: number,
     readonly algorithm: PdrAlgorithm = PDR_REVISION,
-    readonly trackingPolicy: 'bounded' | 'continuous-test' = 'bounded',
+    readonly trackingPolicy: TrackingPolicy = 'bounded',
   ) {
     if (
       !Number.isFinite(stepLengthMetres) ||
@@ -97,6 +110,8 @@ export class NavigationEngine {
   }
   snapshot(): TrackingSnapshot {
     return {
+      ...(this.holdReason ? { warning: this.holdReason } : {}),
+      droppedSteps: this.droppedSteps,
       ...(this.trackingPolicy === 'continuous-test' &&
       this.steps * this.stepLengthMetres >= 30
         ? {
@@ -176,7 +191,9 @@ export class NavigationEngine {
     }
     const previous = this.lastByType.get(observation.type) ?? -Infinity;
     if (observation.timestampSeconds <= previous) {
-      this.stop('Sensor clock reversed/repeated. Re-anchor.');
+      // A repeated or reversed sample carries no new information; resilient mode just skips it.
+      if (this.trackingPolicy !== 'resilient')
+        this.stop('Sensor clock reversed/repeated. Re-anchor.');
       return this.snapshot();
     }
     this.lastByType.set(observation.type, observation.timestampSeconds);
@@ -195,17 +212,32 @@ export class NavigationEngine {
       this.yawOrigin = null;
     }
     if (observation.type === 'attitude' && this.alignment !== null) {
-      if (observation.tiltRad > Math.PI / 3) {
-        this.stop('Hold phone screen-up below 60° tilt; re-anchor.');
+      const resilient = this.trackingPolicy === 'resilient';
+      // Step detection uses acceleration magnitude, so steep tilt only hurts heading; resilient mode
+      // pauses walking updates while tilted past 80° and resumes by itself.
+      if (observation.tiltRad > (resilient ? (4 * Math.PI) / 9 : Math.PI / 3)) {
+        if (!resilient) {
+          this.stop('Hold phone screen-up below 60° tilt; re-anchor.');
+          return this.snapshot();
+        }
+        this.holdReason =
+          'Phone is tilted too far; walking updates are paused.';
+        this.attitude = null;
+        this.headingFreshAfter = observation.timestampSeconds + 0.5;
         return this.snapshot();
       }
+      if (resilient && this.holdReason) this.holdReason = null;
       if (
         this.attitude &&
         (observation.timestampSeconds - this.attitude.time > 0.4 ||
           Math.abs(wrapAngle(observation.yawRad - this.attitude.yaw)) > 0.8)
       ) {
-        this.stop('Heading gap/jump detected; re-anchor.');
-        return this.snapshot();
+        if (this.trackingPolicy !== 'resilient') {
+          this.stop('Heading gap/jump detected; re-anchor.');
+          return this.snapshot();
+        }
+        // Take the new heading as truth but distrust steps for a moment while it settles.
+        this.headingFreshAfter = observation.timestampSeconds + 0.4;
       }
       this.yawOrigin ??= observation.yawRad;
       const heading = wrapAngle(
@@ -235,7 +267,8 @@ export class NavigationEngine {
         observation.timestampSeconds,
         Math.hypot(...observation.values),
       );
-      if (detected.issue) this.stop(detected.issue);
+      if (detected.issue && this.trackingPolicy !== 'resilient')
+        this.stop(detected.issue);
       if (detected.stepAt !== null) {
         const stepTime = detected.stepAt;
         const stepHeading = this.headingHistory.reduce<{
@@ -249,9 +282,15 @@ export class NavigationEngine {
               : nearest,
           null,
         );
-        if (!stepHeading || Math.abs(stepTime - stepHeading.time) > 0.2)
-          this.stop('Heading unavailable/stale at step; re-anchor.');
-        else {
+        if (
+          this.trackingPolicy === 'resilient' &&
+          (this.holdReason !== null || stepTime < this.headingFreshAfter)
+        )
+          this.droppedSteps++;
+        else if (!stepHeading || Math.abs(stepTime - stepHeading.time) > 0.2) {
+          if (this.trackingPolicy === 'resilient') this.droppedSteps++;
+          else this.stop('Heading unavailable/stale at step; re-anchor.');
+        } else {
           if (this.algorithm === GUARDED_PDR_REVISION)
             this.guard.candidate(stepTime, stepHeading.heading);
           else
@@ -305,7 +344,9 @@ export class NavigationEngine {
 
 export const recordingSchema = z.object({
   positionFix: fingerprintFixSchema.optional(),
-  trackingPolicy: z.enum(['bounded', 'continuous-test']).optional(),
+  trackingPolicy: z
+    .enum(['bounded', 'continuous-test', 'resilient'])
+    .optional(),
   checkpoints: z
     .array(
       z.object({

@@ -8,6 +8,7 @@ import {
   appendCheckpoint,
   resolveAnchorPayload,
   type Recording,
+  type TrackingPolicy,
   type TrackingSnapshot,
 } from '@turn/positioning-core';
 import type { Observation } from '@turn/contracts';
@@ -170,7 +171,7 @@ export function useNavigationSession(options: { shadow?: boolean } = {}) {
   const anchor = (
     payload: string,
     stepLength: number,
-    trackingPolicy: 'bounded' | 'continuous-test' = 'bounded',
+    trackingPolicy: TrackingPolicy = 'bounded',
   ) => {
     startupAbort.current?.abort();
     trackingArmed.current = false;
