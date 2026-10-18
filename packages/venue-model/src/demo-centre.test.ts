@@ -14,6 +14,9 @@ it('is a valid venue whose walk graph never crosses a wall and reaches every pla
   const queue = ['entrance'];
   while (queue.length)
     for (const n of adj.get(queue.shift()!) ?? [])
-      if (!seen.has(n)) (seen.add(n), queue.push(n));
+      if (!seen.has(n)) {
+        seen.add(n);
+        queue.push(n);
+      }
   for (const poi of demoCentre.pois) expect(seen.has(poi.nodeId)).toBe(true);
 });
