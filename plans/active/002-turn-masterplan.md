@@ -105,12 +105,14 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
 
 ### Track E: evaluation and ground truth (do first; everything depends on it)
 
-- [ ] **E1. Labelled walk recording.** (M) Add landmark taps during navigation: "I'm at <landmark>" quick buttons and a floor-mark mode. They write timestamped `checkpoint` annotations into both the navigation recording and the `ble-trace`. Reuse `appendCheckpoint` (`positioning-core/src/checkpoints.ts`).
+- [~] **E1. Labelled walk recording.** (M) Add landmark taps during navigation: "I'm at <landmark>" quick buttons and a floor-mark mode. They write timestamped `checkpoint` annotations into both the navigation recording and the `ble-trace`. Reuse `appendCheckpoint` (`positioning-core/src/checkpoints.ts`).
+  - **Done:** 2026-10-18, code complete: "Mark where I am" in the navigating sheet writes `landmarks[]` into the `ble-trace` (tracker `markLandmark`, schema tested, never moves the dot). Landmark list is currently the venue anchors and POIs; floor markers from E2 still to be added. **Not yet exercised on a phone.**
   - Files: `apps/mobile/src/app/index.tsx`, `navigation/assisted-tracker.ts`, `ble-proximity.ts` (schema: optional `landmarks[]`).
   - Accept: a recorded walk has ≥ 4 landmarks with venue coordinates; schema round-trips; older traces still parse.
 - [ ] **E2. Physical ground truth kit.** (S, docs) Print and place 8–12 numbered floor markers (tape plus QR) at map-known points: doors, room centres, corridor turns. Measure their positions against the plan, and record them in the private venue as `landmarks` with a measured accuracy note.
   - Accept: a marker table with coordinates exists in `work/private`; a doc explains placement.
-- [ ] **E3. Evaluation runner and leaderboard.** (M) `npm run eval` replays every labelled trace in `work/eval/` through the current code. Per trace and overall it reports:
+- [x] **E3. Evaluation runner and leaderboard.** (M) `npm run eval` replays every labelled trace in `work/eval/` through the current code. Per trace and overall it reports:
+  - **Done:** 2026-10-18: `npm run eval` (`scripts/eval.mjs`) replays assisted traces through the live policy and prints standing drift, path vs walking path, proximity fixes and (when landmarks exist) landmark error. Baseline on the 5 existing assisted walks: standing drift recorded 49.9 m → replay 1.9 m; path length now tracks walking sensors (16.4 vs 16.5 m, 14.5 vs 14.0 m; recorded was 26.5/21.4 m). Three of five walks had 0–1 walking updates, so they test nothing beyond "no wandering". No landmark-labelled walk exists yet, so G1 is still open.
   - error at landmarks (median, p90);
   - correct-room rate;
   - drift while standing;
@@ -120,11 +122,13 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
   - Files: `scripts/eval.mjs`, `positioning-core/src/fusion-replay.ts`.
   - Accept: runs on the six existing traces (no labels yet means stability metrics only) and on labelled ones.
 - [ ] **E4. Regression gate in CI (later).** (S) Keep a small public synthetic plus anonymised dataset in the repo; CI fails if metrics regress by more than 10%.
-- [ ] **E5. Protocol doc.** (S) `docs/EVALUATION.md`: routes to walk (5 fixed routes plus 2 random), phones, carry modes (flat in hand, tilted reading, swinging hand), lighting/crowd notes, how to label, what to send.
+- [x] **E5. Protocol doc.** (S) `docs/EVALUATION.md`: routes to walk (5 fixed routes plus 2 random), phones, carry modes (flat in hand, tilted reading, swinging hand), lighting/crowd notes, how to label, what to send.
+  - **Done:** 2026-10-18: [docs/EVALUATION.md](../../docs/EVALUATION.md).
 
 ### Track A: filter policy, honesty and display (fixes what you saw)
 
-- [ ] **A1. AssistFusion policy shared by live and replay.** (M) One pure class decides when evidence is applied (the stash contains a start).
+- [x] **A1. AssistFusion policy shared by live and replay.** (M) One pure class decides when evidence is applied (the stash contains a start).
+  - **Done:** 2026-10-18: `positioning-core/src/assist-fusion.ts` (radio every 3 s after ≥ 1 m of walking, tempered σ 9 dB heavy-tailed, 2.5σ innovation gate, proximity needs ≥ 2 beacons and σ 2.5 m, display σ floor 1.5 m). The mobile `AssistedTracker` is now a thin wrapper; `replayAssist` runs the same code offline. 5 policy tests. Replay numbers: see E3.
   - Radio updates every 3 s, only after ≥ 1 m of walking (except 3 settle updates after a cold start).
   - Tempered (0.6) heavy-tailed likelihood, σ 9 dB.
   - Innovation gate: skip updates no hypothesis explains (2.5σ).
@@ -132,7 +136,8 @@ Size: S ≤ 0.5 day, M 1–2 days, L 3–5 days (agent effort). "Files" are the 
   - Displayed uncertainty floored at 1.5 m.
   - Files: `positioning-core/src/assist-fusion.ts`, `fusion.ts`, `fusion-replay.ts`; the mobile tracker becomes a thin wrapper.
   - Accept: unit tests; replay of the six traces shows drift while standing ≤ 0.3 m per minute (from metres) without losing walking corrections; record before/after numbers.
-- [ ] **A2. Never move without evidence.** (S) The displayed position changes only on a walking step, an applied radio update, a proximity/fingerprint fix or a user fix. Show an "estimating…" state rather than wandering.
+- [x] **A2. Never move without evidence.** (S) The displayed position changes only on a walking step, an applied radio update, a proximity/fingerprint fix or a user fix. Show an "estimating…" state rather than wandering.
+  - **Done:** 2026-10-18: the estimate only changes on a walking displacement, an applied radio update, a proximity/fingerprint fix or a user fix (policy test "does not move while the user stands still": < 0.3 m over 60 s with noisy radio).
 - [ ] **A3. Maps-grade display.** (M)
   - Snap to the route polyline when within 2 m and moving along it.
   - Otherwise snap to the walkable centreline (medial-axis graph from `venue.edges`).

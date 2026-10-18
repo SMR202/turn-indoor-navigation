@@ -2,6 +2,10 @@
 
 Updated: 2026-10-10.
 
+## Plan 002 start: stable evidence policy and evaluation — 2026-10-18
+
+IMPLEMENTED: `AssistFusion` (ADR-0010) shared by the live tracker and replay; `npm run eval`; landmark marks (`Mark where I am`) saved in assisted traces; [evaluation protocol](../../EVALUATION.md). EXPERIMENT RESULT: on the five recorded assisted walks the replay cuts standing drift from 49.9 m to 1.9 m and matches the walking path length; this is stability, not accuracy. Next: label walks with landmarks (Plan 002 E1/E2), then P1–P3.
+
 ## Assisted navigation: fusion, map-first navigator — 2026-10-16
 
 IMPLEMENTED: ParticleFusion (walls/walkable constraints, RSSI range likelihood with heavy-tailed noise, proximity and position fixes, heading-bias and step-scale states, cold start from radio), AssistedTracker (live stream → filter → recorder), trace replay for offline tuning, beacon site recommendation, assisted ble-trace records (raw walking, samples, events, fused path). [ADR-0009](../../../decisions/0009-particle-filter-fusion.md); [master plan](../../../plans/active/2026-10-16-assisted-navigation-master-plan.md).

@@ -1,21 +1,16 @@
 import {
+  AssistFusion,
   BLE_PROXIMITY_REVISION,
   DEFAULT_PROXIMITY_CONFIG,
-  ParticleFusion,
-  ProximityDetector,
   bleTraceRecordSchema,
+  type AssistEstimate,
   type BeaconPlacementSet,
   type BleTraceRecord,
-  type FusionBeacon,
-  type FusionEstimate,
   type FusionMap,
 } from '@turn/positioning-core';
 import { startBeaconStream, type StreamSample } from '../fingerprinting/ble';
 import { saveBleTrace } from '../fingerprinting/storage';
 
-export const DEFAULT_EXPONENT = 2.3;
-const WINDOW_SECONDS = 2;
-const MIN_PACKETS = 3;
 const TICK_MS = 1000;
 const MAX_SAMPLES = 60000;
 
@@ -25,11 +20,7 @@ export type BeaconHealth = {
   silentSeconds: number | null;
   rssi: number | null;
 };
-export type TrackerEstimate = FusionEstimate & {
-  /** Beacons contributing to the latest measurement update. */
-  beaconsUsed: number;
-  source: 'beacons' | 'fix' | 'walking';
-};
+export type TrackerEstimate = AssistEstimate;
 
 type Clock = () => number;
 export type TrackerOptions = {
@@ -44,21 +35,13 @@ export type TrackerOptions = {
   seed?: number;
 };
 
-function median(values: number[]) {
-  const v = [...values].sort((a, b) => a - b);
-  const m = v.length >> 1;
-  return v.length % 2 ? v[m]! : (v[m - 1]! + v[m]!) / 2;
-}
-
 /**
- * Live positioning controller (ADR-0009): runs the beacon stream, the particle filter, proximity
- * fixes and the trace recorder. Outside React; the screen only subscribes to its estimates.
+ * Live positioning controller (ADR-0009, ADR-0010): runs the beacon stream and the recorder around
+ * the shared AssistFusion policy, so live behaviour and offline replay are the same code.
+ * Outside React; the screen only subscribes to its estimates.
  */
 export class AssistedTracker {
-  readonly fusion: ParticleFusion;
-  private readonly beacons: FusionBeacon[];
-  private readonly detector: ProximityDetector | null;
-  private readonly recent = new Map<string, { at: number; rssi: number }[]>();
+  readonly assist: AssistFusion;
   private readonly samples: StreamSample[] = [];
   private readonly pdrLog: { t: number; x: number; y: number }[] = [];
   private readonly fusedLog: {
@@ -68,46 +51,32 @@ export class AssistedTracker {
     sigma: number;
   }[] = [];
   private readonly events: BleTraceRecord['events'] = [];
+  private readonly landmarks: NonNullable<BleTraceRecord['landmarks']> = [];
   private listeners = new Set<(e: TrackerEstimate | null) => void>();
   private stopStream: (() => void) | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
   private startedIso = '';
   private dropped = 0;
-  private lastRaw: { x: number; y: number } | null = null;
-  private current: TrackerEstimate | null = null;
-  private hasPosition = false;
   private failure: string | null = null;
   private finished = false;
   private started = false;
   private lastFusedLog = -Infinity;
-  private lastWalk = -Infinity;
-  private quietUpdates = 0;
 
   constructor(private readonly options: TrackerOptions) {
-    const placed = (options.placements?.beacons ?? []).filter(
-      (b) => b.floorId === options.floorId && b.referenceRssi !== undefined,
+    this.assist = new AssistFusion(
+      options.map,
+      options.placements?.beacons ?? [],
+      {},
+      options.seed ?? 1,
     );
-    this.beacons = placed.map((b) => ({
-      tag: b.tag,
-      x: b.x,
-      y: b.y,
-      refRssi: b.referenceRssi!,
-      exponent: b.exponent ?? DEFAULT_EXPONENT,
-    }));
-    this.fusion = new ParticleFusion(options.map, this.beacons, {
-      seed: options.seed ?? 1,
-    });
-    this.detector = placed.length
-      ? new ProximityDetector(placed, DEFAULT_PROXIMITY_CONFIG)
-      : null;
   }
 
   get beaconCount() {
-    return this.beacons.length;
+    return this.assist.beaconCount;
   }
   get positioned() {
-    return this.hasPosition;
+    return this.assist.hasPosition;
   }
   get streamFailure() {
     return this.failure;
@@ -124,7 +93,7 @@ export class AssistedTracker {
     this.started = true;
     this.startedAt = (this.options.now ?? (() => performance.now()))() / 1000;
     this.startedIso = new Date().toISOString();
-    if (this.beacons.length === 0) return;
+    if (this.assist.beaconCount === 0) return;
     const start = this.options.start ?? startBeaconStream;
     this.stopStream = await start(
       (batch, drop) => {
@@ -133,10 +102,7 @@ export class AssistedTracker {
         for (const s of batch) {
           if (this.samples.length < MAX_SAMPLES) this.samples.push(s);
           else this.dropped++;
-          const list = this.recent.get(s.tag) ?? [];
-          list.push({ at, rssi: s.rssi });
-          this.recent.set(s.tag, list);
-          this.detector?.push({ t: at, tag: s.tag, rssi: s.rssi });
+          this.assist.addSample(at, s.tag, s.rssi);
         }
       },
       (message) => {
@@ -150,72 +116,46 @@ export class AssistedTracker {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
-  private publish(source: TrackerEstimate['source'], beaconsUsed: number) {
-    if (!this.hasPosition) return;
-    this.current = { ...this.fusion.estimate(), beaconsUsed, source };
+  private publish() {
+    const e = this.assist.estimate();
+    if (!e) return;
     const t = this.clock();
     if (t - this.lastFusedLog >= 1 && this.fusedLog.length < 20000) {
       this.lastFusedLog = t;
-      this.fusedLog.push({
-        t,
-        x: this.current.x,
-        y: this.current.y,
-        sigma: this.current.sigmaMetres,
-      });
+      this.fusedLog.push({ t, x: e.x, y: e.y, sigma: e.displaySigmaMetres });
     }
-    for (const l of this.listeners) l(this.current);
+    for (const l of this.listeners) l(e);
   }
   estimate() {
-    return this.current;
-  }
-
-  /** Current smoothed beacon readings keyed by tag (used for the initial position search). */
-  private windowReadings() {
-    const now = this.clock();
-    const out: { tag: string; rssi: number }[] = [];
-    for (const [tag, list] of this.recent) {
-      while (list.length && list[0]!.at < now - WINDOW_SECONDS) list.shift();
-      if (list.length >= MIN_PACKETS)
-        out.push({ tag, rssi: median(list.map((s) => s.rssi)) });
-    }
-    return out;
+    return this.assist.estimate();
   }
 
   private tick() {
     if (this.finished) return;
-    const readings = this.windowReadings();
-    const now = this.clock();
-    // Re-applying the same evidence while standing still would make the cloud falsely certain.
-    if (now - this.lastWalk < 6) this.quietUpdates = 0;
-    if (this.hasPosition && readings.length && this.quietUpdates < 4) {
-      this.fusion.updateRssi(readings);
-      if (now - this.lastWalk >= 6) this.quietUpdates++;
+    const { proximity } = this.assist.tick(this.clock());
+    if (proximity) {
+      this.events.push({
+        t: proximity.t,
+        tag: proximity.tag,
+        anchorId: proximity.anchorId,
+        smoothedRssi: proximity.smoothedRssi,
+        referenceRssi: proximity.referenceRssi,
+        marginDb: proximity.marginDb,
+        runnerUp: proximity.runnerUp,
+        samplesInWindow: proximity.samplesInWindow,
+        estimate: {
+          floorId: this.options.floorId,
+          x: proximity.before.x,
+          y: proximity.before.y,
+        },
+        beacon: proximity.beacon,
+        discrepancyMetres: Math.hypot(
+          proximity.before.x - proximity.beacon.x,
+          proximity.before.y - proximity.beacon.y,
+        ),
+      });
     }
-    const event = this.detector?.evaluate(now) ?? null;
-    if (event) {
-      const placement = this.options.placements?.beacons.find(
-        (b) => b.tag === event.tag,
-      );
-      if (placement && this.hasPosition) {
-        const before = this.fusion.estimate();
-        // Proximity is a strong but not absolute statement: ~1.6 m, never a hard reset.
-        this.fusion.updatePosition(placement.x, placement.y, 1.6);
-        this.events.push({
-          ...event,
-          estimate: { floorId: this.options.floorId, x: before.x, y: before.y },
-          beacon: {
-            floorId: placement.floorId,
-            x: placement.x,
-            y: placement.y,
-          },
-          discrepancyMetres: Math.hypot(
-            before.x - placement.x,
-            before.y - placement.y,
-          ),
-        });
-      }
-    }
-    this.publish('beacons', readings.length);
+    this.publish();
   }
 
   /**
@@ -224,60 +164,45 @@ export class AssistedTracker {
    */
   async locate(waitMs = 6000): Promise<TrackerEstimate | null> {
     await new Promise((r) => setTimeout(r, waitMs));
-    const readings = this.windowReadings();
-    if (readings.length < 2 || !this.fusion.initFromRssi(readings)) return null;
-    this.hasPosition = true;
-    this.lastRaw = null;
-    this.publish('beacons', readings.length);
-    return this.current;
+    if (!this.assist.locate(this.clock())) return null;
+    this.publish();
+    return this.assist.estimate();
   }
 
   /** A trusted position: user tap, QR, confirmed fingerprint, known anchor. */
   setPosition(x: number, y: number, sigma = 1) {
-    this.fusion.reset(x, y, sigma);
-    this.hasPosition = true;
-    this.publish('fix', this.windowReadings().length);
+    this.assist.setPosition(x, y, sigma);
+    this.publish();
   }
   /** A measured position (fingerprint candidate): blends with the current belief. */
   fixPosition(x: number, y: number, sigma: number) {
-    if (!this.hasPosition) return this.setPosition(x, y, sigma);
-    this.fusion.updatePosition(x, y, sigma);
-    this.publish('fix', this.windowReadings().length);
+    this.assist.fixPosition(x, y, sigma);
+    this.publish();
   }
 
   /** Sets the walking-sensor reference point; later displacements are deltas from it. */
   syncRaw(x: number, y: number) {
-    this.lastRaw = { x, y };
+    this.assist.syncRaw(x, y);
   }
   /** Feed the raw PDR position each time it changes. */
   walk(x: number, y: number) {
-    const prev = this.lastRaw;
-    this.lastRaw = { x, y };
-    const t = this.clock();
-    if (this.pdrLog.length < 20000) this.pdrLog.push({ t, x, y });
-    if (!prev || !this.hasPosition) return;
-    const dx = x - prev.x,
-      dy = y - prev.y;
-    if (Math.hypot(dx, dy) < 0.02) return;
-    this.lastWalk = t;
-    this.fusion.predict(dx, dy);
-    this.publish('walking', this.current?.beaconsUsed ?? 0);
+    if (this.pdrLog.length < 20000) this.pdrLog.push({ t: this.clock(), x, y });
+    if (this.assist.walk(x, y)) this.publish();
+  }
+  /** User-confirmed ground truth: "I am at this map point now". Evaluation only; never moves the dot. */
+  markLandmark(id: string, x: number, y: number) {
+    const e = this.assist.estimate();
+    this.landmarks.push({
+      t: this.clock(),
+      id,
+      x,
+      y,
+      ...(e ? { estimate: { x: e.x, y: e.y } } : {}),
+    });
   }
 
   health(): BeaconHealth[] {
-    const now = this.clock();
-    return this.beacons.map((b) => {
-      const list = this.recent.get(b.tag);
-      const last = list?.at(-1);
-      return {
-        tag: b.tag,
-        silentSeconds: last ? now - last.at : null,
-        rssi:
-          list && list.length
-            ? median(list.slice(-8).map((s) => s.rssi))
-            : null,
-      };
-    });
+    return this.assist.health(this.clock());
   }
 
   /** Stops the stream and saves the assisted-navigation trace (null when nothing was recorded). */
@@ -309,6 +234,7 @@ export class AssistedTracker {
       droppedSamples: this.dropped,
       pdr: this.pdrLog,
       fused: this.fusedLog,
+      ...(this.landmarks.length ? { landmarks: this.landmarks } : {}),
     });
     if (!parsed.success) return null;
     (this.options.save ?? saveBleTrace)(parsed.data);

@@ -218,6 +218,19 @@ export const bleTraceRecordSchema = z
       .array(z.object({ t: finite.min(0), x: finite, y: finite }))
       .max(20000)
       .optional(),
+    /** User-confirmed ground-truth marks (evaluation only; they never move the estimate). */
+    landmarks: z
+      .array(
+        z.object({
+          t: finite.min(0),
+          id: id,
+          x: finite,
+          y: finite,
+          estimate: z.object({ x: finite, y: finite }).optional(),
+        }),
+      )
+      .max(500)
+      .optional(),
     /** Fused estimate over time (assist mode). */
     fused: z
       .array(

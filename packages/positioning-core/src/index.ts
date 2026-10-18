@@ -7,3 +7,4 @@ export * from './ble-proximity';
 export * from './fusion';
 export * from './beacon-plan';
 export * from './fusion-replay';
+export * from './assist-fusion';

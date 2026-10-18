@@ -98,6 +98,8 @@ export default function Navigate() {
     'destination',
   );
   const [reroutes, setReroutes] = useState(0);
+  const [markOpen, setMarkOpen] = useState(false);
+  const [lastMark, setLastMark] = useState('');
   const tracker = useRef<AssistedTracker | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
   const guide = useRef<RouteGuidance | null>(null);
@@ -323,7 +325,7 @@ export default function Navigate() {
       ...rawPose,
       position: { x: est.x, y: est.y },
       status: 'tracking',
-      horizontalUncertaintyMetres: est.sigmaMetres,
+      horizontalUncertaintyMetres: est.displaySigmaMetres,
     };
     const g = guide.current.consume(fused);
     setGuidance(g);
@@ -393,6 +395,33 @@ export default function Navigate() {
   const here = est ? roomNameAt(venue, floorId, est) : null;
   const mapBeacons =
     phase === 'idle' || phase === 'navigating' || phase === 'confirm' ? [] : [];
+
+  // Ground truth for evaluation: "I am standing at this known point now". Never moves the dot.
+  const landmarkChoices = useMemo(
+    () => [
+      ...venue.anchors.map((a) => ({
+        id: a.id,
+        label: a.label,
+        x: a.position.x,
+        y: a.position.y,
+      })),
+      ...venue.pois.flatMap((p) => {
+        const n = venue.nodes.find((q) => q.id === p.nodeId);
+        return n ? [{ id: 'poi-' + p.id, label: p.name, x: n.x, y: n.y }] : [];
+      }),
+    ],
+    [],
+  );
+  function markLandmark(l: {
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+  }) {
+    tracker.current?.markLandmark(l.id, l.x, l.y);
+    setLastMark('Marked ' + l.label + ' for the accuracy log.');
+    setMarkOpen(false);
+  }
 
   function onMapTap(p: { x: number; y: number }) {
     if (phase === 'confirm' && tapMode === 'position') {
@@ -491,7 +520,7 @@ export default function Navigate() {
             ? {
                 x: est.x,
                 y: est.y,
-                sigma: est.sigmaMetres,
+                sigma: est.displaySigmaMetres,
                 headingRad:
                   phase === 'navigating' ? (rawPose?.headingRad ?? null) : null,
               }
@@ -738,7 +767,7 @@ export default function Navigate() {
             </Text>
             <Text style={{ color: theme.muted }}>
               {est
-                ? `Accuracy about ±${Math.max(0.5, est.sigmaMetres).toFixed(1)} m${est.beaconsUsed ? ` · ${est.beaconsUsed} beacons heard` : ''}`
+                ? `Accuracy about ±${Math.max(0.5, est.displaySigmaMetres).toFixed(1)} m${est.beaconsUsed ? ` · ${est.beaconsUsed} beacons heard` : ''}`
                 : message || 'Tap your location on the map.'}
             </Text>
             {est && message ? (
@@ -822,7 +851,7 @@ export default function Navigate() {
             </View>
             <Text style={{ color: theme.muted, fontSize: 13 }}>
               {est
-                ? `±${Math.max(0.5, est.sigmaMetres).toFixed(1)} m · ${heardCount}/${health.length || tracker.current?.beaconCount || 0} beacons${reroutes ? ` · rerouted ${reroutes}×` : ''}`
+                ? `±${Math.max(0.5, est.displaySigmaMetres).toFixed(1)} m · ${heardCount}/${health.length || tracker.current?.beaconCount || 0} beacons${reroutes ? ` · rerouted ${reroutes}×` : ''}`
                 : 'Positioning…'}
               {message ? ` · ${message}` : ''}
             </Text>
@@ -837,7 +866,39 @@ export default function Navigate() {
                 on and nearby.
               </Text>
             ) : null}
+            {markOpen ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                {landmarkChoices.map((l) => (
+                  <Pressable
+                    key={l.id}
+                    accessibilityRole="button"
+                    onPress={() => markLandmark(l)}
+                    style={{
+                      backgroundColor: '#FFF4E5',
+                      borderRadius: 16,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                    }}
+                  >
+                    <Text style={{ color: '#8A5300', fontWeight: '600' }}>
+                      {l.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : lastMark ? (
+              <Text style={{ color: theme.muted, fontSize: 12 }}>
+                {lastMark}
+              </Text>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1 }}>
+                {secondary('Mark where I am', () => setMarkOpen(!markOpen))}
+              </View>
               <View style={{ flex: 1 }}>
                 {secondary('Fix my location', () => {
                   setTapMode('position');

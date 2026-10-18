@@ -3,6 +3,7 @@ import {
   ProximityDetector,
   type BleTraceRecord,
 } from './ble-proximity';
+import { AssistFusion, type AssistConfig } from './assist-fusion';
 import {
   ParticleFusion,
   type FusionBeacon,
@@ -89,4 +90,80 @@ export function replayAssistedTrace(
     path.push({ t, x: e.x, y: e.y, sigma: e.sigmaMetres });
   }
   return { path, proximityFixes: fixes };
+}
+
+/**
+ * Replays a recorded walk through the live policy (AssistFusion) and reports stability metrics
+ * that need no ground truth: how far the estimate wanders while the walker stands still, and how
+ * long the estimated path is compared with the walking sensors.
+ */
+export function replayAssist(
+  trace: BleTraceRecord,
+  map: FusionMap,
+  config: Partial<AssistConfig> = {},
+  seed = 1,
+) {
+  const assist = new AssistFusion(map, trace.placements.beacons, config, seed);
+  const start = trace.fused?.[0];
+  const pdr = [...(trace.pdr ?? [])].sort((a, b) => a.t - b.t);
+  const samples = trace.samples;
+  const end = Math.max(pdr.at(-1)?.t ?? 0, samples.at(-1)?.t ?? 0);
+  const path: ReplayedPoint[] = [];
+  let pi = 0,
+    si = 0,
+    fixes = 0,
+    standingDrift = 0,
+    fusedLength = 0;
+  let prev: { x: number; y: number } | null = null;
+  for (let t = 1; t <= end + 1; t += 1) {
+    while (si < samples.length && samples[si]!.t <= t) {
+      const s = samples[si]!;
+      assist.addSample(s.t, s.tag, s.rssi);
+      si++;
+    }
+    if (!assist.hasPosition && t >= 6) {
+      if (start) assist.setPosition(start.x, start.y, 1.5);
+      else assist.locate(t);
+      if (pdr[0]) assist.syncRaw(pdr[0].x, pdr[0].y);
+    }
+    let walked = false;
+    while (pi < pdr.length && pdr[pi]!.t <= t) {
+      if (assist.walk(pdr[pi]!.x, pdr[pi]!.y)) walked = true;
+      pi++;
+    }
+    if (assist.tick(t).proximity) fixes++;
+    const e = assist.estimate();
+    if (!e) continue;
+    if (prev) {
+      const d = Math.hypot(e.x - prev.x, e.y - prev.y);
+      fusedLength += d;
+      if (!walked) standingDrift += d;
+    }
+    prev = { x: e.x, y: e.y };
+    path.push({ t, x: e.x, y: e.y, sigma: e.displaySigmaMetres });
+  }
+  const pdrLength = pdr
+    .slice(1)
+    .reduce((n, p, i) => n + Math.hypot(p.x - pdr[i]!.x, p.y - pdr[i]!.y), 0);
+  return { path, proximityFixes: fixes, standingDrift, fusedLength, pdrLength };
+}
+
+/** The same stability metrics for what the phone actually showed (the recorded fused path). */
+export function recordedStability(trace: BleTraceRecord) {
+  const fused = trace.fused ?? [];
+  const pdr = trace.pdr ?? [];
+  let standingDrift = 0,
+    fusedLength = 0;
+  for (let i = 1; i < fused.length; i++) {
+    const d = Math.hypot(
+      fused[i]!.x - fused[i - 1]!.x,
+      fused[i]!.y - fused[i - 1]!.y,
+    );
+    fusedLength += d;
+    const walked = pdr.some(
+      (p, k) => k > 0 && p.t > fused[i - 1]!.t && p.t <= fused[i]!.t,
+    );
+    if (!walked) standingDrift += d;
+  }
+  return { standingDrift, fusedLength };
 }

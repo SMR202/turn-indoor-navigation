@@ -12,3 +12,4 @@ Use sequential ADR IDs. Accepted decisions remain in history; supersede rather t
 - [ADR-0007: TURN BLE beacon signals in the fingerprint pipeline](0007-ble-beacon-fingerprints.md)
 - [ADR-0008: BLE proximity anchors in shadow mode](0008-ble-proximity-anchors-shadow-mode.md)
 - [ADR-0009: map-aware particle-filter fusion](0009-particle-filter-fusion.md)
+- [ADR-0010: evidence policy for assisted positioning](0010-assist-policy.md)

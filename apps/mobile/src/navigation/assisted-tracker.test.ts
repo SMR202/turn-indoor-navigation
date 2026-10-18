@@ -142,3 +142,18 @@ it('reports no position when fewer than two beacons are heard, and works without
   expect(plain.estimate()?.x).toBeGreaterThan(3.3);
   expect(plain.finish()).toBeNull();
 });
+
+it('records user-confirmed landmarks in the trace without moving the estimate', async () => {
+  const { tracker, feed } = setup();
+  await tracker.begin();
+  tracker.setPosition(6, 5, 0.5);
+  feed(6, 5, 2);
+  const before = tracker.estimate()!;
+  tracker.markLandmark('door-1', 9, 5);
+  const after = tracker.estimate()!;
+  expect(after.x).toBe(before.x);
+  const trace = tracker.finish();
+  expect(trace?.landmarks).toHaveLength(1);
+  expect(trace?.landmarks?.[0]).toMatchObject({ id: 'door-1', x: 9, y: 5 });
+  expect(trace?.landmarks?.[0]?.estimate).toBeDefined();
+});

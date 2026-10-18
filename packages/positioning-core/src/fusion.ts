@@ -40,6 +40,10 @@ export type FusionConfig = {
   /** RSSI residual scale (dB) and Student-t degrees of freedom (heavy tails for body shadowing). */
   rssiSigmaDb: number;
   studentDf: number;
+  /** Exponent (0-1] applied to each radio update; below 1 discounts correlated, repeated evidence. */
+  rssiTemper: number;
+  /** Skip a radio update when even the best hypothesis is off by more than this many sigmas per reading. */
+  rssiGateSigmas: number;
   /** Ignore readings weaker than this (dBm): too near the noise floor to carry range information. */
   minRssi: number;
   /** Resample when the effective sample size drops below this fraction of N. */
@@ -54,6 +58,8 @@ export const DEFAULT_FUSION_CONFIG: FusionConfig = {
   scaleWalk: 0.012,
   rssiSigmaDb: 6,
   studentDf: 4,
+  rssiTemper: 1,
+  rssiGateSigmas: Infinity,
   minRssi: -92,
   essFraction: 0.5,
 };
@@ -266,14 +272,21 @@ export class ParticleFusion {
   }
 
   /** Probabilistic multilateration: weight particles by how well they explain the RSSI readings. */
-  updateRssi(readings: { tag: string; rssi: number }[]) {
-    const { rssiSigmaDb: sigma, studentDf: df, minRssi } = this.config;
+  updateRssi(readings: { tag: string; rssi: number }[]): boolean {
+    const {
+      rssiSigmaDb: sigma,
+      studentDf: df,
+      minRssi,
+      rssiTemper,
+      rssiGateSigmas,
+    } = this.config;
     const used = readings.filter(
       (r) =>
         this.beacons.has(r.tag) && r.rssi >= minRssi && Number.isFinite(r.rssi),
     );
-    if (used.length === 0) return;
+    if (used.length === 0) return false;
     const logw = new Float64Array(this.n);
+    let best = -Infinity;
     for (let i = 0; i < this.n; i++) {
       let ll = 0;
       for (const r of used) {
@@ -286,8 +299,22 @@ export class ParticleFusion {
           Math.log(1 + (residual * residual) / (df * sigma * sigma));
       }
       logw[i] = ll;
+      if (ll > best) best = ll;
     }
+    // Innovation gate: when no hypothesis explains the readings (shadowed body, moved beacon),
+    // the readings are the outlier, not the position.
+    if (Number.isFinite(rssiGateSigmas)) {
+      const g = rssiGateSigmas * sigma;
+      const gate =
+        used.length *
+        (-(df + 1) / 2) *
+        Math.log(1 + (g * g) / (df * sigma * sigma));
+      if (best < gate) return false;
+    }
+    if (rssiTemper !== 1)
+      for (let i = 0; i < this.n; i++) logw[i] = logw[i]! * rssiTemper;
     this.applyLogWeights(logw);
+    return true;
   }
 
   /** Gaussian position fix (proximity event, fingerprint match, tap, QR). */
