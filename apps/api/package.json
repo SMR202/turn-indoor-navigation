@@ -1,0 +1,17 @@
+{
+  "name": "@turn/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "@turn/design": "0.1.0",
+    "@turn/venue-model": "0.1.0",
+    "hono": "4.13.13",
+    "zod": "4.6.5"
+  }
+}
