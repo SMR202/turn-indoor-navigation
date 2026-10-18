@@ -315,33 +315,38 @@ export function importFloorGeoJson(
       'No doors given: rooms are not connected, so routing is limited to single rooms.',
     );
 
-  // Places: explicit POIs, else every named, non-corridor room.
+  // Places: every named, non-corridor room, plus explicit POI points (kiosks, desks in halls).
   const explicit = geo.features.filter(
     (f) => f.geometry.type === 'Point' && f.properties?.kind === 'poi',
   );
-  const pois = explicit.length
-    ? explicit.map((f, i) => {
-        const p = toP(
-          (f.geometry as Extract<Geometry, { type: 'Point' }>).coordinates,
-        );
-        const room = rooms.find((r) => inside(p, r.polygon));
-        return {
-          id: f.properties?.id ?? `place-${i + 1}`,
-          name: f.properties?.name ?? room?.name ?? `Place ${i + 1}`,
-          category: f.properties?.category ?? room?.kind ?? 'room',
-          nodeId: room
-            ? `n-${room.id}`
-            : nodes.reduce((b, n) => (dist(n, p) < dist(b, p) ? n : b)).id,
-        };
-      })
-    : rooms
-        .filter((r) => r.named && r.kind !== 'circulation')
-        .map((r) => ({
-          id: `place-${r.id}`,
-          name: r.name,
-          category: r.category ?? r.kind,
-          nodeId: `n-${r.id}`,
-        }));
+  const explicitPois = explicit.map((f, i) => {
+    const p = toP(
+      (f.geometry as Extract<Geometry, { type: 'Point' }>).coordinates,
+    );
+    const room = rooms.find((r) => inside(p, r.polygon));
+    return {
+      id: f.properties?.id ?? `place-${i + 1}`,
+      name: f.properties?.name ?? room?.name ?? `Place ${i + 1}`,
+      category: f.properties?.category ?? room?.kind ?? 'room',
+      nodeId: room
+        ? `n-${room.id}`
+        : nodes.reduce((b, n) => (dist(n, p) < dist(b, p) ? n : b)).id,
+    };
+  });
+  const roomPois = rooms
+    .filter(
+      (r) =>
+        r.named &&
+        r.kind !== 'circulation' &&
+        !explicitPois.some((e) => e.name === r.name),
+    )
+    .map((r) => ({
+      id: `place-${r.id}`,
+      name: r.name,
+      category: r.category ?? r.kind,
+      nodeId: `n-${r.id}`,
+    }));
+  const pois = [...roomPois, ...explicitPois];
 
   const xs = rooms.flatMap((r) => r.polygon.map((p) => p.x));
   const ys = rooms.flatMap((r) => r.polygon.map((p) => p.y));

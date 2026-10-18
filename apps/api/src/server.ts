@@ -16,11 +16,7 @@ const seeded = seed(db, {
   privateVenuePath: resolve(root, 'work/private/venue.json'),
 });
 const port = Number(process.env.TURN_API_PORT ?? 8090);
-const app = createApp(db, {
-  devAuth: process.env.TURN_DEV_AUTH !== 'off',
-  includePrivateLan: process.env.TURN_API_PRIVATE_LAN !== '0',
-});
-const lan = Object.values(networkInterfaces())
+const lanAddress = Object.values(networkInterfaces())
   .flat()
   .find(
     (n) =>
@@ -29,6 +25,12 @@ const lan = Object.values(networkInterfaces())
       !n.internal &&
       /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(n.address),
   )?.address;
+const app = createApp(db, {
+  lanHost: lanAddress,
+  devAuth: process.env.TURN_DEV_AUTH !== 'off',
+  includePrivateLan: process.env.TURN_API_PRIVATE_LAN !== '0',
+});
+const lan = lanAddress;
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => {
   console.log(
     `TURN API on http://localhost:${port}${lan ? ` and http://${lan}:${port}` : ''}${seeded ? ' (seeded)' : ''}`,

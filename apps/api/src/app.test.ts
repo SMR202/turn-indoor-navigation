@@ -222,3 +222,39 @@ describe('TURN API', () => {
     expect(validatePackage({ nope: 1 }).ok).toBe(false);
   });
 });
+
+describe('content publishing', () => {
+  it('publishes place-detail changes as a new version without a map change', async () => {
+    const owner = await login('owner@harbour.demo');
+    const auth = { Authorization: `Bearer ${owner}` };
+    expect(
+      (await app.request('/venues/turn-demo-centre/publish', json({}, owner)))
+        .status,
+    ).toBe(409);
+    const patch = await app.request(
+      '/venues/turn-demo-centre/places/poi-cafe',
+      { ...json({ hours: '08:00–18:00' }, owner), method: 'PATCH' },
+    );
+    expect(patch.status).toBe(200);
+    expect(
+      (
+        await app.request(
+          '/venues/turn-demo-centre/publish',
+          json({ notes: 'Café hours' }, owner),
+        )
+      ).status,
+    ).toBe(200);
+    const pub = (await (
+      await app.request('/public/venues/turn-demo-centre')
+    ).json()) as {
+      version: number;
+      content: { places: Record<string, { hours?: string }> };
+    };
+    expect(pub.version).toBe(2);
+    expect(pub.content.places['poi-cafe']!.hours).toBe('08:00–18:00');
+    const versions = (await (
+      await app.request('/venues/turn-demo-centre/versions', { headers: auth })
+    ).json()) as { status: string }[];
+    expect(versions.map((v) => v.status)).toEqual(['published', 'archived']);
+  });
+});

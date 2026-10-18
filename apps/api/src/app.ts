@@ -148,7 +148,11 @@ export function validatePackage(pkg: unknown): ValidationResult {
 
 export function createApp(
   db: Db,
-  options: { devAuth?: boolean; includePrivateLan?: boolean } = {},
+  options: {
+    devAuth?: boolean;
+    includePrivateLan?: boolean;
+    lanHost?: string;
+  } = {},
 ) {
   const app = new Hono<{ Variables: Vars }>();
   app.use(
@@ -208,7 +212,12 @@ export function createApp(
   };
 
   app.get('/health', (c) =>
-    c.json({ ok: true, service: 'turn-api', time: now() }),
+    c.json({
+      ok: true,
+      service: 'turn-api',
+      time: now(),
+      lanHost: options.lanHost ?? null,
+    }),
   );
   app.post('/auth/dev-login', async (c) => {
     if (options.devAuth === false)
@@ -482,10 +491,8 @@ export function createApp(
     if (!v) return c.json({ error: 'Not found' }, 404);
     const patch = placeContentSchema.parse(await c.req.json());
     const content = venueContentSchema.parse(JSON.parse(v.content));
-    content.places[param(c, 'placeId')] = {
-      ...content.places[param(c, 'placeId')],
-      ...patch,
-    };
+    // The editor sends the full record, so cleared fields are removed.
+    content.places[param(c, 'placeId')] = patch;
     run(
       'UPDATE venues SET content = ?, updated_at = ? WHERE id = ?',
       JSON.stringify(content),
@@ -540,12 +547,28 @@ export function createApp(
     const { notes } = z
       .object({ notes: z.string().max(400).default('') })
       .parse(await c.req.json().catch(() => ({})));
-    const draft = one<{ id: number; package: string; number: number }>(
+    let draft = one<{ id: number; package: string; number: number }>(
       "SELECT id, package, number FROM versions WHERE venue_id = ? AND status = 'draft'",
       v.id,
     );
-    if (!draft)
-      return c.json({ error: 'Nothing to publish: no draft changes.' }, 409);
+    if (!draft) {
+      // Content-only changes (place details, branding) publish as a new version of the same map.
+      const live = one<{ package: string; content: string | null }>(
+        "SELECT package, content FROM versions WHERE venue_id = ? AND status = 'published'",
+        v.id,
+      );
+      if (!live || live.content === v.content)
+        return c.json(
+          { error: 'Nothing to publish: no changes since the live version.' },
+          409,
+        );
+      saveDraft(v.id, JSON.parse(live.package), c.get('user').id);
+      draft = one<{ id: number; package: string; number: number }>(
+        "SELECT id, package, number FROM versions WHERE venue_id = ? AND status = 'draft'",
+        v.id,
+      );
+      if (!draft) return c.json({ error: 'Could not create a version.' }, 500);
+    }
     const validation = validatePackage(JSON.parse(draft.package));
     if (!validation.ok)
       return c.json(

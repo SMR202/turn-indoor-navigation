@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import {
+  coverageMap,
   layoutRoundness,
   planBeacons,
   type PlannerInput,
@@ -66,4 +67,13 @@ it('measures how round a layout is and handles degenerate input', () => {
     [],
   );
   expect(planBeacons(input, { count: 0 }).sites).toEqual([]);
+});
+
+it('scores a hand-placed layout with the same model as the planner', () => {
+  const plan = planBeacons(input, { count: 4 });
+  const map = coverageMap(input, plan.sites);
+  expect(map.quality.coverage3).toBeCloseTo(plan.quality.coverage3, 6);
+  expect(map.quality.minHeard).toBe(plan.quality.minHeard);
+  expect(map.points.every((p) => p.heard >= 0 && p.heard <= 4)).toBe(true);
+  expect(coverageMap(input, []).quality.coverage3).toBe(0);
 });

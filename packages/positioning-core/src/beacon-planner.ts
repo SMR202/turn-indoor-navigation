@@ -232,3 +232,50 @@ export function planBeacons(
     },
   };
 }
+
+/**
+ * Predicted coverage of a given beacon layout (planned or placed by hand): how many beacons each
+ * walkable grid point hears, with the same path-loss model and quality numbers as `planBeacons`.
+ */
+export function coverageMap(
+  input: Pick<PlannerInput, 'rooms' | 'walls'>,
+  beacons: PlannerPoint[],
+  partial: Partial<PlannerOptions> = {},
+): { points: (PlannerPoint & { heard: number })[]; quality: PlanQuality } {
+  const o = { ...DEFAULT_PLANNER, ...partial };
+  const indoor = input.rooms.filter(
+    (r) => r.kind !== 'outdoor' && r.kind !== 'stairs' && r.kind !== 'fixture',
+  );
+  const xs = input.rooms.flatMap((r) => r.polygon.map((p) => p.x));
+  const ys = input.rooms.flatMap((r) => r.polygon.map((p) => p.y));
+  const points: (PlannerPoint & { heard: number })[] = [];
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += o.gridMetres)
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y += o.gridMetres) {
+      const p = { x, y };
+      if (!indoor.some((r) => inPolygon(p, r.polygon))) continue;
+      const heard = beacons.filter((b) => {
+        const walls = input.walls.filter((w) =>
+          crosses(b, p, w.from, w.to),
+        ).length;
+        return (
+          predictRssi(
+            { refRssi: o.refRssi, exponent: o.exponent },
+            Math.hypot(b.x - p.x, b.y - p.y),
+          ) -
+            walls * o.wallLossDb >=
+          o.heardDbm
+        );
+      }).length;
+      points.push({ ...p, heard });
+    }
+  const n = Math.max(1, points.length);
+  return {
+    points,
+    quality: {
+      coverage3: points.filter((p) => p.heard >= 3).length / n,
+      coverageTarget: points.filter((p) => p.heard >= o.targetHeard).length / n,
+      minHeard: points.length ? Math.min(...points.map((p) => p.heard)) : 0,
+      collinearity: layoutRoundness(beacons),
+    },
+  };
+}

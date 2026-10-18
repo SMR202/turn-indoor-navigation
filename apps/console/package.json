@@ -1,0 +1,28 @@
+{
+  "name": "@turn/console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo-google-fonts/inter": "0.4.2",
+    "@turn/design": "0.1.0",
+    "@turn/map-scene": "0.1.0",
+    "@turn/positioning-core": "0.1.0",
+    "@turn/venue-model": "0.1.0",
+    "qrcode": "1.5.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.0"
+  }
+}

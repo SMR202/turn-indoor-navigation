@@ -1,0 +1,94 @@
+{
+  "type": "FeatureCollection",
+  "turn": { "units": "pixels", "metresPerPixel": 0.02, "imageHeight": 600 },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "kind": "circulation", "name": "Lobby" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0, 400],
+            [1000, 400],
+            [1000, 600],
+            [0, 600],
+            [0, 400]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Meeting Room", "category": "meeting" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0, 0],
+            [300, 0],
+            [300, 400],
+            [0, 400],
+            [0, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Kitchen" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [300, 0],
+            [550, 0],
+            [550, 400],
+            [300, 400],
+            [300, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Open Office" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [550, 0],
+            [1000, 0],
+            [1000, 400],
+            [550, 400],
+            [550, 0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "kind": "door" },
+      "geometry": { "type": "Point", "coordinates": [150, 400] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "kind": "door" },
+      "geometry": { "type": "Point", "coordinates": [425, 400] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "kind": "door", "width": 60 },
+      "geometry": { "type": "Point", "coordinates": [775, 400] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "poi",
+        "name": "Reception",
+        "category": "service"
+      },
+      "geometry": { "type": "Point", "coordinates": [120, 500] }
+    }
+  ]
+}

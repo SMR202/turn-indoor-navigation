@@ -29,7 +29,7 @@
     "mobile": "expo start apps/mobile",
     "web": "expo start apps/mobile --web",
     "export:web": "npm run export:web --workspace @turn/mobile",
-    "typecheck": "tsc --noEmit && npm run typecheck --workspace @turn/mobile && npm run typecheck --workspace @turn/navigator",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace @turn/mobile && npm run typecheck --workspace @turn/navigator && npm run typecheck --workspace @turn/console",
     "test": "vitest run",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
@@ -39,7 +39,9 @@
     "brand:assets": "tsx scripts/generate-brand-assets.ts",
     "api": "tsx apps/api/src/server.ts",
     "navigator": "expo start apps/navigator --port 8082",
-    "navigator:web": "expo start apps/navigator --web --port 8082"
+    "navigator:web": "expo start apps/navigator --web --port 8082",
+    "console": "npm run dev --workspace @turn/console",
+    "build:console": "npm run build --workspace @turn/console"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
