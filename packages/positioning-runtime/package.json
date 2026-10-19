@@ -1,0 +1,19 @@
+{
+  "name": "@turn/positioning-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "description": "React Native live positioning runtime shared by TURN apps: motion sensors, beacon stream, assisted tracker, display smoothing.",
+  "dependencies": {
+    "@turn/contracts": "0.1.0",
+    "@turn/positioning-core": "0.1.0",
+    "@turn/venue-model": "0.1.0"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "expo-sensors": "*",
+    "react-native": "*"
+  }
+}

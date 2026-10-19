@@ -54,7 +54,14 @@ export type PlaceContent = {
   accessible?: boolean;
   hidden?: boolean;
 };
-export type Beacon = { tag: string; floorId: string; x: number; y: number };
+export type Beacon = {
+  tag: string;
+  floorId: string;
+  x: number;
+  y: number;
+  referenceRssi?: number;
+  calibratedAt?: string;
+};
 export type VenueContent = {
   places: Record<string, PlaceContent>;
   beacons: Beacon[];

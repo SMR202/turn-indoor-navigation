@@ -8,15 +8,15 @@
       "port": 8090
     },
     {
-      "name": "navigator-web",
+      "name": "navigator",
       "runtimeExecutable": "npx",
       "runtimeArgs": [
         "expo",
         "start",
         "apps/navigator",
-        "--web",
         "--port",
-        "8082"
+        "8082",
+        "--dev-client"
       ],
       "port": 8082
     },

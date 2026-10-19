@@ -28,9 +28,11 @@ import {
   buildScene,
   pointAlong,
   polylineLength,
+  projectOnPolyline,
   type P,
   type ScenePlace,
 } from '@turn/map-scene';
+import { DisplayPose, nearestRoutableNode } from '@turn/positioning-runtime';
 import { calculateRoute } from '@turn/routing';
 import type { VenuePackage } from '@turn/venue-model';
 import { Icon } from '../../components/icon';
@@ -55,6 +57,7 @@ import {
   WALK_SPEED,
   type Step,
 } from '../../lib/directions';
+import { useLiveGuidance } from '../../lib/live';
 import { useStored } from '../../lib/storage';
 import {
   VenueMap,
@@ -220,7 +223,10 @@ function Experience({
   const [sheetIndex, setSheetIndex] = useState(0);
   const [pickingStart, setPickingStart] = useState(false);
   const [stepFree, setStepFree] = useState(prefs.stepFree);
-  const [guidance, setGuidance] = useState<Guidance>('demo');
+  const live = useLiveGuidance(pkg, floor.id, bundle.content);
+  const [guidance, setGuidance] = useState<Guidance>(
+    live.availability.available ? 'live' : 'demo',
+  );
   const [walked, setWalked] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
   const [follow, setFollow] = useState(true);
@@ -284,18 +290,89 @@ function Experience({
     if (mode.kind === 'navigate' && guidance === 'steps' && route)
       setWalked(route.steps[stepIndex]?.along ?? 0);
   }, [stepIndex, guidance, mode.kind, route]);
+
+  // Live: a smoothed, route-snapped dot from the positioning runtime drives progress and re-routing.
+  const display = useRef(new DisplayPose()).current;
+  const [shown, setShown] = useState<P | null>(null);
+  const lastSteps = useRef(0);
+  const offRouteSince = useRef<number | null>(null);
+  const liveOn = mode.kind === 'navigate' && guidance === 'live';
+  const fix = live.state?.fix ?? null;
+  const liveSteps = live.state?.steps ?? 0;
+  useEffect(() => display.setRoute(route?.points ?? null), [display, route]);
   useEffect(() => {
-    if (mode.kind === 'navigate' && route && walked >= route.length - 0.4) {
+    if (!liveOn || !fix) return;
+    display.update(
+      fix,
+      performance.now() / 1000,
+      liveSteps !== lastSteps.current,
+      fix.source === 'fix',
+    );
+    lastSteps.current = liveSteps;
+  }, [liveOn, fix, liveSteps, display]);
+  useEffect(() => {
+    if (!liveOn) return;
+    display.reset();
+    lastSteps.current = 0;
+    const timer = setInterval(() => {
+      const p = display.step(0.25);
+      if (p) setShown({ x: p.x, y: p.y });
+    }, 250);
+    return () => {
+      clearInterval(timer);
+      setShown(null);
+    };
+  }, [liveOn, display]);
+  useEffect(() => {
+    if (!liveOn || !shown || !route) return;
+    const pr = projectOnPolyline(route.points, shown);
+    if (pr.distance > Math.max(4, 2 * (fix?.sigma ?? 2))) {
+      offRouteSince.current ??= Date.now();
+      if (Date.now() - offRouteSince.current > 6000) {
+        // Off the route for a while: route again from where the walker is.
+        offRouteSince.current = null;
+        const node = nearestRoutableNode(pkg, floor.id, shown);
+        setStart({
+          key: `live-${Date.now()}`,
+          label: 'Your position',
+          nodeId: node.id,
+          point: shown,
+          kind: 'place',
+        });
+        setWalked(0);
+      }
+      return;
+    }
+    offRouteSince.current = null;
+    setWalked((w) => Math.max(w, pr.along));
+  }, [liveOn, shown, route, fix?.sigma, pkg, floor.id]);
+  useEffect(() => {
+    const within = guidance === 'live' ? 3 : 0.4;
+    if (mode.kind === 'navigate' && route && walked >= route.length - within) {
       const id = mode.placeId;
       const t = setTimeout(() => {
+        live.stop();
         setMode({ kind: 'arrived', placeId: id });
         track({ venueId, type: 'arrived', placeId: id });
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [walked, mode, route, venueId]);
+  }, [walked, mode, route, venueId, guidance, live.stop]);
 
+  const livePhase = live.state?.phase ?? 'idle';
   const user: MapUser | null = useMemo(() => {
+    if (mode.kind === 'navigate' && guidance === 'live') {
+      const p = shown ?? fix;
+      return p
+        ? {
+            x: p.x,
+            y: p.y,
+            sigma: fix?.sigma ?? 2,
+            heading: fix?.headingRad ?? null,
+            live: livePhase === 'tracking',
+          }
+        : null;
+    }
     if (mode.kind === 'navigate' && route) {
       const p = pointAlong(route.points, walked);
       return {
@@ -319,7 +396,17 @@ function Experience({
         live: true,
       };
     return null;
-  }, [mode.kind, route, walked, guidance, atMarker, start.point]);
+  }, [
+    mode.kind,
+    route,
+    walked,
+    guidance,
+    atMarker,
+    start.point,
+    shown,
+    fix,
+    livePhase,
+  ]);
 
   const current = route
     ? Math.max(
@@ -395,8 +482,16 @@ function Experience({
     setFollow(true);
     setMode({ kind: 'navigate', placeId: mode.placeId });
     track({ venueId, type: 'route_started', placeId: mode.placeId });
+    if (guidance === 'live' && route) {
+      const [a, b] = route.points;
+      void live.start(
+        start.point,
+        a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+      );
+    }
   };
   const end = () => {
+    live.stop();
     if (mode.kind === 'navigate')
       track({ venueId, type: 'route_cancelled', placeId: mode.placeId });
     const id = 'placeId' in mode ? mode.placeId : null;
@@ -913,7 +1008,7 @@ function Experience({
               ).map(([g, label]) => (
                 <Tap
                   key={g}
-                  disabled={g === 'live'}
+                  disabled={g === 'live' && !live.availability.available}
                   onPress={() => setGuidance(g)}
                   style={{
                     flex: 1,
@@ -922,7 +1017,8 @@ function Experience({
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: guidance === g ? c.surface : 'transparent',
-                    opacity: g === 'live' ? 0.45 : 1,
+                    opacity:
+                      g === 'live' && !live.availability.available ? 0.45 : 1,
                   }}
                 >
                   <T
@@ -943,7 +1039,10 @@ function Experience({
                   ? 'Demo walk moves the dot along the route at walking pace — no positioning.'
                   : guidance === 'steps'
                     ? 'Move through the directions yourself, one turn at a time.'
-                    : 'Live position needs TURN beacons installed in this venue.'}
+                    : live.availability.available
+                      ? `Live follows your steps${live.beaconCount ? ` and ${live.beaconCount} venue beacons` : ''}. Hold the phone in front of you, screen up.`
+                      : (live.availability.reason ??
+                        'Live position is unavailable here.')}
               </T>
               <Chip
                 label="Step-free"
@@ -1027,7 +1126,72 @@ function Experience({
       />
 
       {/* Top: search, categories / navigation banner */}
-      {mode.kind === 'navigate' && route && next ? (
+      {liveOn && livePhase !== 'tracking' ? (
+        <Animated.View
+          entering={FadeInUp.duration(320)}
+          style={[
+            {
+              position: 'absolute',
+              top: insets.top + 8,
+              left: 12,
+              right: 12,
+              borderRadius: 22,
+              padding: 16,
+              gap: 10,
+              backgroundColor: livePhase === 'stopped' ? c.surface : c.text,
+            },
+            shadow('floating', dark),
+          ]}
+        >
+          {livePhase === 'stopped' ? (
+            <>
+              <T v="callout" weight="600" color={c.danger}>
+                Live position stopped
+              </T>
+              <T v="caption" color={c.textMuted}>
+                {live.state?.message || 'The motion sensors are unavailable.'}
+              </T>
+              <Button
+                label="Continue step by step"
+                size="md"
+                kind="secondary"
+                onPress={() => {
+                  live.stop();
+                  setGuidance('steps');
+                }}
+              />
+            </>
+          ) : (
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}
+            >
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: c.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <T v="headline" color="#FFFFFF">
+                  {String(Math.max(1, live.state?.settling ?? 4))}
+                </T>
+              </View>
+              <View style={{ flex: 1 }}>
+                <T v="callout" weight="600" color={c.background}>
+                  Face along the blue line
+                </T>
+                <T v="caption" color={dark ? c.textMuted : '#B9BFCA'}>
+                  Hold the phone in front of you, screen up, and stay still for
+                  a moment.
+                </T>
+              </View>
+            </View>
+          )}
+        </Animated.View>
+      ) : mode.kind === 'navigate' && route && next ? (
         <Animated.View
           entering={FadeInUp.duration(320)}
           style={{
@@ -1290,7 +1454,13 @@ function Experience({
               <T v="caption" color={c.textMuted}>
                 {formatDistance(remaining)} · arrive{' '}
                 {arrivalClock(remaining / WALK_SPEED)} ·{' '}
-                {guidance === 'demo' ? 'Demo walk' : 'Step by step'}
+                {guidance === 'demo'
+                  ? 'Demo walk'
+                  : guidance === 'live'
+                    ? live.beaconCount
+                      ? `Live · ${fix?.beaconsUsed ?? 0} beacons heard`
+                      : 'Live · steps and map'
+                    : 'Step by step'}
               </T>
             </View>
             {guidance === 'steps' && (

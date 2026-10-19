@@ -19,7 +19,14 @@ export type PlaceContent = {
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;
-  beacons: { tag: string; floorId: string; x: number; y: number }[];
+  beacons: {
+    tag: string;
+    floorId: string;
+    x: number;
+    y: number;
+    referenceRssi?: number;
+    calibratedAt?: string;
+  }[];
   branding: { accent?: string };
 };
 export type VenueSummary = {

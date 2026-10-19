@@ -5,7 +5,6 @@ vi.mock('react-native', () => ({
   PermissionsAndroid: { PERMISSIONS: {}, requestMultiple: vi.fn() },
 }));
 vi.mock('expo', () => ({ requireOptionalNativeModule: () => null }));
-vi.mock('../fingerprinting/storage', () => ({ saveBleTrace: vi.fn() }));
 import { AssistedTracker } from './assisted-tracker';
 import {
   predictRssi,

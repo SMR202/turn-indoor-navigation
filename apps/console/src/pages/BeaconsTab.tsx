@@ -22,7 +22,11 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
   const [count, setCount] = useState(
     Math.max(4, venue.content.beacons.length || 6),
   );
-  const [kind, setKind] = useState<keyof typeof hardware>('commercial');
+  const [kind, setKind] = useState<keyof typeof hardware>(
+    venue.content.beacons[0]?.referenceRssi === hardware.phone.refRssi
+      ? 'phone'
+      : 'commercial',
+  );
   const [adding, setAdding] = useState(false);
   const [showCoverage, setShowCoverage] = useState(true);
   const health = useApi<BeaconHealth[]>(`/venues/${venue.id}/beacons/health`);
@@ -53,7 +57,10 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
     [input, beacons, kind],
   );
   const dirty =
-    JSON.stringify(beacons) !== JSON.stringify(venue.content.beacons);
+    JSON.stringify(beacons) !== JSON.stringify(venue.content.beacons) ||
+    beacons.some(
+      (b) => !b.calibratedAt && b.referenceRssi !== hardware[kind].refRssi,
+    );
   if (!scene || !input || !floor)
     return (
       <div className="card">
@@ -76,7 +83,12 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
     toast(`Suggested ${plan.sites.length} sites — drag to adjust`);
   };
   const save = async () => {
-    await api(`/venues/${venue.id}/beacons`, { method: 'PUT', body: beacons });
+    // Uncalibrated beacons carry the hardware model's 1 m RSSI so phones can use them at once;
+    // an on-site calibration (calibratedAt) replaces it.
+    const body = beacons.map((b) =>
+      b.calibratedAt ? b : { ...b, referenceRssi: hardware[kind].refRssi },
+    );
+    await api(`/venues/${venue.id}/beacons`, { method: 'PUT', body });
     toast('Beacon layout saved');
     reload();
     health.reload();

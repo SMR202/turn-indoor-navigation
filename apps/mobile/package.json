@@ -7,6 +7,7 @@
     "@turn/contracts": "0.1.0",
     "@turn/pdr": "0.1.0",
     "@turn/positioning-core": "0.1.0",
+    "@turn/positioning-runtime": "0.1.0",
     "@turn/routing": "0.1.0",
     "@turn/venue-model": "0.1.0",
     "expo": "~57.0.24",

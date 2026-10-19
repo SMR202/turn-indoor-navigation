@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { MotionBatch, RawMotionEvent } from '../../modules/turn-motion';
+import type { MotionBatch, RawMotionEvent } from '../turn-motion';
 const mocks = vi.hoisted(() => ({
   platform: { OS: 'android' },
   native: {
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('react-native', () => ({ Platform: mocks.platform }));
 vi.mock('expo-sensors', () => ({ DeviceMotion: mocks.motion }));
-vi.mock('../../modules/turn-motion', () => ({ default: mocks.native }));
+vi.mock('../turn-motion', () => ({ default: mocks.native }));
 import { startMotionSource } from './motion-source';
 
 function samples(timestamp: number): RawMotionEvent[] {

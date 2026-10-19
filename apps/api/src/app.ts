@@ -28,10 +28,13 @@ export const venueContentSchema = z.object({
   beacons: z
     .array(
       z.object({
-        tag: z.string().min(1).max(24),
+        tag: z.string().regex(/^[A-Za-z0-9]{1,12}$/),
         floorId: z.string(),
         x: z.number(),
         y: z.number(),
+        /** RSSI one metre from the beacon (dBm): a hardware model value until calibrated on site. */
+        referenceRssi: z.number().min(-110).max(0).optional(),
+        calibratedAt: z.string().datetime().optional(),
       }),
     )
     .max(64)

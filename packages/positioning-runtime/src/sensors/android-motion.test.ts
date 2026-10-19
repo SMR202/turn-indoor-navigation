@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import type { RawMotionEvent } from '../../modules/turn-motion';
-import { MotionGuard } from '../../../../packages/positioning-core/src/motion-guard';
+import type { RawMotionEvent } from '../turn-motion';
+import { MotionGuard } from '../../../positioning-core/src/motion-guard';
 import {
   NavigationEngine,
   GUARDED_PDR_REVISION,
@@ -9,7 +9,7 @@ import {
 } from '@turn/positioning-core';
 import { sampleVenue } from '@turn/venue-model';
 import type { Observation } from '@turn/contracts';
-vi.mock('../../modules/turn-motion', () => ({ default: null }));
+vi.mock('../turn-motion', () => ({ default: null }));
 import { createAndroidBatchNormalizer } from './android-motion';
 
 function raw(walking: boolean): RawMotionEvent[] {
