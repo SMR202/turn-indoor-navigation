@@ -225,3 +225,37 @@ export function fitCamera(
     focusY: insets.top + padding + h / 2,
   };
 }
+
+/**
+ * Applies venue-owner edits (TURN Studio place details) to a scene: a new display name and/or
+ * category for a place, mirrored onto the room it occupies so labels match. Geometry is untouched.
+ */
+export function applyPlaceOverrides(
+  scene: Scene,
+  overrides: Record<string, { name?: string; category?: string } | undefined>,
+): Scene {
+  const places = scene.places.map((p) => {
+    const o = overrides[p.id];
+    if (!o?.name && !o?.category) return p;
+    const category = o.category ? normaliseCategory(o.category) : p.category;
+    return {
+      ...p,
+      name: o.name?.trim() || p.name,
+      category,
+      categoryLabel: placeCategories[category].label,
+      icon: placeCategories[category].icon,
+    };
+  });
+  const byId = new Map(places.map((p) => [p.id, p]));
+  const rooms = scene.rooms.map((r) => {
+    const p = r.placeId ? byId.get(r.placeId) : undefined;
+    const o = r.placeId ? overrides[r.placeId] : undefined;
+    if (!p || (!o?.name && !o?.category)) return r;
+    return {
+      ...r,
+      name: o.name?.trim() ? p.name : r.name,
+      category: p.category,
+    };
+  });
+  return { ...scene, places, rooms };
+}

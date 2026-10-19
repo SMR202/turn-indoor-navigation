@@ -122,3 +122,27 @@ describe('slicePolyline', () => {
     expect(slicePolyline(line, 30, 40)).toEqual([]);
   });
 });
+
+describe('applyPlaceOverrides', () => {
+  it('renames and recategorises a place and its room label', async () => {
+    const { applyPlaceOverrides, buildScene } = await import('./scene');
+    const scene = buildScene(demoCentre, 'ground', lightMap);
+    const out = applyPlaceOverrides(scene, {
+      'poi-studio': { name: 'Gallery', category: 'shop' },
+      'poi-cafe': { name: '  ' },
+    });
+    const studio = out.places.find((p) => p.id === 'poi-studio')!;
+    expect(studio.name).toBe('Gallery');
+    expect(studio.category).toBe('shop');
+    expect(studio.icon).toBe('bag');
+    expect(out.rooms.find((r) => r.placeId === 'poi-studio')!.name).toBe(
+      'Gallery',
+    );
+    expect(out.places.find((p) => p.id === 'poi-cafe')!.name).toBe(
+      'Harbour Café',
+    );
+    expect(scene.places.find((p) => p.id === 'poi-studio')!.name).toBe(
+      'Design Studio',
+    );
+  });
+});

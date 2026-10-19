@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { lightMap } from '@turn/design';
-import { buildScene, type Scene } from '@turn/map-scene';
+import { applyPlaceOverrides, buildScene, type Scene } from '@turn/map-scene';
 import {
   useApi,
   type Analytics,
@@ -51,11 +51,14 @@ export function VenuePage({
         ? Object.fromEntries(
             pkg.data.package.floors.map((f) => [
               f.id,
-              buildScene(pkg.data!.package, f.id, lightMap),
+              applyPlaceOverrides(
+                buildScene(pkg.data!.package, f.id, lightMap),
+                venue.data?.content.places ?? {},
+              ),
             ]),
           )
         : {},
-    [pkg.data],
+    [pkg.data, venue.data?.content.places],
   );
   const floors = useMemo<Floor[]>(
     () =>

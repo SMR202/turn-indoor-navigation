@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { motion, placeCategories, type PlaceCategory } from '@turn/design';
 import {
+  applyPlaceOverrides,
   buildScene,
   projectOnPolyline,
   type P,
@@ -205,9 +206,15 @@ function Experience({
   const scenes = useMemo(
     () =>
       Object.fromEntries(
-        pkg.floors.map((f) => [f.id, buildScene(pkg, f.id, palette)]),
+        pkg.floors.map((f) => [
+          f.id,
+          applyPlaceOverrides(
+            buildScene(pkg, f.id, palette),
+            bundle.content.places,
+          ),
+        ]),
       ) as Record<string, Scene>,
-    [pkg, palette],
+    [pkg, palette, bundle.content.places],
   );
   /** Floors top to bottom, as a building reads. */
   const floors = useMemo(

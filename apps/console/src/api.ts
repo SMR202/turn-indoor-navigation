@@ -53,6 +53,8 @@ export type PlaceContent = {
   tags?: string[];
   accessible?: boolean;
   hidden?: boolean;
+  name?: string;
+  category?: string;
 };
 export type Beacon = {
   tag: string;

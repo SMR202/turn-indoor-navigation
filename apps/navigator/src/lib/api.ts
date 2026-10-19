@@ -16,6 +16,9 @@ export type PlaceContent = {
   tags?: string[];
   accessible?: boolean;
   hidden?: boolean;
+  /** Owner edits in TURN Studio, applied over the floor plan. */
+  name?: string;
+  category?: string;
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;

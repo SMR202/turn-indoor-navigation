@@ -1,5 +1,9 @@
 import { useMemo, useState } from 'react';
-import { placeCategories, type PlaceCategory } from '@turn/design';
+import {
+  normaliseCategory,
+  placeCategories,
+  type PlaceCategory,
+} from '@turn/design';
 import type { ScenePlace } from '@turn/map-scene';
 import { api, type PlaceContent } from '../api';
 import { href } from '../router';
@@ -204,6 +208,34 @@ function PlaceEditor({
         <div className="subtle">
           Category comes from the floor plan ({place.category}). Position:{' '}
           {place.x.toFixed(1)}, {place.y.toFixed(1)} m.
+        </div>
+      </div>
+      <div className="grid g2" style={{ gap: 12 }}>
+        <div className="field">
+          <label>Display name</label>
+          <input
+            className="input"
+            value={draft.name ?? ''}
+            placeholder={place.name}
+            onChange={(e) => set({ name: e.target.value || undefined })}
+          />
+        </div>
+        <div className="field">
+          <label>Category</label>
+          <select
+            className="select"
+            value={draft.category ? normaliseCategory(draft.category) : ''}
+            onChange={(e) => set({ category: e.target.value || undefined })}
+          >
+            <option value="">From the floor plan</option>
+            {(Object.keys(placeCategories) as PlaceCategory[])
+              .filter((k) => k !== 'circulation')
+              .map((k) => (
+                <option key={k} value={k}>
+                  {placeCategories[k].label}
+                </option>
+              ))}
+          </select>
         </div>
       </div>
       <div className="field">
