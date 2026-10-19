@@ -26,10 +26,9 @@ import Svg, { Path } from 'react-native-svg';
 import { motion, placeCategories, type PlaceCategory } from '@turn/design';
 import {
   buildScene,
-  pointAlong,
-  polylineLength,
   projectOnPolyline,
   type P,
+  type Scene,
   type ScenePlace,
 } from '@turn/map-scene';
 import { DisplayPose, nearestRoutableNode } from '@turn/positioning-runtime';
@@ -50,13 +49,12 @@ import { track } from '../../lib/analytics';
 import { useVenue, type VenueBundle } from '../../lib/api';
 import {
   arrivalClock,
-  buildSteps,
-  cleanPolyline,
   formatDistance,
   formatDuration,
   WALK_SPEED,
   type Step,
 } from '../../lib/directions';
+import { planJourney, positionOnJourney } from '../../lib/journey';
 import { useLiveGuidance } from '../../lib/live';
 import { useStored } from '../../lib/storage';
 import {
@@ -124,20 +122,23 @@ type Start = {
   label: string;
   nodeId: string;
   point: P;
+  floorId: string;
   kind: 'marker' | 'place' | 'entrance';
 };
+type Place = ScenePlace & { floorId: string; floorLabel: string };
 type Guidance = 'demo' | 'steps' | 'live';
 
 function nodePoint(pkg: VenuePackage, nodeId: string): P {
   const n = pkg.nodes.find((x) => x.id === nodeId)!;
   return { x: n.x, y: n.y };
 }
-function startOptions(pkg: VenuePackage, places: ScenePlace[]): Start[] {
+function startOptions(pkg: VenuePackage, places: Place[]): Start[] {
   const markers: Start[] = pkg.anchors.map((a) => ({
     key: `m:${a.id}`,
     label: a.label,
     nodeId: a.nodeId,
     point: nodePoint(pkg, a.nodeId),
+    floorId: a.floorId,
     kind: 'marker',
   }));
   const entrances: Start[] = places
@@ -147,6 +148,7 @@ function startOptions(pkg: VenuePackage, places: ScenePlace[]): Start[] {
       label: p.name,
       nodeId: p.nodeId,
       point: { x: p.x, y: p.y },
+      floorId: p.floorId,
       kind: 'entrance',
     }));
   const rest: Start[] = places
@@ -156,6 +158,7 @@ function startOptions(pkg: VenuePackage, places: ScenePlace[]): Start[] {
       label: p.name,
       nodeId: p.nodeId,
       point: { x: p.x, y: p.y },
+      floorId: p.floorId,
       kind: 'place',
     }));
   return [...entrances, ...markers, ...rest];
@@ -169,11 +172,13 @@ const stepIcon = (k: Step['kind']) =>
       ? 'turn-arrive'
       : k === 'u-turn'
         ? 'turn-u'
-        : k.includes('slight')
-          ? `turn-${k}`
-          : k.includes('left')
-            ? 'turn-left'
-            : 'turn-right';
+        : k === 'level-up' || k === 'level-down'
+          ? 'stairs'
+          : k.includes('slight')
+            ? `turn-${k}`
+            : k.includes('left')
+              ? 'turn-left'
+              : 'turn-right';
 
 function Experience({
   bundle,
@@ -187,14 +192,27 @@ function Experience({
   const insets = useSafeAreaInsets();
   const { height: H, width: W } = useWindowDimensions();
   const pkg = bundle.pkg;
-  const floor = pkg.floors[0]!;
-  const scene = useMemo(
-    () => buildScene(pkg, floor.id, map),
-    [pkg, floor.id, map],
+  const scenes = useMemo(
+    () =>
+      Object.fromEntries(
+        pkg.floors.map((f) => [f.id, buildScene(pkg, f.id, map)]),
+      ) as Record<string, Scene>,
+    [pkg, map],
   );
-  const places = useMemo(
-    () => scene.places.filter((p) => !bundle.content.places[p.id]?.hidden),
-    [scene, bundle],
+  /** Floors top to bottom, as a building reads. */
+  const floors = useMemo(
+    () => [...pkg.floors].sort((a, b) => b.level - a.level),
+    [pkg],
+  );
+  const multiFloor = floors.length > 1;
+  const places = useMemo<Place[]>(
+    () =>
+      pkg.floors.flatMap((f) =>
+        scenes[f.id]!.places.filter(
+          (p) => !bundle.content.places[p.id]?.hidden,
+        ).map((p) => ({ ...p, floorId: f.id, floorLabel: f.label })),
+      ),
+    [pkg, scenes, bundle],
   );
   const placeById = useCallback(
     (id: string | null | undefined) => places.find((p) => p.id === id) ?? null,
@@ -212,18 +230,22 @@ function Experience({
         label: 'Start',
         nodeId: pkg.nodes[0]!.id,
         point: nodePoint(pkg, pkg.nodes[0]!.id),
+        floorId: pkg.nodes[0]!.floorId,
         kind: 'place',
       }
     );
   });
   const atMarker = start.kind === 'marker';
+  const [floorId, setFloorId] = useState(start.floorId);
+  const floor = pkg.floors.find((f) => f.id === floorId) ?? pkg.floors[0]!;
+  const scene = scenes[floor.id]!;
   const [mode, setMode] = useState<Mode>({ kind: 'browse' });
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<PlaceCategory | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [pickingStart, setPickingStart] = useState(false);
   const [stepFree, setStepFree] = useState(prefs.stepFree);
-  const live = useLiveGuidance(pkg, floor.id, bundle.content);
+  const live = useLiveGuidance(pkg, bundle.content, start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
     live.availability.available ? 'live' : 'demo',
   );
@@ -250,21 +272,28 @@ function Experience({
     mode.kind === 'arrived';
   const route = useMemo(() => {
     if (!routing || !destination) return null;
-    const r = calculateRoute(pkg, start.nodeId, destination.nodeId, {
-      stepFree,
-    });
-    if (r.status !== 'ok') return null;
-    const points = cleanPolyline(
-      r.route.geometry
-        .filter((g) => g.floorId === floor.id)
-        .map(({ x, y }) => ({ x, y })),
+    return planJourney(
+      pkg,
+      start.nodeId,
+      destination.nodeId,
+      { stepFree },
+      scenes,
+      destination.name,
     );
-    return {
-      points,
-      length: polylineLength(points),
-      steps: buildSteps(points, scene, destination.name),
-    };
-  }, [routing, destination, pkg, start.nodeId, stepFree, floor.id, scene]);
+  }, [routing, destination, pkg, start.nodeId, stepFree, scenes]);
+  // Where the walker is on the journey, and the leg drawn on the floor being shown.
+  const at = route ? positionOnJourney(route, walked) : null;
+  const shownLegIndex = route
+    ? route.legs.findIndex(
+        (l, i) =>
+          l.floorId === floorId &&
+          (!at || at.floorId !== floorId || i === at.leg),
+      )
+    : -1;
+  const shownLeg =
+    route && shownLegIndex >= 0 ? route.legs[shownLegIndex]! : null;
+  const floorLabel = (id: string | undefined) =>
+    pkg.floors.find((f) => f.id === id)?.label ?? '';
 
   // Walking distance from the start to every place, for list rows.
   const distances = useMemo(() => {
@@ -299,7 +328,11 @@ function Experience({
   const liveOn = mode.kind === 'navigate' && guidance === 'live';
   const fix = live.state?.fix ?? null;
   const liveSteps = live.state?.steps ?? 0;
-  useEffect(() => display.setRoute(route?.points ?? null), [display, route]);
+  const liveLeg = at?.leg ?? 0;
+  useEffect(
+    () => display.setRoute(route?.legs[liveLeg]?.points ?? null),
+    [display, route, liveLeg],
+  );
   useEffect(() => {
     if (!liveOn || !fix) return;
     display.update(
@@ -325,18 +358,20 @@ function Experience({
   }, [liveOn, display]);
   useEffect(() => {
     if (!liveOn || !shown || !route) return;
-    const pr = projectOnPolyline(route.points, shown);
+    const leg = route.legs[liveLeg]!;
+    const pr = projectOnPolyline(leg.points, shown);
     if (pr.distance > Math.max(4, 2 * (fix?.sigma ?? 2))) {
       offRouteSince.current ??= Date.now();
       if (Date.now() - offRouteSince.current > 6000) {
         // Off the route for a while: route again from where the walker is.
         offRouteSince.current = null;
-        const node = nearestRoutableNode(pkg, floor.id, shown);
+        const node = nearestRoutableNode(pkg, leg.floorId, shown);
         setStart({
           key: `live-${Date.now()}`,
           label: 'Your position',
           nodeId: node.id,
           point: shown,
+          floorId: leg.floorId,
           kind: 'place',
         });
         setWalked(0);
@@ -344,8 +379,44 @@ function Experience({
       return;
     }
     offRouteSince.current = null;
-    setWalked((w) => Math.max(w, pr.along));
-  }, [liveOn, shown, route, fix?.sigma, pkg, floor.id]);
+    // Stay on this floor's leg until the walker confirms the floor change.
+    setWalked((w) =>
+      Math.max(
+        w,
+        Math.min(leg.offset + pr.along, leg.offset + leg.length - 0.01),
+      ),
+    );
+  }, [liveOn, shown, route, liveLeg, fix?.sigma, pkg]);
+  const nextLeg = route?.legs[liveLeg + 1] ?? null;
+  const atFloorChange = Boolean(
+    liveOn &&
+    route &&
+    nextLeg &&
+    walked >= route.legs[liveLeg]!.offset + route.legs[liveLeg]!.length - 2.5,
+  );
+  const continueOnNextFloor = () => {
+    if (!nextLeg) return;
+    const [a, b] = nextLeg.points;
+    setWalked(nextLeg.offset + 0.05);
+    setFloorId(nextLeg.floorId);
+    setFollow(true);
+    void live.start(
+      nextLeg.points[0]!,
+      a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+      nextLeg.floorId,
+    );
+  };
+  // Demo and step guidance carry the map to the walker's floor.
+  useEffect(() => {
+    if (
+      mode.kind === 'navigate' &&
+      guidance !== 'live' &&
+      follow &&
+      at &&
+      at.floorId !== floorId
+    )
+      setFloorId(at.floorId);
+  }, [mode.kind, guidance, follow, at?.floorId, floorId]);
   useEffect(() => {
     const within = guidance === 'live' ? 3 : 0.4;
     if (mode.kind === 'navigate' && route && walked >= route.length - within) {
@@ -362,6 +433,8 @@ function Experience({
   const livePhase = live.state?.phase ?? 'idle';
   const user: MapUser | null = useMemo(() => {
     if (mode.kind === 'navigate' && guidance === 'live') {
+      if ((route?.legs[liveLeg]?.floorId ?? start.floorId) !== floorId)
+        return null;
       const p = shown ?? fix;
       return p
         ? {
@@ -373,21 +446,23 @@ function Experience({
           }
         : null;
     }
-    if (mode.kind === 'navigate' && route) {
-      const p = pointAlong(route.points, walked);
+    if (mode.kind === 'navigate' && route && at) {
+      if (at.floorId !== floorId) return null;
       return {
-        x: p.x,
-        y: p.y,
+        x: at.x,
+        y: at.y,
         sigma: guidance === 'demo' ? 1.2 : 2.5,
-        heading: p.headingRad,
+        heading: at.headingRad,
         live: guidance !== 'steps',
       };
     }
     if (mode.kind === 'arrived' && route) {
-      const p = route.points.at(-1)!;
+      const last = route.legs.at(-1)!;
+      if (last.floorId !== floorId) return null;
+      const p = last.points.at(-1)!;
       return { x: p.x, y: p.y, sigma: 1, heading: null, live: true };
     }
-    if (atMarker)
+    if (atMarker && start.floorId === floorId)
       return {
         x: start.point.x,
         y: start.point.y,
@@ -399,10 +474,13 @@ function Experience({
   }, [
     mode.kind,
     route,
-    walked,
+    at,
     guidance,
     atMarker,
     start.point,
+    start.floorId,
+    floorId,
+    liveLeg,
     shown,
     fix,
     livePhase,
@@ -451,6 +529,7 @@ function Experience({
         return;
       }
       input.current?.blur();
+      if (p.floorId !== floorId) setFloorId(p.floorId);
       setMode({ kind: 'place', placeId: p.id });
       setSheetIndex(0);
       camera({ kind: 'point', x: p.x, y: p.y });
@@ -462,7 +541,7 @@ function Experience({
         );
       }
     },
-    [mode.kind, placeById, camera, venueId, query, setRecent],
+    [mode.kind, placeById, camera, venueId, query, setRecent, floorId],
   );
   const preview = (placeId: string) => {
     setMode({ kind: 'route', placeId });
@@ -472,9 +551,11 @@ function Experience({
     setStepIndex(0);
   };
   useEffect(() => {
-    if (mode.kind === 'route' && route)
-      camera({ kind: 'points', points: route.points });
-  }, [mode.kind, route?.points]);
+    if (mode.kind !== 'route' || !route) return;
+    const first = route.legs[0]!;
+    setFloorId(first.floorId);
+    camera({ kind: 'points', points: first.points });
+  }, [mode.kind, route]);
   const startGuidance = () => {
     if (mode.kind !== 'route') return;
     setWalked(0);
@@ -483,10 +564,13 @@ function Experience({
     setMode({ kind: 'navigate', placeId: mode.placeId });
     track({ venueId, type: 'route_started', placeId: mode.placeId });
     if (guidance === 'live' && route) {
-      const [a, b] = route.points;
+      const first = route.legs[0]!;
+      const [a, b] = first.points;
+      setFloorId(first.floorId);
       void live.start(
         start.point,
         a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+        first.floorId,
       );
     }
   };
@@ -541,7 +625,7 @@ function Experience({
           score = 2;
         return score ? { p, score } : null;
       })
-      .filter((x): x is { p: ScenePlace; score: number } => x !== null)
+      .filter((x): x is { p: Place; score: number } => x !== null)
       .sort(
         (a, b) =>
           b.score - a.score ||
@@ -569,7 +653,7 @@ function Experience({
   const savedHere = places.filter((p) => isSaved(p.id));
 
   // ---- Render ---------------------------------------------------------------------------------
-  const placeRow = (p: ScenePlace, i: number) => (
+  const placeRow = (p: Place, i: number) => (
     <Animated.View
       key={p.id}
       entering={FadeInDown.delay(Math.min(i, 8) * 35).duration(320)}
@@ -591,7 +675,11 @@ function Experience({
             {p.name}
           </T>
           <T v="caption" color={c.textMuted} lines={1}>
-            {[p.categoryLabel, bundle.content.places[p.id]?.hours]
+            {[
+              p.categoryLabel,
+              multiFloor ? p.floorLabel : null,
+              bundle.content.places[p.id]?.hours,
+            ]
               .filter(Boolean)
               .join(' · ')}
           </T>
@@ -842,7 +930,7 @@ function Experience({
         )}
         <Detail
           icon="layers"
-          text={`${floor.label} · ${bundle.summary.name}`}
+          text={`${destination.floorLabel} · ${bundle.summary.name}`}
         />
       </View>
     </View>
@@ -976,11 +1064,11 @@ function Experience({
             >
               <View style={{ flex: 1 }}>
                 <T v="display" color={c.success} style={{ fontSize: 30 }}>
-                  {formatDuration(route.length / WALK_SPEED)}
+                  {formatDuration(route.distanceMetres / WALK_SPEED)}
                 </T>
                 <T v="caption" color={c.textMuted}>
                   {formatDistance(route.length)} · arrive{' '}
-                  {arrivalClock(route.length / WALK_SPEED)}
+                  {arrivalClock(route.distanceMetres / WALK_SPEED)}
                 </T>
               </View>
               <Button
@@ -1106,18 +1194,63 @@ function Experience({
     </View>
   );
 
-  const remaining = route ? Math.max(0, route.length - walked) : 0;
+  // Remaining routing cost, so stairs and lifts count towards the time estimate.
+  const remaining = route
+    ? Math.max(
+        0,
+        route.distanceMetres * (1 - walked / Math.max(0.01, route.length)),
+      )
+    : 0;
+  const transitionMarkers = (() => {
+    if (!route || !shownLeg) return [];
+    const out: {
+      key: string;
+      x: number;
+      y: number;
+      text: string;
+      icon: string;
+    }[] = [];
+    const next = route.legs[shownLegIndex + 1];
+    const prev = route.legs[shownLegIndex - 1];
+    const end = shownLeg.points.at(-1)!;
+    if (next)
+      out.push({
+        key: 'next',
+        x: end.x,
+        y: end.y,
+        text: `To ${floorLabel(next.floorId)}`,
+        icon: 'stairs',
+      });
+    if (prev)
+      out.push({
+        key: 'prev',
+        x: shownLeg.points[0]!.x,
+        y: shownLeg.points[0]!.y,
+        text: `From ${floorLabel(prev.floorId)}`,
+        icon: 'stairs',
+      });
+    return out;
+  })();
   return (
     <View style={{ flex: 1, backgroundColor: map.land, overflow: 'hidden' }}>
       <VenueMap
         scene={scene}
         insets={mapInsets}
-        selectedPlace={destination}
-        route={route?.points ?? null}
-        walked={
-          mode.kind === 'navigate' || mode.kind === 'arrived' ? walked : 0
+        selectedPlace={
+          destination && destination.floorId === floorId ? destination : null
         }
-        routeStart={mode.kind === 'route' ? start.point : null}
+        route={shownLeg?.points ?? null}
+        markers={transitionMarkers}
+        walked={
+          mode.kind === 'navigate' || mode.kind === 'arrived'
+            ? Math.max(0, walked - (shownLeg?.offset ?? 0))
+            : 0
+        }
+        routeStart={
+          mode.kind === 'route' && start.floorId === floorId
+            ? start.point
+            : null
+        }
         user={user}
         command={command}
         follow={mode.kind === 'navigate' && follow}
@@ -1126,7 +1259,44 @@ function Experience({
       />
 
       {/* Top: search, categories / navigation banner */}
-      {liveOn && livePhase !== 'tracking' ? (
+      {atFloorChange && nextLeg ? (
+        <Animated.View
+          entering={FadeInUp.duration(320)}
+          style={[
+            {
+              position: 'absolute',
+              top: insets.top + 8,
+              left: 12,
+              right: 12,
+              borderRadius: 22,
+              padding: 16,
+              gap: 12,
+              backgroundColor: c.accent,
+            },
+            shadow('floating', dark),
+          ]}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Icon name="stairs" size={36} color="#FFFFFF" stroke={2.4} />
+            <View style={{ flex: 1 }}>
+              <T v="headline" color="#FFFFFF">
+                {route?.steps.find(
+                  (s) => s.kind === 'level-up' || s.kind === 'level-down',
+                )?.text ?? `Go to ${floorLabel(nextLeg.floorId)}`}
+              </T>
+              <T v="caption" color="rgba(255,255,255,0.85)">
+                Tap when you are there. Live position restarts on the new floor.
+              </T>
+            </View>
+          </View>
+          <Button
+            label={`I'm on ${floorLabel(nextLeg.floorId)}`}
+            kind="secondary"
+            size="md"
+            onPress={continueOnNextFloor}
+          />
+        </Animated.View>
+      ) : liveOn && livePhase !== 'tracking' ? (
         <Animated.View
           entering={FadeInUp.duration(320)}
           style={[
@@ -1408,6 +1578,48 @@ function Experience({
               gap: 10,
             }}
           >
+            {multiFloor && (
+              <View
+                style={[
+                  {
+                    backgroundColor: c.surface,
+                    borderRadius: 23,
+                    padding: 4,
+                    gap: 2,
+                  },
+                  shadow('floating', dark),
+                ]}
+              >
+                {floors.map((f) => (
+                  <Tap
+                    key={f.id}
+                    scaleTo={0.9}
+                    accessibilityLabel={f.label}
+                    onPress={() => {
+                      setFloorId(f.id);
+                      if (mode.kind === 'navigate') setFollow(false);
+                    }}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor:
+                        f.id === floorId ? c.text : 'transparent',
+                    }}
+                  >
+                    <T
+                      v="caption"
+                      weight="700"
+                      color={f.id === floorId ? c.background : c.textMuted}
+                    >
+                      {shortFloor(f.label, f.level)}
+                    </T>
+                  </Tap>
+                ))}
+              </View>
+            )}
             <IconButton
               icon="locate"
               label={
@@ -1417,8 +1629,8 @@ function Experience({
               active={mode.kind === 'navigate' && follow}
               onPress={() => {
                 if (mode.kind === 'navigate') setFollow(true);
-                else if (route)
-                  camera({ kind: 'points', points: route.points });
+                else if (shownLeg)
+                  camera({ kind: 'points', points: shownLeg.points });
                 else camera({ kind: 'fit' });
               }}
             />
@@ -1508,6 +1720,14 @@ function Experience({
       )}
     </View>
   );
+}
+
+/** Compact floor button text: "G", "L1", "B1"… */
+function shortFloor(label: string, level: number) {
+  if (/ground/i.test(label) || level === 0) return 'G';
+  const n = /(-?\d+)/.exec(label)?.[1];
+  if (n) return level < 0 ? `B${Math.abs(Number(n))}` : `L${n}`;
+  return level < 0 ? `B${-level}` : `L${level}`;
 }
 
 function Section({ title }: { title: string }) {

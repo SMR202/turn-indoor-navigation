@@ -16,6 +16,8 @@ export type StepKind =
   | 'right'
   | 'sharp-right'
   | 'u-turn'
+  | 'level-up'
+  | 'level-down'
   | 'arrive';
 export type Step = {
   kind: StepKind;
@@ -26,6 +28,8 @@ export type Step = {
   along: number;
   /** Distance to the next step (metres). */
   distance: number;
+  /** Floor of the manoeuvre (multi-floor journeys). */
+  floorId?: string;
 };
 
 /** Assumed indoor walking speed for estimates (m/s). PROPOSED default, not measured per user. */
@@ -73,6 +77,8 @@ const verb: Record<StepKind, string> = {
   right: 'Turn right',
   'sharp-right': 'Turn sharp right',
   'u-turn': 'Turn around',
+  'level-up': 'Go up',
+  'level-down': 'Go down',
   arrive: 'Arrive',
 };
 

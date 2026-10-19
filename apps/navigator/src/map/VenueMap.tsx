@@ -72,6 +72,8 @@ type Props = {
   follow?: boolean;
   onSelect: (placeId: string | null) => void;
   onGesture?: () => void;
+  /** Small labelled pins, such as "To Level 1" where the route changes floor. */
+  markers?: { key: string; x: number; y: number; text: string; icon: string }[];
 };
 
 const MARGIN = 140; // pixels of map drawn beyond each screen edge so pans reveal content instantly
@@ -488,6 +490,9 @@ export const VenueMap = memo(function VenueMap(props: Props) {
               hidden={props.selectedPlace?.roomId === l.id}
             />
           ))}
+          {props.markers?.map((m) => (
+            <MapPill key={m.key} marker={m} cam={cam} pal={pal} />
+          ))}
           {props.routeStart && (
             <StartMarker at={props.routeStart} cam={cam} color={pal.route} />
           )}
@@ -845,6 +850,56 @@ function Pin({ place, cam }: { place: ScenePlace; cam: Cam }) {
           backgroundColor: 'rgba(11,18,32,0.22)',
         }}
       />
+    </Animated.View>
+  );
+}
+
+function MapPill({
+  marker,
+  cam,
+  pal,
+}: {
+  marker: { x: number; y: number; text: string; icon: string };
+  cam: Cam;
+  pal: Scene['palette'];
+}) {
+  const pos = useScreenPoint(cam, marker.x, marker.y);
+  return (
+    <Animated.View entering={FadeIn.duration(240)} style={[styles.anchor, pos]}>
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 10,
+          left: -110,
+          width: 220,
+          alignItems: 'center',
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            paddingHorizontal: 9,
+            height: 26,
+            borderRadius: 13,
+            backgroundColor: pal.route,
+            boxShadow: '0 2px 6px rgba(11,18,32,0.25)',
+          }}
+        >
+          <Icon name={marker.icon} size={14} color="#FFFFFF" stroke={2.4} />
+          <Text
+            numberOfLines={1}
+            style={{
+              color: '#FFFFFF',
+              fontFamily: F.semibold,
+              fontSize: 12,
+            }}
+          >
+            {marker.text}
+          </Text>
+        </View>
+      </View>
     </Animated.View>
   );
 }

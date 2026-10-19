@@ -32,16 +32,17 @@ export function placementsFrom(
 /** Live positioning for one venue screen: start from a known point, stop on leave. */
 export function useLiveGuidance(
   pkg: VenuePackage,
-  floorId: string,
   content: VenueContent,
+  /** Floor where guidance would start (for availability and the beacon count). */
+  startFloorId: string,
 ) {
   const availability = useMemo(
-    () => liveAvailability(pkg, floorId),
-    [pkg, floorId],
+    () => liveAvailability(pkg, startFloorId),
+    [pkg, startFloorId],
   );
   const beacons = useMemo(
-    () => placementsFrom(content, floorId),
-    [content, floorId],
+    () => placementsFrom(content, startFloorId),
+    [content, startFloorId],
   );
   const ref = useRef<LivePositioning | null>(null);
   const [state, setState] = useState<LiveState | null>(null);
@@ -51,9 +52,13 @@ export function useLiveGuidance(
     setState(null);
   }, []);
   const start = useCallback(
-    async (from: P, headingRad: number) => {
+    async (from: P, headingRad: number, floorId: string) => {
       ref.current?.stop();
-      const live = new LivePositioning({ venue: pkg, floorId, beacons });
+      const live = new LivePositioning({
+        venue: pkg,
+        floorId,
+        beacons: placementsFrom(content, floorId),
+      });
       ref.current = live;
       live.subscribe(setState);
       try {
@@ -62,7 +67,7 @@ export function useLiveGuidance(
         // The controller already published a stopped state with the reason.
       }
     },
-    [pkg, floorId, beacons],
+    [pkg, content],
   );
   useEffect(() => () => ref.current?.stop(), []);
   return {
