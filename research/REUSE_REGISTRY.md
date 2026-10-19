@@ -1,5 +1,14 @@
 # Reuse registry
 
+## 2026-10-19 product platform (Plan 003)
+
+- **ADOPT** Hono **4.13.13** (MIT) and @hono/node-server **2.1.5** (MIT) for the development API (`apps/api`); Node **24.20** built-in `node:sqlite` for local persistence (no native addon). Risk: `node:sqlite` is not yet a stable Node API; hosting, real authentication and migrations are undecided (development sign-in only).
+- **ADOPT** Vite **8.3.0** (MIT) and @vitejs/plugin-react **6.1.2** (MIT) for the web console (`apps/console`); qrcode **1.5.4** (MIT, already in the repository) for QR codes in the browser.
+- **ADOPT** @expo-google-fonts/inter **0.4.2** (MIT package; Inter under SIL OFL 1.1). Both apps bundle the fonts; no third-party font requests.
+- **ADOPT** react-native-gesture-handler **3.3.0** (MIT), already installed through expo-router and compiled into the existing TURN dev build, so the visitor app needs no native rebuild.
+- **ADOPT** sharp **0.34.4** (Apache-2.0; prebuilt libvips binaries under LGPL-3.0) as a development-only dependency for `npm run brand:assets`. Not shipped in any app.
+- **IMPLEMENT** the indoor map renderer (`@turn/map-scene` with react-native-svg and Reanimated), Floor GeoJSON v1 import, turn-by-turn text and the console charts. Pointr, Mappedin and Google Maps were studied for product behaviour only; no code, assets or styles were copied.
+
 ## 2026-10-10 fingerprinting slice
 
 - **ADOPT** existing expo-sensors **57.0.3**, MIT (exact installed package and lockfile), calibrated Magnetometer API on iPhone/Android. [SDK 57 contract](https://docs.expo.dev/versions/v57.0.0/sdk/magnetometer/). No additional sensor dependency. Risk: magnetic calibration and device offsets, sensor availability and physical repeatability remain unvalidated.

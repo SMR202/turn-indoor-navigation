@@ -1,6 +1,19 @@
 # Mobile workstream
 
-Updated: 2026-10-10.
+Updated: 2026-10-19.
+
+## TURN visitor app and shared positioning runtime — 2026-10-19
+
+IMPLEMENTED: `apps/navigator`, a separate Expo SDK 57 app (bundle id `com.turn.app.dev`) that uses only native modules already compiled into the TURN dev build, so it loads in that build without a rebuild. It covers:
+
+- onboarding, a venue catalog from the API with offline copies and a bundled demo, and QR scanning;
+- the new map: vector floor plan with extruded rooms, UI-thread pan and zoom, collision-free labels and an animated route, pin and blue dot;
+- search and categories, place details, saved places, route preview with named steps;
+- **Live**, **Demo walk** and **Step by step** guidance, and arrival.
+
+Live guidance uses `@turn/positioning-runtime`, which holds the motion sensors, beacon stream, assisted tracker and display smoothing moved from this app. The test app imports them through re-export shims and keeps saving traces. Live needs a phone and at least one entry marker. It starts from the chosen start point with a settle-and-face cue, snaps the dot to the route, re-routes after 6 s off route and arrives within 3 m.
+
+Validation: root check passes (176 tests), the test-app web export bundles, and the visitor app was walked through in the browser (demo and step guidance). **Not yet run on a phone. Live guidance accuracy unmeasured.**
 
 ## Maps-style navigator and map beacon layout — 2026-10-16
 

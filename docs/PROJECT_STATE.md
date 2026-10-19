@@ -1,10 +1,20 @@
 # TURN project state
 
-Updated: 2026-10-10.
+Updated: 2026-10-19.
 
 ## Current milestone
 
 M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-comparison` includes settled starts, labelled trials, native/manual count comparison, local history and one-tap LAN transfer. Fourteen inbox recordings were replayed; new sessions now use a versioned experimental motion filter. General localization accuracy remains unvalidated.
+
+## Product platform — 2026-10-19 (Plan 003)
+
+TURN now has three product surfaces beside the test app:
+
+- the **TURN visitor app** (`apps/navigator`, Expo SDK 57): venue catalog, the new indoor map renderer, search, place details, route preview with named turn-by-turn steps, live, demo and step-by-step guidance, and arrival;
+- **TURN Studio / TURN Ops** (`apps/console`);
+- a development **API** (`apps/api`).
+
+The positioning runtime is shared through `@turn/positioning-runtime`; the test app keeps working through re-export shims. Brand tokens and assets live in `@turn/design`. The visitor app and console were exercised in the browser only. The visitor app has not yet run on a phone, and live guidance has no measured accuracy. [Plan 003](../plans/active/003-product-platform.md), [backend/admin status](workstreams/backend-admin/STATUS.md), [mobile status](workstreams/mobile/STATUS.md).
 
 ## Fingerprinting pilot and app interface
 
@@ -28,7 +38,7 @@ Expo SDK 57; private local venue packages with room dimensions; zoomable maps; c
 
 ## Gaps
 
-Repeatable accuracy unvalidated; initial user trials show count variation and heading offset. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No map matching, continuous rerouting, floor detection, updater, backend/admin or published SDK. Phone/OS and carry-mode validation pending. October 9 dependency audit reports 32 findings (11 moderate, 20 high, 1 critical); forced Expo/RN downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
+Repeatable accuracy unvalidated; initial user trials show count variation and heading offset. Plan-derived geometry needs field verification, especially unlabelled wall/door positions. No floor detection, updater, hosted backend, real authentication or published SDK (a development API and console exist). Phone/OS and carry-mode validation pending. October 9 dependency audit reports 32 findings (11 moderate, 20 high, 1 critical); forced Expo/RN downgrades conflict with SDK 57. See [reuse registry](../research/REUSE_REGISTRY.md).
 
 ## Direction
 
