@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
 
 export type VenueTab =
-  'overview' | 'map' | 'places' | 'beacons' | 'publish' | 'analytics';
+  | 'overview'
+  | 'map'
+  | 'places'
+  | 'beacons'
+  | 'publish'
+  | 'analytics'
+  | 'settings';
 export type Route =
   | { name: 'home' }
   | { name: 'venue'; id: string; tab: VenueTab }
   | { name: 'ops' }
-  | { name: 'orgs' };
+  | { name: 'orgs' }
+  | { name: 'team' };
 
 const tabs: VenueTab[] = [
   'overview',
@@ -15,6 +22,7 @@ const tabs: VenueTab[] = [
   'beacons',
   'publish',
   'analytics',
+  'settings',
 ];
 
 export function parse(hash: string): Route {
@@ -25,6 +33,7 @@ export function parse(hash: string): Route {
       : 'overview';
     return { name: 'venue', id: decodeURIComponent(parts[1]), tab };
   }
+  if (parts[0] === 'team') return { name: 'team' };
   if (parts[0] === 'ops')
     return parts[1] === 'orgs' ? { name: 'orgs' } : { name: 'ops' };
   return { name: 'home' };
@@ -36,6 +45,7 @@ export const href = {
     `#/venues/${encodeURIComponent(id)}/${tab}`,
   ops: '#/ops',
   orgs: '#/ops/orgs',
+  team: '#/team',
 };
 export const go = (h: string) => {
   location.hash = h;

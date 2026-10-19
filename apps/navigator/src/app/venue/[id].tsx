@@ -192,12 +192,21 @@ function Experience({
   const insets = useSafeAreaInsets();
   const { height: H, width: W } = useWindowDimensions();
   const pkg = bundle.pkg;
+  // A venue's brand colour (TURN Studio → Settings) tints the route and the visitor's dot.
+  const accent = bundle.content.branding?.accent;
+  const palette = useMemo(
+    () =>
+      accent && /^#[0-9a-fA-F]{6}$/.test(accent)
+        ? { ...map, route: accent, dot: accent, dotHalo: `${accent}26` }
+        : map,
+    [map, accent],
+  );
   const scenes = useMemo(
     () =>
       Object.fromEntries(
-        pkg.floors.map((f) => [f.id, buildScene(pkg, f.id, map)]),
+        pkg.floors.map((f) => [f.id, buildScene(pkg, f.id, palette)]),
       ) as Record<string, Scene>,
-    [pkg, map],
+    [pkg, palette],
   );
   /** Floors top to bottom, as a building reads. */
   const floors = useMemo(

@@ -15,6 +15,7 @@ import { BeaconsTab } from './BeaconsTab';
 import { MapTab } from './MapTab';
 import { PlacesTab } from './PlacesTab';
 import { PublishTab, QR, visitorLink } from './PublishTab';
+import { SettingsTab } from './SettingsTab';
 
 export type Floor = { id: string; label: string; level: number };
 export type VenueCtx = {
@@ -146,6 +147,7 @@ export function VenuePage({
       {tab === 'beacons' && <BeaconsTab {...ctx} />}
       {tab === 'publish' && <PublishTab {...ctx} />}
       {tab === 'analytics' && <AnalyticsTab {...ctx} />}
+      {tab === 'settings' && <SettingsTab {...ctx} />}
     </div>
   );
 }

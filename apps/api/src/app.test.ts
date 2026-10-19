@@ -390,3 +390,60 @@ describe('beacon health', () => {
     });
   });
 });
+
+describe('team', () => {
+  it('lets owners add and remove editors, but not editors', async () => {
+    const owner = await login('owner@harbour.demo');
+    const editor = await login('editor@harbour.demo');
+    const add = await app.request(
+      '/orgs/org_harbour/users',
+      json(
+        { email: 'Sam@Harbour.demo', name: 'Sam Lee', role: 'editor' },
+        owner,
+      ),
+    );
+    expect(add.status).toBe(201);
+    const sam = (await add.json()) as { id: string; email: string };
+    expect(sam.email).toBe('sam@harbour.demo');
+    expect(
+      (
+        await app.request(
+          '/orgs/org_harbour/users',
+          json({ email: 'x@y.z', name: 'X', role: 'editor' }, editor),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await app.request(
+          '/orgs/org_harbour/users',
+          json(
+            { email: 'sam@harbour.demo', name: 'Sam', role: 'editor' },
+            owner,
+          ),
+        )
+      ).status,
+    ).toBe(409);
+    const list = (await (
+      await app.request('/orgs/org_harbour/users', {
+        headers: { Authorization: `Bearer ${editor}` },
+      })
+    ).json()) as { email: string }[];
+    expect(list.map((u) => u.email)).toContain('sam@harbour.demo');
+    expect(
+      (
+        await app.request(`/orgs/org_harbour/users/${sam.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${owner}` },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request('/orgs/org_turn/users', {
+          headers: { Authorization: `Bearer ${owner}` },
+        })
+      ).status,
+    ).toBe(404);
+  });
+});

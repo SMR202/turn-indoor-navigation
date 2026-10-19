@@ -12,6 +12,7 @@ import {
 import { HomePage } from './pages/Home';
 import { OpsPage, OrgsPage } from './pages/Ops';
 import { SignIn } from './pages/SignIn';
+import { TeamPage } from './pages/Team';
 import { VenuePage } from './pages/Venue';
 import { href, useRoute, type VenueTab } from './router';
 import { SessionCtx, isStaff, useSession, type Session } from './session';
@@ -59,6 +60,7 @@ const venueTabs: { tab: VenueTab; label: string; icon: string }[] = [
   { tab: 'beacons', label: 'Beacons', icon: 'beacon' },
   { tab: 'publish', label: 'Publish', icon: 'share' },
   { tab: 'analytics', label: 'Analytics', icon: 'walk' },
+  { tab: 'settings', label: 'Settings', icon: 'sliders' },
 ];
 
 function Shell() {
@@ -138,6 +140,9 @@ function Shell() {
               )}
             </div>
           ))}
+          <a href={href.team} className={route.name === 'team' ? 'active' : ''}>
+            <Icon name="users" size={17} /> Team
+          </a>
           {staff && (
             <>
               <div className="eyebrow nav-group">TURN Ops</div>
@@ -225,6 +230,12 @@ function Shell() {
                 <b>Organisations</b>
               </>
             )}
+            {route.name === 'team' && (
+              <>
+                <span>/</span>
+                <b>Team</b>
+              </>
+            )}
           </div>
           <div style={{ marginLeft: 'auto' }} className="row">
             <span className="badge">
@@ -246,6 +257,7 @@ function Shell() {
         )}
         {route.name === 'ops' && staff && <OpsPage />}
         {route.name === 'orgs' && staff && <OrgsPage />}
+        {route.name === 'team' && <TeamPage />}
       </main>
     </div>
   );

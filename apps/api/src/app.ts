@@ -252,6 +252,79 @@ export function createApp(
     return c.json({ user: u, orgs });
   });
 
+  // ---------- team (owners manage their organisation; staff manage all) ----------
+  const canManage = (u: User, orgId: string) =>
+    u.role === 'staff' || (u.role === 'owner' && u.org_id === orgId);
+  app.get('/orgs/:id/users', auth, (c) => {
+    const u = c.get('user');
+    if (!canSee(u, param(c, 'id'))) return c.json({ error: 'Not found' }, 404);
+    return c.json(
+      all(
+        'SELECT id, email, name, role, created_at FROM users WHERE org_id = ? ORDER BY role, name',
+        param(c, 'id'),
+      ),
+    );
+  });
+  app.post('/orgs/:id/users', auth, async (c) => {
+    const u = c.get('user');
+    const orgId = param(c, 'id');
+    if (!canManage(u, orgId))
+      return c.json({ error: 'Only owners can add people' }, 403);
+    if (!one('SELECT id FROM orgs WHERE id = ?', orgId))
+      return c.json({ error: 'Not found' }, 404);
+    const body = z
+      .object({
+        email: z.string().email().max(120),
+        name: z.string().min(1).max(80),
+        role: z.enum(['owner', 'editor']),
+      })
+      .parse(await c.req.json());
+    const email = body.email.toLowerCase();
+    if (one('SELECT id FROM users WHERE email = ?', email))
+      return c.json({ error: 'That email already has a TURN account' }, 409);
+    const user = {
+      id: id('usr'),
+      email,
+      name: body.name,
+      role: body.role,
+      org_id: orgId,
+      created_at: now(),
+    };
+    run(
+      'INSERT INTO users (id, email, name, role, org_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      user.id,
+      user.email,
+      user.name,
+      user.role,
+      user.org_id,
+      user.created_at,
+    );
+    return c.json(user, 201);
+  });
+  app.delete('/orgs/:id/users/:userId', auth, (c) => {
+    const u = c.get('user');
+    const orgId = param(c, 'id');
+    if (!canManage(u, orgId))
+      return c.json({ error: 'Only owners can remove people' }, 403);
+    if (param(c, 'userId') === u.id)
+      return c.json({ error: 'You cannot remove yourself' }, 409);
+    const target = one<{ id: string; role: string }>(
+      'SELECT id, role FROM users WHERE id = ? AND org_id = ?',
+      param(c, 'userId'),
+      orgId,
+    );
+    if (!target) return c.json({ error: 'Not found' }, 404);
+    const owners = one<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM users WHERE org_id = ? AND role = 'owner'",
+      orgId,
+    )!.n;
+    if (target.role === 'owner' && owners <= 1)
+      return c.json({ error: 'An organisation keeps at least one owner' }, 409);
+    run('DELETE FROM sessions WHERE user_id = ?', target.id);
+    run('DELETE FROM users WHERE id = ?', target.id);
+    return c.json({ removed: target.id });
+  });
+
   // ---------- organisations (staff) ----------
   app.get('/orgs', auth, (c) => {
     const u = c.get('user');
@@ -396,12 +469,19 @@ export function createApp(
       .object({
         name: z.string().min(2).max(80).optional(),
         address: z.string().max(160).optional(),
+        accent: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .optional(),
       })
       .parse(await c.req.json());
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    if (body.accent) content.branding.accent = body.accent;
     run(
-      'UPDATE venues SET name = ?, address = ?, updated_at = ? WHERE id = ?',
+      'UPDATE venues SET name = ?, address = ?, content = ?, updated_at = ? WHERE id = ?',
       body.name ?? v.name,
       body.address ?? v.address,
+      JSON.stringify(content),
       now(),
       v.id,
     );
