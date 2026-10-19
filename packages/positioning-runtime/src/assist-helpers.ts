@@ -8,11 +8,65 @@ export function buildFusionMap(
   floorId: string,
 ): FusionMap {
   const floor = venue.floors.find((f) => f.id === floorId) ?? venue.floors[0]!;
+  const nodes = venue.nodes.filter((n) => n.floorId === floor.id);
+  const ids = new Set(nodes.map((n) => n.id));
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const edges = venue.edges.filter((e) => ids.has(e.from) && ids.has(e.to));
   return {
     floorId: floor.id,
     walls: floor.walls,
-    walkable: floor.walkablePolygons,
+    walkable: [
+      ...floor.walkablePolygons,
+      ...doorwayConnectors(
+        edges.map((e) => [byId.get(e.from)!, byId.get(e.to)!] as const),
+        floor.walkablePolygons,
+      ),
+    ],
+    // The walk graph lets the display show moves between rooms through doors, never through walls.
+    graph: {
+      nodes: nodes.map((n) => ({ id: n.id, x: n.x, y: n.y })),
+      edges: edges.map((e) => ({ from: e.from, to: e.to })),
+    },
   };
+}
+
+/**
+ * Plans often draw rooms as separate shapes with a wall-thick gap between them, so a doorway is
+ * outside every walkable polygon and a filter that checks where each step lands would trap people
+ * in rooms. Where a walk-graph edge leaves walkable space, add a door-wide strip along it; walls
+ * still block everything else.
+ */
+export function doorwayConnectors(
+  edges: readonly (readonly [P, P])[],
+  walkable: P[][],
+  halfWidth = 0.4,
+): P[][] {
+  const walk = (p: P) => walkable.some((poly) => inside(p, poly));
+  const out: P[][] = [];
+  for (const [a, b] of edges) {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 0.05) continue;
+    const ux = (b.x - a.x) / len,
+      uy = (b.y - a.y) / len;
+    const n = Math.ceil(len / 0.05);
+    let start = -1;
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * len;
+      const off = !walk({ x: a.x + ux * t, y: a.y + uy * t });
+      if (off && start < 0) start = t;
+      if ((!off || i === n) && start >= 0) {
+        const t0 = Math.max(0, start - 0.15),
+          t1 = Math.min(len, (off ? t : t - len / n) + 0.15);
+        const c = (t: number, side: number) => ({
+          x: a.x + ux * t - uy * halfWidth * side,
+          y: a.y + uy * t + ux * halfWidth * side,
+        });
+        out.push([c(t0, 1), c(t1, 1), c(t1, -1), c(t0, -1)]);
+        start = -1;
+      }
+    }
+  }
+  return out;
 }
 
 /** Nearest routing node to a point that can be reached in a straight line without crossing a wall. */

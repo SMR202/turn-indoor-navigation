@@ -4,6 +4,7 @@ import {
   LivePositioning,
   liveAvailability,
   locateWithBeacons,
+  type LiveStart,
   type LiveState,
 } from '@turn/positioning-runtime';
 import type { VenuePackage } from '@turn/venue-model';
@@ -60,7 +61,12 @@ export function useLiveGuidance(
     setState(null);
   }, []);
   const start = useCallback(
-    async (from: P, headingRad: number, floorId: string) => {
+    async (
+      from: P,
+      headingRad: number,
+      floorId: string,
+      how: LiveStart = {},
+    ) => {
       ref.current?.stop();
       const live = new LivePositioning({
         venue: pkg,
@@ -70,7 +76,7 @@ export function useLiveGuidance(
       ref.current = live;
       live.subscribe(setState);
       try {
-        await live.start(from, headingRad);
+        await live.start(from, headingRad, how);
       } catch {
         // The controller already published a stopped state with the reason.
       }
@@ -103,6 +109,10 @@ export function useLiveGuidance(
     return () => clearInterval(timer);
   }, [running, pkg.venueId]);
   const correct = useCallback((p: P) => ref.current?.correct(p), []);
+  const setRoute = useCallback(
+    (route: P[] | null) => ref.current?.setRoute(route),
+    [],
+  );
   const everyBeacon = useMemo(() => allPlacements(content), [content]);
   /** Beacon-only start position, when the venue has at least two beacons with a reference RSSI. */
   const canLocate =
@@ -119,6 +129,7 @@ export function useLiveGuidance(
     start,
     stop,
     correct,
+    setRoute,
     canLocate,
     locate,
   };

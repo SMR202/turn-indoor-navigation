@@ -1,6 +1,18 @@
 # Positioning workstream
 
-Updated: 2026-10-10.
+Updated: 2026-10-19.
+
+## Map constraints for the live dot — 2026-10-19
+
+DECISION: [ADR-0011](../../../decisions/0011-map-constraints.md). The dot must never be drawn through a wall and should follow the route people walk.
+
+IMPLEMENTED: walk graph with walkable paths through doors (`walk-graph.ts`); doorway connectors over wall-thick gaps in imported plans (`buildFusionMap`); wall sliding with heading-bias learning (`wallSlide`); a soft route prior (σ 2.5 m, floor 0.15); start heading uncertainty (0.5 rad facing the route, 0.3 rad when marked); heading-preserving tap corrections (`relocate`); a path-aware `DisplayPose` (`setMap`: through doors, along the route's arc, no snapping across walls, backtrack hold, jump when unconnected). A room-mode estimate was tried and rejected on the evidence.
+
+EXPERIMENT RESULT (replayed and simulated walks on the private home plan, aggregate only; `scripts/map-constraint-eval.ts`): drawn wall crossings fall from 1–289 per scenario to 0 while navigating, and from 39–299 to 0 (2 jumps in one run) when not; wrong-room time on simulated walks with a skewed heading falls from 53–57% to 19% (±30–45°). Synthetic: no venue accuracy is established.
+
+Validation: root check passes (205 tests), including the synthetic demo-centre walk test (`map-constraints.test.ts`). No physical walk has used this yet.
+
+Next: physical home walks starting with **Set my location**, with landmark marks; compare against the replay.
 
 ## Plan 002 start: stable evidence policy and evaluation — 2026-10-18
 

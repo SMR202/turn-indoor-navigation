@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { crossesWalls } from '@turn/positioning-core';
 import { DisplayPose } from './display-pose';
 
 const route = [
@@ -59,4 +60,84 @@ it('never outruns walking speed while animating after a large estimate jump', ()
     );
     prev = p;
   }
+});
+
+// Two rooms; the wall at x = 10 has a door between y = 4 and y = 6.
+const walls = [
+  { from: { x: 0, y: 0 }, to: { x: 20, y: 0 } },
+  { from: { x: 20, y: 0 }, to: { x: 20, y: 10 } },
+  { from: { x: 20, y: 10 }, to: { x: 0, y: 10 } },
+  { from: { x: 0, y: 10 }, to: { x: 0, y: 0 } },
+  { from: { x: 10, y: 0 }, to: { x: 10, y: 4 } },
+  { from: { x: 10, y: 6 }, to: { x: 10, y: 10 } },
+];
+const graph = {
+  nodes: [
+    { id: 'a', x: 5, y: 5 },
+    { id: 'door', x: 10, y: 5 },
+    { id: 'b', x: 15, y: 5 },
+  ],
+  edges: [
+    { from: 'a', to: 'door' },
+    { from: 'door', to: 'b' },
+  ],
+};
+function trace(d: DisplayPose, seconds = 8) {
+  const out = [d.current()!];
+  for (let i = 0; i < seconds * 20; i++) out.push({ ...d.step(0.05)! });
+  return out;
+}
+
+it('animates a move to the next room through the door, never through the wall', () => {
+  const d = new DisplayPose();
+  d.setMap({ walls, graph });
+  d.update({ x: 7, y: 8 }, 0, true);
+  d.update({ x: 13, y: 8 }, 0.5, true);
+  const drawn = trace(d);
+  for (let i = 1; i < drawn.length; i++)
+    expect(crossesWalls(drawn[i - 1]!, drawn[i]!, walls)).toBe(false);
+  expect(drawn.some((p) => Math.hypot(p.x - 10, p.y - 5) < 0.2)).toBe(true);
+  expect(Math.hypot(drawn.at(-1)!.x - 13, drawn.at(-1)!.y - 8)).toBeLessThan(
+    0.05,
+  );
+});
+it('follows the route round corners instead of cutting them', () => {
+  const d = new DisplayPose();
+  d.setRoute(route);
+  d.update({ x: 8, y: 0.5 }, 0, true);
+  d.update({ x: 10.4, y: 3 }, 0.5, true);
+  for (const p of trace(d, 3)) {
+    const onFirst = Math.abs(p.y) < 1e-9 && p.x <= 10 + 1e-9;
+    const onSecond = Math.abs(p.x - 10) < 1e-9;
+    expect(onFirst || onSecond).toBe(true);
+  }
+  expect(d.current()!.x).toBe(10);
+  expect(d.current()!.y).toBeCloseTo(3, 2);
+});
+it('ignores small backward wobbles along the route', () => {
+  const d = new DisplayPose();
+  d.setRoute(route);
+  d.update({ x: 5, y: 0.3 }, 0, true);
+  d.update({ x: 4.4, y: -0.3 }, 0.5, true);
+  expect(trace(d, 1).at(-1)).toEqual({ x: 5, y: 0 });
+  d.update({ x: 2, y: 0.2 }, 1, true); // a real turn back is shown
+  expect(trace(d, 3).at(-1)!.x).toBeCloseTo(2, 2);
+});
+it('does not snap to a route on the other side of a wall', () => {
+  const d = new DisplayPose();
+  d.setMap({ walls, graph });
+  d.setRoute([
+    { x: 11, y: 1 },
+    { x: 11, y: 9 },
+  ]);
+  d.update({ x: 9.5, y: 8 }, 0, true);
+  expect(d.current()).toEqual({ x: 9.5, y: 8 });
+});
+it('jumps instead of drawing a walk when no walkable connection exists', () => {
+  const closed = [...walls, { from: { x: 10, y: 4 }, to: { x: 10, y: 6 } }];
+  const d = new DisplayPose();
+  d.setMap({ walls: closed, graph: { nodes: [graph.nodes[0]!], edges: [] } });
+  d.update({ x: 7, y: 8 }, 0, true);
+  d.update({ x: 13, y: 8 }, 0.5, true);
+  expect(d.current()).toEqual({ x: 13, y: 8 });
 });

@@ -124,8 +124,9 @@ describe('particle fusion (synthetic mechanics, not venue accuracy)', () => {
     f.predict(3, 0); // through the door gap at y = 5 is allowed
     expect(f.estimate().x).toBeGreaterThan(10);
     const g = new ParticleFusion(map, beacons, { seed: 3 });
-    g.reset(9, 2, 0.2);
-    for (let i = 0; i < 6; i++) g.predict(1, 0); // straight into the solid wall
+    g.reset(9, 1, 0.2);
+    // Straight into the solid wall, too far from the door to slide round to it.
+    for (let i = 0; i < 4; i++) g.predict(1, 0);
     expect(g.estimate().x).toBeLessThan(10.05);
   });
   it('localizes from beacon readings alone and reports its uncertainty', () => {
@@ -164,5 +165,67 @@ describe('particle fusion (synthetic mechanics, not venue accuracy)', () => {
     );
     expect(exponentFromReading(-59, -70, 1)).toBeUndefined();
     expect(exponentFromReading(-59, -200, 5)).toBe(3.8);
+  });
+});
+
+describe('map constraints (synthetic mechanics, not venue accuracy)', () => {
+  // A 2 m wide, 30 m long corridor.
+  const corridor: FusionMap = {
+    floorId: 'f',
+    walkable: [
+      [
+        { x: 0, y: 0 },
+        { x: 30, y: 0 },
+        { x: 30, y: 2 },
+        { x: 0, y: 2 },
+      ],
+    ],
+    walls: [
+      { from: { x: 0, y: 0 }, to: { x: 30, y: 0 } },
+      { from: { x: 30, y: 0 }, to: { x: 30, y: 2 } },
+      { from: { x: 30, y: 2 }, to: { x: 0, y: 2 } },
+      { from: { x: 0, y: 2 }, to: { x: 0, y: 0 } },
+    ],
+  };
+  /** The walker goes straight down the corridor; the phone believes 25° to the left. */
+  function walkSkewed(wallSlide: boolean) {
+    const f = new ParticleFusion(corridor, [], { seed: 3, wallSlide });
+    f.reset(1, 1, 0.3, 0.1);
+    const skew = (25 * Math.PI) / 180;
+    for (let i = 0; i < 20; i++)
+      f.predict(0.7 * Math.cos(skew), 0.7 * Math.sin(skew));
+    return f.estimate();
+  }
+  it('follows a wall when the phone heading is off, and learns the offset', () => {
+    // Truth: 20 steps of 0.7 m from x = 1 end at x = 15.
+    const slid = walkSkewed(true);
+    expect(Math.abs(slid.x - 15)).toBeLessThan(1.5);
+    expect(slid.y).toBeGreaterThan(0);
+    expect(slid.y).toBeLessThan(2);
+    // The heading bias learns part of the turn the wall forced.
+    expect(slid.headingBiasRad).toBeLessThan(-0.05);
+  });
+  it('keeps the learned heading when the walker corrects their position', () => {
+    const f = new ParticleFusion(map, [], { seed: 4 });
+    f.reset(3, 3, 0.5, 0.3);
+    const before = f.estimate();
+    f.relocate(15, 5, 0.5);
+    const after = f.estimate();
+    expect(Math.hypot(after.x - 15, after.y - 5)).toBeLessThan(0.6);
+    expect(after.headingBiasRad).toBeCloseTo(before.headingBiasRad, 10);
+    expect(after.stepScale).toBeCloseTo(before.stepScale, 10);
+  });
+  it('pulls gently towards the route being followed, never all the way', () => {
+    const f = new ParticleFusion(map, [], { seed: 6 });
+    f.reset(5, 5, 2.5);
+    const route = [
+      { x: 2, y: 3 },
+      { x: 9, y: 3 },
+    ];
+    const before = f.estimate();
+    f.weightByPath(route, 2.5, 0.15);
+    const after = f.estimate();
+    expect(after.y).toBeLessThan(before.y);
+    expect(after.y).toBeGreaterThan(3);
   });
 });

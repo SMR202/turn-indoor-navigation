@@ -34,6 +34,9 @@ export type AssistConfig = {
   /** Reported uncertainty never claims better than this. */
   displaySigmaFloorMetres: number;
   defaultExponent: number;
+  /** Route prior while navigating: Gaussian width (metres, 0 = off) and least weight kept far away. */
+  routePriorSigmaMetres: number;
+  routePriorFloor: number;
   fusion: Partial<FusionConfig>;
 };
 export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
@@ -46,6 +49,8 @@ export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
   proximityMinBeacons: 2,
   displaySigmaFloorMetres: 1.5,
   defaultExponent: 2.3,
+  routePriorSigmaMetres: 2.5,
+  routePriorFloor: 0.15,
   fusion: { rssiSigmaDb: 9, rssiTemper: 0.6, rssiGateSigmas: 2.5 },
 };
 export type AssistEstimate = FusionEstimate & {
@@ -179,12 +184,24 @@ export class AssistFusion {
     this.publish('beacons');
     return true;
   }
-  /** Trusted position (tap, QR, confirmed fingerprint). */
-  setPosition(x: number, y: number, sigma = 1.2) {
-    this.fusion.reset(x, y, sigma);
+  /**
+   * Trusted position (tap, QR, confirmed fingerprint). `headingSigma` (rad) is how unsure the
+   * walking heading is: small when the walker faced a known direction, large when they did not,
+   * so the map can settle it in the first metres.
+   */
+  setPosition(x: number, y: number, sigma = 1.2, headingSigma = 0.1) {
+    this.fusion.reset(x, y, sigma, headingSigma);
+    this.sinceRoutePrior = 0;
     this.positioned = true;
     this.settleLeft = 0;
     this.movedSinceRadio = 0;
+    this.publish('fix');
+  }
+  /** The walker corrected their position (tap): keeps the learned heading and stride. */
+  relocate(x: number, y: number, sigma = 1.2) {
+    if (!this.positioned) return this.setPosition(x, y, sigma);
+    this.fusion.relocate(x, y, sigma);
+    this.sinceRoutePrior = 0;
     this.publish('fix');
   }
   /** Measured position (fingerprint candidate). */
@@ -195,6 +212,15 @@ export class AssistFusion {
   }
   syncRaw(x: number, y: number) {
     this.lastRaw = { x, y };
+  }
+  private route: { x: number; y: number }[] | null = null;
+  private sinceRoutePrior = 0;
+  /**
+   * The route being followed (or null). People navigating mostly walk along it, so after every
+   * couple of metres the filter gets a gentle, floored pull towards it - never a constraint.
+   */
+  setRoute(route: { x: number; y: number }[] | null) {
+    this.route = route && route.length > 1 ? route : null;
   }
   /** Raw walking position (any frame); only displacements are used. */
   walk(x: number, y: number) {
@@ -207,6 +233,19 @@ export class AssistFusion {
     if (len < 0.02) return false;
     this.movedSinceRadio += len;
     this.fusion.predict(dx, dy);
+    this.sinceRoutePrior += len;
+    if (
+      this.route &&
+      this.config.routePriorSigmaMetres > 0 &&
+      this.sinceRoutePrior >= 2
+    ) {
+      this.fusion.weightByPath(
+        this.route,
+        this.config.routePriorSigmaMetres,
+        this.config.routePriorFloor,
+      );
+      this.sinceRoutePrior = 0;
+    }
     this.publish('walking');
     return true;
   }

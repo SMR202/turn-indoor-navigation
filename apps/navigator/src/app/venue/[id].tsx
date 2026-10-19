@@ -28,12 +28,18 @@ import { motion, placeCategories, type PlaceCategory } from '@turn/design';
 import {
   applyPlaceOverrides,
   buildScene,
+  pointInPolygon,
   projectOnPolyline,
   type P,
   type Scene,
   type ScenePlace,
 } from '@turn/map-scene';
-import { DisplayPose, nearestRoutableNode } from '@turn/positioning-runtime';
+import {
+  buildFusionMap,
+  DisplayPose,
+  nearestRoutableNode,
+  roomNameAt,
+} from '@turn/positioning-runtime';
 import { calculateRoute } from '@turn/routing';
 import type { VenuePackage } from '@turn/venue-model';
 import { Icon } from '../../components/icon';
@@ -125,7 +131,17 @@ type Start = {
   nodeId: string;
   point: P;
   floorId: string;
-  kind: 'marker' | 'place' | 'entrance';
+  kind: 'marker' | 'place' | 'entrance' | 'picked';
+  /** Direction the walker marked as facing (venue frame, rad); unset means "along the route". */
+  headingRad?: number | null;
+};
+/** "Set my location": tap where you are, then optionally the way you are facing. */
+type Pick = {
+  stage: 'where' | 'facing';
+  point: P | null;
+  floorId: string;
+  heading: number | null;
+  error: string | null;
 };
 type Place = ScenePlace & { floorId: string; floorLabel: string };
 type Guidance = 'demo' | 'steps' | 'live';
@@ -252,7 +268,7 @@ function Experience({
       }
     );
   });
-  const atMarker = start.kind === 'marker';
+  const atMarker = start.kind === 'marker' || start.kind === 'picked';
   const [floorId, setFloorId] = useState(start.floorId);
   const floor = pkg.floors.find((f) => f.id === floorId) ?? pkg.floors[0]!;
   const scene = scenes[floor.id]!;
@@ -262,6 +278,7 @@ function Experience({
   const [sheetIndex, setSheetIndex] = useState(0);
   const [pickingStart, setPickingStart] = useState(false);
   const [locating, setLocating] = useState<string | null>(null);
+  const [pick, setPick] = useState<Pick | null>(null);
   const [stepFree, setStepFree] = useState(prefs.stepFree);
   const live = useLiveGuidance(pkg, bundle.content, start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
@@ -351,6 +368,18 @@ function Experience({
     () => display.setRoute(route?.legs[liveLeg]?.points ?? null),
     [display, route, liveLeg],
   );
+  // The walker's floor: the dot moves through doors along the walk graph, never through walls,
+  // and the filter gets a soft pull towards the route being followed.
+  const liveFloorId = route?.legs[liveLeg]?.floorId ?? start.floorId;
+  useEffect(
+    () => display.setMap(buildFusionMap(pkg, liveFloorId)),
+    [display, pkg, liveFloorId],
+  );
+  const setLiveRoute = live.setRoute;
+  useEffect(
+    () => setLiveRoute(route?.legs[liveLeg]?.points ?? null),
+    [setLiveRoute, route, liveLeg],
+  );
   useEffect(() => {
     if (!liveOn || !fix) return;
     display.update(
@@ -422,6 +451,7 @@ function Experience({
       nextLeg.points[0]!,
       a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
       nextLeg.floorId,
+      { route: nextLeg.points },
     );
   };
   // Demo and step guidance carry the map to the walker's floor.
@@ -450,6 +480,16 @@ function Experience({
 
   const livePhase = live.state?.phase ?? 'idle';
   const user: MapUser | null = useMemo(() => {
+    if (pick)
+      return pick.point && pick.floorId === floorId
+        ? {
+            x: pick.point.x,
+            y: pick.point.y,
+            sigma: 0.8,
+            heading: pick.heading,
+            live: true,
+          }
+        : null;
     if (mode.kind === 'navigate' && guidance === 'live') {
       if ((route?.legs[liveLeg]?.floorId ?? start.floorId) !== floorId)
         return null;
@@ -485,11 +525,13 @@ function Experience({
         x: start.point.x,
         y: start.point.y,
         sigma: 1.5,
-        heading: null,
+        heading: start.headingRad ?? null,
         live: true,
       };
     return null;
   }, [
+    pick,
+    start.headingRad,
     mode.kind,
     route,
     at,
@@ -523,8 +565,9 @@ function Experience({
       return [318 + insets.bottom, Math.min(full, H * 0.66)];
     return [148 + insets.bottom, Math.round(H * 0.46), full];
   }, [mode.kind, H, insets]);
-  const sheetVisible =
-    mode.kind === 'navigate'
+  const sheetVisible = pick
+    ? 176 + insets.bottom
+    : mode.kind === 'navigate'
       ? 132 + insets.bottom
       : mode.kind === 'arrived'
         ? 260
@@ -584,11 +627,13 @@ function Experience({
     if (guidance === 'live' && route) {
       const first = route.legs[0]!;
       const [a, b] = first.points;
+      const marked = start.headingRad ?? null;
       setFloorId(first.floorId);
       void live.start(
         start.point,
-        a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+        marked ?? (a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0),
         first.floorId,
+        { facing: marked === null ? 'route' : 'chosen', route: first.points },
       );
     }
   };
@@ -601,7 +646,61 @@ function Experience({
     setWalked(0);
     camera({ kind: 'fit' });
   };
+  // ---- Set my location ------------------------------------------------------------------------
+  const walkable = useMemo(
+    () => buildFusionMap(pkg, floor.id).walkable,
+    [pkg, floor.id],
+  );
+  const beginPick = () => {
+    setPickingStart(false);
+    setPick({
+      stage: 'where',
+      point: null,
+      floorId,
+      heading: null,
+      error: null,
+    });
+  };
+  const pickTap = (p: P) => {
+    if (!pick) return;
+    if (pick.stage === 'where') {
+      if (!walkable.some((poly) => pointInPolygon(p, poly)))
+        setPick({
+          ...pick,
+          error:
+            'That spot is outside the rooms and corridors. Tap inside one.',
+        });
+      else setPick({ ...pick, point: p, floorId, error: null });
+      return;
+    }
+    if (pick.point && pick.floorId === floorId) {
+      const dx = p.x - pick.point.x,
+        dy = p.y - pick.point.y;
+      if (Math.hypot(dx, dy) > 0.3)
+        setPick({ ...pick, heading: Math.atan2(dy, dx) });
+    }
+  };
+  const finishPick = (heading: number | null) => {
+    if (!pick?.point) return;
+    const node = nearestRoutableNode(pkg, pick.floorId, pick.point);
+    setStart({
+      key: `pick-${Date.now()}`,
+      label: `${roomNameAt(pkg, pick.floorId, pick.point) ?? 'Your spot'} (marked on the map)`,
+      nodeId: node.id,
+      point: pick.point,
+      floorId: pick.floorId,
+      kind: 'picked',
+      headingRad: heading,
+    });
+    setFloorId(pick.floorId);
+    setPick(null);
+  };
+
   const back = useCallback(() => {
+    if (pick) {
+      setPick(null);
+      return true;
+    }
     if (mode.kind === 'browse') {
       router.back();
       return true;
@@ -617,7 +716,7 @@ function Experience({
       setSheetIndex(0);
     }
     return true;
-  }, [mode]);
+  }, [mode, pick]);
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', back);
@@ -1076,6 +1175,25 @@ function Experience({
               </Tap>
             )}
             <Tap
+              onPress={beginPick}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                paddingVertical: 10,
+              }}
+            >
+              <Badge icon="pin" color={c.accent} size={34} />
+              <View style={{ flex: 1 }}>
+                <T v="callout" weight="600">
+                  Choose on the map
+                </T>
+                <T v="caption" color={c.textSubtle}>
+                  Tap where you are, and which way you face
+                </T>
+              </View>
+            </Tap>
+            <Tap
               onPress={() => router.push('/scan')}
               style={{
                 flexDirection: 'row',
@@ -1325,33 +1443,85 @@ function Experience({
         follow={mode.kind === 'navigate' && follow}
         onSelect={select}
         onMapTap={
-          mode.kind === 'navigate' &&
-          guidance === 'live' &&
-          livePhase === 'tracking'
-            ? (p) => {
-                const apply = () => {
-                  live.correct(p);
-                  setFollow(true);
-                };
-                if (Platform.OS === 'web') {
-                  if (globalThis.confirm?.('Set your position here?')) apply();
-                } else
-                  Alert.alert(
-                    'Set your position here?',
-                    'Use this when the dot is clearly in the wrong place.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Set position', onPress: apply },
-                    ],
-                  );
-              }
-            : undefined
+          pick
+            ? pickTap
+            : mode.kind === 'navigate' &&
+                guidance === 'live' &&
+                livePhase === 'tracking'
+              ? (p) => {
+                  const apply = () => {
+                    live.correct(p);
+                    setFollow(true);
+                  };
+                  if (Platform.OS === 'web') {
+                    if (globalThis.confirm?.('Set your position here?'))
+                      apply();
+                  } else
+                    Alert.alert(
+                      'Set your position here?',
+                      'Use this when the dot is clearly in the wrong place.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Set position', onPress: apply },
+                      ],
+                    );
+                }
+              : undefined
         }
         onGesture={() => mode.kind === 'navigate' && setFollow(false)}
       />
 
       {/* Top: search, categories / navigation banner */}
-      {atFloorChange && nextLeg ? (
+      {pick ? (
+        <Animated.View
+          entering={FadeInUp.duration(280)}
+          style={[
+            {
+              position: 'absolute',
+              top: insets.top + 8,
+              left: 12,
+              right: 12,
+              borderRadius: 22,
+              padding: 16,
+              backgroundColor: c.text,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+            },
+            shadow('floating', dark),
+          ]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: c.accent,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon
+              name={pick.stage === 'where' ? 'pin' : 'navigate'}
+              size={22}
+              color="#FFFFFF"
+              stroke={2.2}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <T v="callout" weight="600" color={c.background}>
+              {pick.stage === 'where'
+                ? 'Tap where you are'
+                : 'Which way are you facing?'}
+            </T>
+            <T v="caption" color={dark ? 'rgba(11,18,32,0.66)' : '#B9BFCA'}>
+              {pick.stage === 'where'
+                ? `On ${floor.label}. Zoom in for a precise spot; tap again to move it.`
+                : 'Tap a point straight ahead of you. Skip if you are not sure.'}
+            </T>
+          </View>
+        </Animated.View>
+      ) : atFloorChange && nextLeg ? (
         <Animated.View
           entering={FadeInUp.duration(320)}
           style={[
@@ -1443,9 +1613,11 @@ function Experience({
               </View>
               <View style={{ flex: 1 }}>
                 <T v="callout" weight="600" color={c.background}>
-                  Face along the blue line
+                  {start.headingRad != null
+                    ? 'Face the way you marked'
+                    : 'Face along the blue line'}
                 </T>
-                <T v="caption" color={dark ? c.textMuted : '#B9BFCA'}>
+                <T v="caption" color={dark ? 'rgba(11,18,32,0.66)' : '#B9BFCA'}>
                   Hold the phone in front of you, screen up, and stay still for
                   a moment.
                 </T>
@@ -1712,6 +1884,15 @@ function Experience({
                 ))}
               </View>
             )}
+            {mode.kind !== 'navigate' && !pick && (
+              <IconButton
+                icon="pin"
+                label="Set my location"
+                size={46}
+                active={start.kind === 'picked'}
+                onPress={beginPick}
+              />
+            )}
             <IconButton
               icon="locate"
               label={
@@ -1730,7 +1911,76 @@ function Experience({
         )}
 
       {/* Bottom */}
-      {mode.kind === 'navigate' && route ? (
+      {pick ? (
+        <Animated.View
+          entering={FadeInDown.duration(280)}
+          style={[
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              paddingBottom: insets.bottom + 14,
+              paddingTop: 16,
+              paddingHorizontal: 20,
+              backgroundColor: c.surface,
+              borderTopLeftRadius: 26,
+              borderTopRightRadius: 26,
+              gap: 12,
+            },
+            shadow('sheet', dark),
+          ]}
+        >
+          <T v="caption" color={pick.error ? c.danger : c.textMuted} lines={2}>
+            {pick.error ??
+              (pick.stage === 'where'
+                ? pick.point
+                  ? (roomNameAt(pkg, pick.floorId, pick.point) ??
+                      'Spot chosen') + ' - tap again to adjust.'
+                  : 'Your blue dot will start here.'
+                : pick.heading === null
+                  ? 'No direction yet: TURN will assume you face along the route.'
+                  : 'Direction set - tap again to change it.')}
+          </T>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {pick.stage === 'where' ? (
+              <>
+                <Button
+                  label="Cancel"
+                  kind="secondary"
+                  size="md"
+                  grow
+                  onPress={() => setPick(null)}
+                />
+                <Button
+                  label="Next"
+                  size="md"
+                  grow
+                  disabled={!pick.point}
+                  onPress={() => setPick({ ...pick, stage: 'facing' })}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  label="Skip"
+                  kind="secondary"
+                  size="md"
+                  grow
+                  onPress={() => finishPick(null)}
+                />
+                <Button
+                  label="Use this direction"
+                  size="md"
+                  grow
+                  disabled={pick.heading === null}
+                  onPress={() => finishPick(pick.heading)}
+                />
+              </>
+            )}
+          </View>
+        </Animated.View>
+      ) : mode.kind === 'navigate' && route ? (
         <Animated.View
           entering={FadeInDown.duration(320)}
           style={[

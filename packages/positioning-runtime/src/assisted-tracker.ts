@@ -169,10 +169,22 @@ export class AssistedTracker {
     return this.assist.estimate();
   }
 
-  /** A trusted position: user tap, QR, confirmed fingerprint, known anchor. */
-  setPosition(x: number, y: number, sigma = 1) {
-    this.assist.setPosition(x, y, sigma);
+  /**
+   * A trusted position: user tap, QR, confirmed fingerprint, known anchor. `headingSigma` (rad)
+   * is how unsure the starting walking direction is.
+   */
+  setPosition(x: number, y: number, sigma = 1, headingSigma?: number) {
+    this.assist.setPosition(x, y, sigma, headingSigma);
     this.publish();
+  }
+  /** A correction while walking (tap on the map): keeps the learned heading and stride. */
+  relocate(x: number, y: number, sigma = 1.2) {
+    this.assist.relocate(x, y, sigma);
+    this.publish();
+  }
+  /** The route being followed (null when not navigating): a soft prior, never a constraint. */
+  setRoute(route: { x: number; y: number }[] | null) {
+    this.assist.setRoute(route);
   }
   /** A measured position (fingerprint candidate): blends with the current belief. */
   fixPosition(x: number, y: number, sigma: number) {

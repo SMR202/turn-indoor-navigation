@@ -2,6 +2,12 @@
 
 Updated: 2026-10-19.
 
+## Visitor app: map-constrained live dot and Set my location — 2026-10-19
+
+IMPLEMENTED: the live dot moves through doors along the walk graph and along the route, never through walls ([ADR-0011](../../../decisions/0011-map-constraints.md)); the filter gets the route being followed (also after re-routes and floor changes). **Set my location**: a map button (and "Choose on the map" in the route's From list) — tap where you are (inside rooms and corridors only), then optionally tap the way you are facing. Live guidance then starts from that point with the marked heading ("Face the way you marked"), or along the route when skipped.
+
+Validation: root check passes (205 tests); navigator typecheck passes. JavaScript only: reload the existing Android and iPhone dev builds. **Not yet walked on a phone.**
+
 ## TURN visitor app and shared positioning runtime — 2026-10-19
 
 IMPLEMENTED: `apps/navigator`, a separate Expo SDK 57 app (bundle id `com.turn.app.dev`) that uses only native modules already compiled into the TURN dev build, so it loads in that build without a rebuild. It covers:

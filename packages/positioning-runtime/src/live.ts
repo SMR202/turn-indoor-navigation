@@ -37,6 +37,14 @@ export type LiveState = {
   steps: number;
   message: string;
 };
+/** How sure the start heading is (rad): the walker faced the route, or marked their direction. */
+export const START_HEADING_SIGMA = { route: 0.5, chosen: 0.3 } as const;
+export type LiveStart = {
+  /** What the start heading is: the route's first direction, or one the walker marked on the map. */
+  facing?: keyof typeof START_HEADING_SIGMA;
+  /** The route being followed on this floor (soft prior and display snapping). */
+  route?: P[] | null;
+};
 export type LiveOptions = {
   venue: VenuePackage;
   floorId: string;
@@ -86,6 +94,7 @@ export class LivePositioning {
     message: '',
   };
   private lastStepCount = 0;
+  private route: P[] | null = null;
 
   constructor(private readonly options: LiveOptions) {}
 
@@ -112,9 +121,12 @@ export class LivePositioning {
 
   /**
    * Starts at `start` (venue metres). `headingRad` is the direction the walker faces while the
-   * sensors settle (the first route segment), in the venue frame.
+   * sensors settle (the first route segment, or one they marked), in the venue frame. The filter
+   * treats it as approximate and lets walls and doors settle the rest in the first metres.
    */
-  async start(start: P, headingRad: number) {
+  async start(start: P, headingRad: number, how: LiveStart = {}) {
+    const facing = how.facing ?? 'route';
+    if (how.route !== undefined) this.route = how.route;
     this.stop();
     const token = ++this.generation;
     const { venue, floorId } = this.options;
@@ -157,7 +169,8 @@ export class LivePositioning {
         },
       });
     });
-    tracker.setPosition(start.x, start.y, 1.2);
+    tracker.setPosition(start.x, start.y, 1.2, START_HEADING_SIGMA[facing]);
+    tracker.setRoute(this.route);
     // The step engine is anchored at the nearest venue anchor; the tracker turns its positions
     // into displacements from that point, so any start position works.
     const anchor = nearestAnchor(venue, floorId, start);
@@ -214,7 +227,9 @@ export class LivePositioning {
               steps: next.steps,
               message:
                 phase === 'settling'
-                  ? 'Hold the phone in front of you and face along the blue line.'
+                  ? facing === 'chosen'
+                    ? 'Hold the phone in front of you, facing the way you marked.'
+                    : 'Hold the phone in front of you and face along the blue line.'
                   : (next.warning ?? ''),
             });
         },
@@ -248,7 +263,12 @@ export class LivePositioning {
 
   /** A trusted correction: the user scanned a marker or confirmed where they are. */
   correct(p: P) {
-    this.tracker?.setPosition(p.x, p.y, 1.2);
+    this.tracker?.relocate(p.x, p.y, 1.2);
+  }
+  /** The route now being followed on this floor (after a re-route or a new leg); null clears it. */
+  setRoute(route: P[] | null) {
+    this.route = route && route.length > 1 ? route : null;
+    this.tracker?.setRoute(this.route);
   }
 
   private stopSensors() {

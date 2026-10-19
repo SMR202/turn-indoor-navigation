@@ -16,6 +16,11 @@ export type FusionMap = {
   walls: { from: FusionPoint; to: FusionPoint }[];
   /** Union of these polygons is where a person can be. */
   walkable: FusionPoint[][];
+  /** Walk graph (room centres, doors, corridor points): walkable paths for displaying moves. */
+  graph?: {
+    nodes: (FusionPoint & { id: string })[];
+    edges: { from: string; to: string }[];
+  };
 };
 export type FusionBeacon = {
   tag: string;
@@ -48,6 +53,8 @@ export type FusionConfig = {
   minRssi: number;
   /** Resample when the effective sample size drops below this fraction of N. */
   essFraction: number;
+  /** Let a step blocked by a wall continue at a small angle along it (people follow walls). */
+  wallSlide: boolean;
 };
 export const DEFAULT_FUSION_CONFIG: FusionConfig = {
   particles: 500,
@@ -62,6 +69,7 @@ export const DEFAULT_FUSION_CONFIG: FusionConfig = {
   rssiGateSigmas: Infinity,
   minRssi: -92,
   essFraction: 0.5,
+  wallSlide: true,
 };
 export type FusionEstimate = {
   x: number;
@@ -118,6 +126,34 @@ function inPolygon(x: number, y: number, polygon: FusionPoint[]) {
       inside = !inside;
   }
   return inside;
+}
+
+/** Angles tried, in order, when a step would cross a wall (rad): 20°, 40°, 60°. */
+const SLIDE_TURNS = [0.35, -0.35, 0.7, -0.7, 1.05, -1.05];
+const SLIDE_SIGMA = 0.45;
+
+function distanceToPolyline(x: number, y: number, path: FusionPoint[]) {
+  let best = Infinity;
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = path[i]!,
+      b = path[i + 1]!;
+    const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+    const t =
+      l2 === 0
+        ? 0
+        : Math.max(
+            0,
+            Math.min(
+              1,
+              ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / l2,
+            ),
+          );
+    best = Math.min(
+      best,
+      Math.hypot(x - (a.x + t * (b.x - a.x)), y - (a.y + t * (b.y - a.y))),
+    );
+  }
+  return best;
 }
 
 export class ParticleFusion {
@@ -183,21 +219,32 @@ export class ParticleFusion {
   /** Start from a known position with Gaussian uncertainty (QR, confirmed fingerprint, user tap). */
   reset(x: number, y: number, sigma = 0.8, biasSigma = 0.1) {
     for (let i = 0; i < this.n; i++) {
-      let px = x,
-        py = y;
-      for (let tries = 0; tries < 20; tries++) {
-        px = x + this.randn() * sigma;
-        py = y + this.randn() * sigma;
-        if (this.walkable(px, py) && !this.crossesWall(x, y, px, py)) break;
-        px = x;
-        py = y;
-      }
-      this.x[i] = px;
-      this.y[i] = py;
+      this.placeNear(i, x, y, sigma);
       this.bias[i] = this.randn() * biasSigma;
       this.scale[i] = 1 + this.randn() * 0.05;
-      this.w[i] = 1 / this.n;
     }
+  }
+  /**
+   * A trusted correction of where the walker is (a tap on the map): positions restart around it,
+   * but each hypothesis keeps its learned heading bias and stride scale.
+   */
+  relocate(x: number, y: number, sigma = 0.8) {
+    for (let i = 0; i < this.n; i++) this.placeNear(i, x, y, sigma);
+  }
+  /** Gaussian around (x, y), in walkable space and on the same side of every wall. */
+  private placeNear(i: number, x: number, y: number, sigma: number) {
+    let px = x,
+      py = y;
+    for (let tries = 0; tries < 20; tries++) {
+      px = x + this.randn() * sigma;
+      py = y + this.randn() * sigma;
+      if (this.walkable(px, py) && !this.crossesWall(x, y, px, py)) break;
+      px = x;
+      py = y;
+    }
+    this.x[i] = px;
+    this.y[i] = py;
+    this.w[i] = 1 / this.n;
   }
 
   /**
@@ -254,21 +301,58 @@ export class ParticleFusion {
         0,
         len * this.scale[i]! * (1 + this.randn() * stepNoise),
       );
-      const nx = this.x[i]! + l * Math.cos(heading);
-      const ny = this.y[i]! + l * Math.sin(heading);
-      if (
-        this.crossesWall(this.x[i]!, this.y[i]!, nx, ny) ||
-        !this.walkable(nx, ny)
-      ) {
-        // Blocked by the map: stay put and lose most of the weight.
+      if (this.tryMove(i, heading, l)) continue;
+      if (!this.config.wallSlide) {
         this.w[i] = this.w[i]! * 0.02;
-      } else {
-        this.x[i] = nx;
-        this.y[i] = ny;
+        continue;
       }
+      // Blocked by a wall: people do not walk through walls, they follow them. Try the step at a
+      // small angle to the wall (shorter by the cosine), cheaper the smaller the angle, and let
+      // the particle's heading bias learn some of the turn (map-aided heading correction).
+      let slid = false;
+      const flip = this.rand() < 0.5 ? 1 : -1;
+      for (const turn of SLIDE_TURNS) {
+        const d = turn * flip;
+        const l2 = l * Math.cos(d);
+        if (l2 < 0.05 || !this.tryMove(i, heading + d, l2)) continue;
+        this.w[i] =
+          this.w[i]! * Math.exp(-(d * d) / (2 * SLIDE_SIGMA * SLIDE_SIGMA));
+        this.bias[i] = Math.max(-1, Math.min(1, this.bias[i]! + 0.25 * d));
+        slid = true;
+        break;
+      }
+      // Nowhere to go: stay put and lose most of the weight.
+      if (!slid) this.w[i] = this.w[i]! * 0.02;
     }
     this.normalize();
     this.maybeResample();
+  }
+  private tryMove(i: number, heading: number, l: number) {
+    const nx = this.x[i]! + l * Math.cos(heading);
+    const ny = this.y[i]! + l * Math.sin(heading);
+    if (
+      this.crossesWall(this.x[i]!, this.y[i]!, nx, ny) ||
+      !this.walkable(nx, ny)
+    )
+      return false;
+    this.x[i] = nx;
+    this.y[i] = ny;
+    return true;
+  }
+
+  /**
+   * Soft prior towards a polyline (the route being followed): particles far from it lose some
+   * weight, never more than `floor` of it, so a walker who really leaves the route is still found.
+   */
+  weightByPath(path: FusionPoint[], sigma = 4, floor = 0.3) {
+    if (path.length < 2) return;
+    const logw = new Float64Array(this.n);
+    const lf = Math.log(floor);
+    for (let i = 0; i < this.n; i++) {
+      const d = distanceToPolyline(this.x[i]!, this.y[i]!, path);
+      logw[i] = Math.max(lf, -(d * d) / (2 * sigma * sigma));
+    }
+    this.applyLogWeights(logw);
   }
 
   /** Probabilistic multilateration: weight particles by how well they explain the RSSI readings. */
