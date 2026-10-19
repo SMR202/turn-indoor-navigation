@@ -321,6 +321,14 @@ export function BeaconsTab({
               {here.length} on this floor · {beacons.length} total
             </span>
           </div>
+          {health.data && health.data.length > 0 && (
+            <div className="banner info" style={{ marginBottom: 8 }}>
+              <Icon name="beacon" size={15} />
+              {health.data.filter((x) => x.status === 'ok').length} of{' '}
+              {health.data.length} beacons heard by visitors' phones in the last
+              24 h.
+            </div>
+          )}
           {here.length === 0 && (
             <p className="subtle">
               No beacons yet. Suggest sites or add them on the map.
@@ -337,12 +345,31 @@ export function BeaconsTab({
                   <Icon name="beacon" size={15} color="#fff" />
                 </span>
                 <div className="grow">
-                  <div style={{ fontWeight: 600 }}>{b.tag}</div>
+                  <div className="row" style={{ gap: 8 }}>
+                    <b>{b.tag}</b>
+                    {h && (
+                      <span
+                        className={`badge ${h.status === 'ok' ? 'live' : h.status === 'quiet' ? 'draft' : ''}`}
+                        title="From visitors' phones during live guidance"
+                      >
+                        {h.status === 'ok'
+                          ? 'Heard today'
+                          : h.status === 'quiet'
+                            ? 'Quiet 24 h+'
+                            : 'Never heard'}
+                      </span>
+                    )}
+                  </div>
                   <div className="subtle" style={{ fontSize: 12.5 }}>
                     {h?.lastSeen
-                      ? `Seen ${fmt.ago(h.lastSeen)}${h.battery != null ? ` · battery ${h.battery}%` : ''}`
-                      : 'Not reported yet'}{' '}
+                      ? `Last heard ${fmt.ago(h.lastSeen)} · ${h.reports24h} reports/24 h${h.medianRssi24h != null ? ` · median ${h.medianRssi24h} dBm` : ''}${h.battery != null ? ` · battery ${h.battery}%` : ''}`
+                      : 'No reports yet'}{' '}
                     · ({b.x.toFixed(1)}, {b.y.toFixed(1)})
+                    {b.calibratedAt
+                      ? ' · calibrated'
+                      : b.referenceRssi !== undefined
+                        ? ` · model ${b.referenceRssi} dBm @1 m`
+                        : ''}
                   </div>
                 </div>
                 <button

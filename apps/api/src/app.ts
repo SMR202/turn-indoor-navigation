@@ -553,6 +553,7 @@ export function createApp(
     const v = venueFor(c, param(c, 'id'));
     if (!v) return c.json({ error: 'Not found' }, 404);
     const content = venueContentSchema.parse(JSON.parse(v.content));
+    const dayAgo = new Date(Date.now() - 864e5).toISOString();
     return c.json(
       content.beacons.map((b) => {
         const last = one<{
@@ -564,11 +565,25 @@ export function createApp(
           v.id,
           b.tag,
         );
+        const day = all<{ rssi: number | null }>(
+          'SELECT rssi FROM beacon_reports WHERE venue_id = ? AND tag = ? AND at >= ? ORDER BY rssi',
+          v.id,
+          b.tag,
+          dayAgo,
+        );
+        const rssis = day
+          .map((r) => r.rssi)
+          .filter((r): r is number => r !== null);
         return {
           ...b,
           lastSeen: last?.at ?? null,
           rssi: last?.rssi ?? null,
           battery: last?.battery ?? null,
+          reports24h: day.length,
+          medianRssi24h: rssis.length
+            ? rssis[Math.floor(rssis.length / 2)]!
+            : null,
+          status: !last ? 'never' : last.at >= dayAgo ? 'ok' : 'quiet',
         };
       }),
     );
@@ -851,7 +866,28 @@ export function createApp(
       )
       .max(64)
       .parse(await c.req.json());
-    for (const r of reports)
+    // Keep only reports about beacons in the venue's saved layout.
+    const known = new Map<string, Set<string>>();
+    const accepted = reports.filter((r) => {
+      if (!known.has(r.venueId)) {
+        const row = one<{ content: string }>(
+          'SELECT content FROM venues WHERE id = ?',
+          r.venueId,
+        );
+        known.set(
+          r.venueId,
+          new Set(
+            row
+              ? venueContentSchema
+                  .parse(JSON.parse(row.content))
+                  .beacons.map((b) => b.tag)
+              : [],
+          ),
+        );
+      }
+      return known.get(r.venueId)!.has(r.tag);
+    });
+    for (const r of accepted)
       run(
         'INSERT INTO beacon_reports (venue_id, tag, rssi, battery, at) VALUES (?, ?, ?, ?, ?)',
         r.venueId,
@@ -860,7 +896,7 @@ export function createApp(
         r.battery ?? null,
         now(),
       );
-    return c.json({ stored: reports.length });
+    return c.json({ stored: accepted.length });
   });
 
   return app;

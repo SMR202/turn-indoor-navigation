@@ -92,7 +92,7 @@ export default function Settings() {
           <Row
             icon="share"
             title="Share anonymous usage"
-            detail="Searches, routes started and arrivals, with a random id per launch, help venues improve signs and maps. Never your position."
+            detail="Searches, routes started and arrivals (random id per launch), plus which venue beacons your phone hears during live guidance, help venues keep signs, maps and beacons working. Never your position."
             value={prefs.shareUsage}
             onChange={(v) => setPrefs({ shareUsage: v })}
           />

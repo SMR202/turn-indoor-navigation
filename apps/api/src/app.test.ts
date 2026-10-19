@@ -345,3 +345,48 @@ describe('multi-floor import', () => {
     ).toBe(200);
   });
 });
+
+describe('beacon health', () => {
+  it('accepts reports for the venue layout only and summarises them', async () => {
+    const owner = await login('owner@harbour.demo');
+    const auth = { Authorization: `Bearer ${owner}` };
+    await app.request('/venues/turn-demo-centre/beacons', {
+      ...json(
+        [
+          { tag: 'B1', floorId: 'ground', x: 10, y: 18, referenceRssi: -59 },
+          { tag: 'B2', floorId: 'ground', x: 30, y: 18, referenceRssi: -59 },
+        ],
+        owner,
+      ),
+      method: 'PUT',
+    });
+    const r = await app.request(
+      '/public/beacon-reports',
+      json([
+        { venueId: 'turn-demo-centre', tag: 'B1', rssi: -70 },
+        { venueId: 'turn-demo-centre', tag: 'B1', rssi: -66 },
+        { venueId: 'turn-demo-centre', tag: 'ZZ', rssi: -60 },
+      ]),
+    );
+    expect(((await r.json()) as { stored: number }).stored).toBe(2);
+    const h = (await (
+      await app.request('/venues/turn-demo-centre/beacons/health', {
+        headers: auth,
+      })
+    ).json()) as {
+      tag: string;
+      status: string;
+      reports24h: number;
+      medianRssi24h: number | null;
+    }[];
+    expect(h.find((b) => b.tag === 'B1')).toMatchObject({
+      status: 'ok',
+      reports24h: 2,
+    });
+    expect(h.find((b) => b.tag === 'B2')).toMatchObject({
+      status: 'never',
+      reports24h: 0,
+      medianRssi24h: null,
+    });
+  });
+});

@@ -8,7 +8,11 @@ import {
 } from '@turn/positioning-core';
 import type { VenuePackage } from '@turn/venue-model';
 import { buildFusionMap, nearestAnchor, type P } from './assist-helpers';
-import { AssistedTracker, type TrackerEstimate } from './assisted-tracker';
+import {
+  AssistedTracker,
+  type BeaconHealth,
+  type TrackerEstimate,
+} from './assisted-tracker';
 import { bleBuildAvailable } from './ble';
 import { waitForForeground } from './sensors/foreground';
 import { startMotionSource } from './sensors/motion-source';
@@ -235,6 +239,11 @@ export class LivePositioning {
       }
       throw e;
     }
+  }
+
+  /** Beacons in the layout and when this phone last heard them (empty without a beacon stream). */
+  beaconHealth(): BeaconHealth[] {
+    return this.tracker?.health() ?? [];
   }
 
   /** A trusted correction: the user scanned a marker or confirmed where they are. */

@@ -124,6 +124,9 @@ export type BeaconHealth = Beacon & {
   lastSeen: string | null;
   rssi: number | null;
   battery: number | null;
+  reports24h: number;
+  medianRssi24h: number | null;
+  status: 'ok' | 'quiet' | 'never';
 };
 export type OpsOverview = {
   orgs: number;
