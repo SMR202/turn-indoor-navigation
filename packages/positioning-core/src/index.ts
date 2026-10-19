@@ -10,3 +10,4 @@ export * from './beacon-planner';
 export * from './beacon-zones';
 export * from './fusion-replay';
 export * from './assist-fusion';
+export * from './beacon-ids';

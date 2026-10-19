@@ -373,6 +373,31 @@ export function BeaconsTab({
                   </div>
                 </div>
                 <button
+                  className="btn ghost sm"
+                  title="Use the beacon's Eddystone instance ID (12 hex digits) or the phone beacon's name"
+                  onClick={() => {
+                    const next = window
+                      .prompt(
+                        'Beacon ID: the Eddystone-UID instance (12 hex digits, e.g. 0A0B0C0D0E0F) or a phone beacon name',
+                        b.tag,
+                      )
+                      ?.trim()
+                      .toUpperCase();
+                    if (!next || next === b.tag) return;
+                    if (!/^[A-Z0-9]{1,12}$/.test(next))
+                      return toast('IDs are 1–12 letters or digits.');
+                    if (beacons.some((x) => x.tag === next))
+                      return toast(`${next} is already in the layout.`);
+                    setBeacons((bs) =>
+                      bs.map((x) =>
+                        x.tag === b.tag ? { ...x, tag: next } : x,
+                      ),
+                    );
+                  }}
+                >
+                  Set ID
+                </button>
+                <button
                   className="btn ghost sm danger"
                   onClick={() =>
                     setBeacons((bs) => bs.filter((x) => x.tag !== b.tag))

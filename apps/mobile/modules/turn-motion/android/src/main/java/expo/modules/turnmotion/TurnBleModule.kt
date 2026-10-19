@@ -16,6 +16,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelUuid
 import android.os.SystemClock
 import android.view.WindowManager
 import expo.modules.kotlin.Promise
@@ -23,9 +24,10 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 /**
- * TURN-only BLE. Advertises and scans exclusively the TURN manufacturer payload
- * (test company id 0xFFFF + "TURN" + version + ASCII beacon tag). Every other device is
- * filtered in the controller and never reaches JavaScript. Foreground use only.
+ * TURN BLE. Advertises the TURN manufacturer payload (test company id 0xFFFF + "TURN" + version +
+ * ASCII beacon tag) and scans for it and for commercial Eddystone-UID beacons (service 0xFEAA,
+ * frame 0x00), whose 6-byte instance id becomes a 12-hex-digit tag. Every other device is filtered
+ * in the controller and never reaches JavaScript. Foreground use only.
  */
 class TurnBleModule : Module() {
   private val handler = Handler(Looper.getMainLooper())
@@ -33,6 +35,7 @@ class TurnBleModule : Module() {
   private val magic = byteArrayOf(0x54, 0x55, 0x52, 0x4E)
   private val version: Byte = 1
   private val tagPattern = Regex("^[A-Za-z0-9]{1,12}$")
+  private val eddystone = ParcelUuid.fromString("0000FEAA-0000-1000-8000-00805F9B34FB")
   private val okStatus = "Fresh BLE scan"
 
   private var pending: Promise? = null
@@ -127,6 +130,8 @@ class TurnBleModule : Module() {
       scanDurationSeconds = durationMs / 1000.0
       val filter = ScanFilter.Builder()
         .setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build()
+      val uidFilter = ScanFilter.Builder()
+        .setServiceData(eddystone, byteArrayOf(0x00), byteArrayOf(-1)).build()
       val settings = ScanSettings.Builder()
         .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
       val callback = object : ScanCallback() {
@@ -142,7 +147,7 @@ class TurnBleModule : Module() {
       }
       scanCallback = callback
       scanStartNanos = SystemClock.elapsedRealtimeNanos()
-      scanner.startScan(listOf(filter), settings, callback)
+      scanner.startScan(listOf(filter, uidFilter), settings, callback)
       handler.postDelayed(finishScan, durationMs.toLong())
     } catch (error: Exception) {
       finish(error.message ?: "BLE unavailable.", failed = true)
@@ -150,11 +155,18 @@ class TurnBleModule : Module() {
   }
 
   private fun parseTag(result: ScanResult): String? {
-    val payload = result.scanRecord?.getManufacturerSpecificData(companyId) ?: return null
-    if (payload.size < 6 || payload.size > 5 + 12 || payload[4] != version) return null
-    for (i in magic.indices) if (payload[i] != magic[i]) return null
-    val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
-    return if (tagPattern.matches(tag)) tag else null
+    val record = result.scanRecord ?: return null
+    val payload = record.getManufacturerSpecificData(companyId)
+    if (payload != null) {
+      if (payload.size < 6 || payload.size > 5 + 12 || payload[4] != version) return null
+      for (i in magic.indices) if (payload[i] != magic[i]) return null
+      val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
+      return if (tagPattern.matches(tag)) tag else null
+    }
+    // Eddystone-UID: frame type 0x00, tx power, 10-byte namespace, 6-byte instance.
+    val uid = record.getServiceData(eddystone) ?: return null
+    if (uid.size < 18 || uid[0] != 0x00.toByte()) return null
+    return (12 until 18).joinToString("") { "%02X".format(uid[it].toInt() and 0xFF) }
   }
 
   private fun beginStream(token: String, promise: Promise) {
@@ -174,6 +186,7 @@ class TurnBleModule : Module() {
       check(scanner != null) { "Bluetooth LE scanning is unavailable." }
       endStream("restarted")
       val filter = ScanFilter.Builder().setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build()
+      val uidFilter = ScanFilter.Builder().setServiceData(eddystone, byteArrayOf(0x00), byteArrayOf(-1)).build()
       val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
       val callback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -194,7 +207,7 @@ class TurnBleModule : Module() {
       streamStartNanos = SystemClock.elapsedRealtimeNanos()
       streamBuffer.clear()
       streamDropped = 0
-      scanner.startScan(listOf(filter), settings, callback)
+      scanner.startScan(listOf(filter, uidFilter), settings, callback)
       handler.postDelayed(flushStream, 500)
       promise.resolve(mapOf("token" to token))
     } catch (error: Exception) {
@@ -217,11 +230,7 @@ class TurnBleModule : Module() {
   }
 
   private fun record(result: ScanResult) {
-    val payload = result.scanRecord?.getManufacturerSpecificData(companyId) ?: return
-    if (payload.size < 6 || payload.size > 5 + 12 || payload[4] != version) return
-    for (i in magic.indices) if (payload[i] != magic[i]) return
-    val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
-    if (!tagPattern.matches(tag)) return
+    val tag = parseTag(result) ?: return
     val t = (result.timestampNanos - scanStartNanos) / 1e9
     // Reject cached or pre-start results; the capture window must be fresh.
     if (t < 0.0 || t > scanDurationSeconds + 1.0) return

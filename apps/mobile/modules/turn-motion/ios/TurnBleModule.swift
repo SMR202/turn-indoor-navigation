@@ -1,9 +1,36 @@
 import CoreBluetooth
 import ExpoModulesCore
 
-/// Foreground scan for TURN beacons only (see ADR-0007). Android phones advertise manufacturer data
-/// company 0xFFFF + "TURN" + version 1 + ASCII tag. iOS cannot filter by manufacturer data in the
-/// controller, so every other advertisement is discarded here immediately and never stored or returned.
+/// The TURN beacon tag in an advertisement, or nil. Android phones advertise manufacturer data
+/// company 0xFFFF + "TURN" + version 1 + ASCII tag; commercial beacons use Eddystone-UID (service
+/// 0xFEAA, frame 0x00), whose 6-byte instance id becomes a 12-hex-digit tag. iBeacon frames are not
+/// visible to CoreBluetooth and are ignored. Everything else is discarded immediately.
+func turnBeaconTag(_ advertisementData: [String: Any]) -> String? {
+  if let data = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
+    let bytes = [UInt8](data)
+    // company id (little endian 0xFFFF) + "TURN" + version 1 + tag(1...12)
+    guard bytes.count >= 8, bytes.count <= 19,
+      bytes[0] == 0xFF, bytes[1] == 0xFF,
+      bytes[2] == 0x54, bytes[3] == 0x55, bytes[4] == 0x52, bytes[5] == 0x4E,
+      bytes[6] == 1
+    else { return nil }
+    let tagBytes = Array(bytes[7...])
+    let valid = tagBytes.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) }
+    guard valid else { return nil }
+    return String(bytes: tagBytes, encoding: .ascii)
+  }
+  if let services = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data],
+    let uid = services[CBUUID(string: "FEAA")]
+  {
+    let bytes = [UInt8](uid)
+    guard bytes.count >= 18, bytes[0] == 0x00 else { return nil }
+    return bytes[12..<18].map { String(format: "%02X", $0) }.joined()
+  }
+  return nil
+}
+
+/// Foreground scan for TURN beacons only (see ADR-0007). iOS cannot filter by manufacturer data in
+/// the controller, so every other advertisement is discarded here and never stored or returned.
 final class TurnBleScanner: NSObject, CBCentralManagerDelegate {
   private var central: CBCentralManager?
   private var completion: (([String: Any]) -> Void)?
@@ -73,19 +100,9 @@ final class TurnBleScanner: NSObject, CBCentralManagerDelegate {
     advertisementData: [String: Any],
     rssi RSSI: NSNumber
   ) {
-    guard scanning, let data = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data else { return }
+    guard scanning, let tag = turnBeaconTag(advertisementData) else { return }
     let rssi = RSSI.intValue
     if rssi == 127 || rssi > 20 || rssi < -127 { return } // 127 means unavailable
-    let bytes = [UInt8](data)
-    // company id (little endian 0xFFFF) + "TURN" + version 1 + tag(1...12)
-    guard bytes.count >= 8, bytes.count <= 19,
-      bytes[0] == 0xFF, bytes[1] == 0xFF,
-      bytes[2] == 0x54, bytes[3] == 0x55, bytes[4] == 0x52, bytes[5] == 0x4E,
-      bytes[6] == 1
-    else { return }
-    let tagBytes = Array(bytes[7...])
-    let valid = tagBytes.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) }
-    guard valid, let tag = String(bytes: tagBytes, encoding: .ascii) else { return }
     let t = ProcessInfo.processInfo.systemUptime - startUptime
     if t < 0 || t > durationSeconds + 1 { return }
     if samples[tag] == nil && samples.count >= 32 { return }
@@ -187,18 +204,9 @@ final class TurnBleStream: NSObject, CBCentralManagerDelegate {
     advertisementData: [String: Any],
     rssi RSSI: NSNumber
   ) {
-    guard scanning, let data = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data else { return }
+    guard scanning, let tag = turnBeaconTag(advertisementData) else { return }
     let rssi = RSSI.intValue
     if rssi == 127 || rssi > 20 || rssi < -127 { return }
-    let bytes = [UInt8](data)
-    guard bytes.count >= 8, bytes.count <= 19,
-      bytes[0] == 0xFF, bytes[1] == 0xFF,
-      bytes[2] == 0x54, bytes[3] == 0x55, bytes[4] == 0x52, bytes[5] == 0x4E,
-      bytes[6] == 1
-    else { return }
-    let tagBytes = Array(bytes[7...])
-    let valid = tagBytes.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x5A) || ($0 >= 0x61 && $0 <= 0x7A) }
-    guard valid, let tag = String(bytes: tagBytes, encoding: .ascii) else { return }
     if buffer.count >= 2000 { dropped += 1; return }
     buffer.append(["t": ProcessInfo.processInfo.systemUptime - startUptime, "id": tag, "rssi": Double(rssi)])
   }
