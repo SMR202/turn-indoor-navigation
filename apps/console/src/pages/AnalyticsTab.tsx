@@ -4,11 +4,14 @@ import { BarList, TrendChart } from '../charts';
 import { CatBadge, fmt, Icon, Stat } from '../ui';
 import type { VenueCtx } from './Venue';
 
-export function AnalyticsTab({ venue, scene }: VenueCtx) {
+export function AnalyticsTab({ venue, scenes }: VenueCtx) {
   const [days, setDays] = useState(30);
   const a = useApi<Analytics>(`/venues/${venue.id}/analytics?days=${days}`);
   const d = a.data;
-  const placeName = (id: string) => scene?.places.find((p) => p.id === id);
+  const placeName = (id: string) =>
+    Object.values(scenes)
+      .flatMap((s) => s.places)
+      .find((p) => p.id === id);
   // Fill missing days so the chart has an honest zero instead of a gap.
   const daily = d
     ? Array.from({ length: days }, (_, i) => {

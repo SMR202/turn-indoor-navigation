@@ -16,7 +16,14 @@ const hardware = {
   phone: { label: 'Phone as beacon', refRssi: -75 },
 } as const;
 
-export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
+export function BeaconsTab({
+  venue,
+  pkg,
+  scene,
+  floorId,
+  floorPicker,
+  reload,
+}: VenueCtx) {
   const toast = useToast();
   const [beacons, setBeacons] = useState<Beacon[]>(venue.content.beacons);
   const [count, setCount] = useState(
@@ -31,7 +38,7 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
   const [showCoverage, setShowCoverage] = useState(true);
   const health = useApi<BeaconHealth[]>(`/venues/${venue.id}/beacons/health`);
   useEffect(() => setBeacons(venue.content.beacons), [venue.content.beacons]);
-  const floor = pkg?.package.floors[0];
+  const floor = pkg?.package.floors.find((f) => f.id === floorId);
   const input = useMemo<PlannerInput | null>(
     () =>
       pkg && floor
@@ -51,10 +58,10 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
     [pkg, floor],
   );
   const options = { refRssi: hardware[kind].refRssi, gridMetres: 1 };
+  const here = beacons.filter((b) => b.floorId === floor?.id);
   const coverage = useMemo(
-    () =>
-      input && beacons.length ? coverageMap(input, beacons, options) : null,
-    [input, beacons, kind],
+    () => (input && here.length ? coverageMap(input, here, options) : null),
+    [input, beacons, kind, floor?.id],
   );
   const dirty =
     JSON.stringify(beacons) !== JSON.stringify(venue.content.beacons) ||
@@ -71,15 +78,23 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
       </div>
     );
   const suggest = () => {
-    const plan = planBeacons(input, { ...options, count });
-    setBeacons(
-      plan.sites.map((s) => ({
+    // Tags stay unique across floors.
+    const taken = new Set(
+      beacons.filter((b) => b.floorId !== floor.id).map((b) => b.tag),
+    );
+    const tags = Array.from({ length: 64 }, (_, i) => `B${i + 1}`).filter(
+      (t) => !taken.has(t),
+    );
+    const plan = planBeacons(input, { ...options, count, tags });
+    setBeacons((bs) => [
+      ...bs.filter((b) => b.floorId !== floor.id),
+      ...plan.sites.map((s) => ({
         tag: s.tag,
         floorId: floor.id,
         x: Number(s.x.toFixed(2)),
         y: Number(s.y.toFixed(2)),
       })),
-    );
+    ]);
     toast(`Suggested ${plan.sites.length} sites — drag to adjust`);
   };
   const save = async () => {
@@ -102,8 +117,9 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
           scene={scene}
           height={620}
           placeMarkers={false}
+          toolbar={floorPicker}
           coverage={showCoverage ? coverage?.points : undefined}
-          beacons={beacons.map((b) => ({
+          beacons={here.map((b) => ({
             ...b,
             tone: healthByTag.get(b.tag)?.lastSeen ? 'ok' : 'planned',
           }))}
@@ -301,14 +317,16 @@ export function BeaconsTab({ venue, pkg, scene, reload }: VenueCtx) {
         <div className="card">
           <div className="card-head">
             <h2>Beacons</h2>
-            <span className="subtle">{beacons.length}</span>
+            <span className="subtle">
+              {here.length} on this floor · {beacons.length} total
+            </span>
           </div>
-          {beacons.length === 0 && (
+          {here.length === 0 && (
             <p className="subtle">
               No beacons yet. Suggest sites or add them on the map.
             </p>
           )}
-          {beacons.map((b) => {
+          {here.map((b) => {
             const h = healthByTag.get(b.tag);
             return (
               <div className="list-row" key={b.tag}>

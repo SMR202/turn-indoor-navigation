@@ -287,6 +287,34 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 export const useToast = () => useContext(ToastCtx);
 
+/** Floor switcher shown above maps when a venue has more than one floor (top floor first). */
+export function FloorPicker({
+  floors,
+  value,
+  onChange,
+}: {
+  floors: { id: string; label: string; level: number }[];
+  value: string | null;
+  onChange: (id: string) => void;
+}) {
+  if (floors.length < 2) return null;
+  return (
+    <div className="segmented" role="tablist" aria-label="Floor">
+      {[...floors]
+        .sort((a, b) => b.level - a.level)
+        .map((f) => (
+          <button
+            key={f.id}
+            className={f.id === value ? 'on' : ''}
+            onClick={() => onChange(f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
+    </div>
+  );
+}
+
 export function Empty({
   icon,
   title,

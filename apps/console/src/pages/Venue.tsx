@@ -9,17 +9,25 @@ import {
 } from '../api';
 import { MapCanvas } from '../map/MapCanvas';
 import { href, type VenueTab } from '../router';
-import { fmt, Icon, StatusBadge } from '../ui';
+import { FloorPicker, fmt, Icon, StatusBadge } from '../ui';
 import { AnalyticsTab } from './AnalyticsTab';
 import { BeaconsTab } from './BeaconsTab';
 import { MapTab } from './MapTab';
 import { PlacesTab } from './PlacesTab';
 import { PublishTab, QR, visitorLink } from './PublishTab';
 
+export type Floor = { id: string; label: string; level: number };
 export type VenueCtx = {
   venue: VenueDetail;
   pkg: PackageResponse | null;
+  /** Scene of the floor being shown. */
   scene: Scene | null;
+  scenes: Record<string, Scene>;
+  floors: Floor[];
+  floorId: string | null;
+  setFloorId: (id: string) => void;
+  /** The floor picker, for tabs that show a map. */
+  floorPicker: React.ReactNode;
   reload: () => void;
 };
 
@@ -36,13 +44,29 @@ export function VenuePage({
 }) {
   const venue = useApi<VenueDetail>(`/venues/${id}`);
   const pkg = useApi<PackageResponse>(`/venues/${id}/package`);
-  const scene = useMemo(
+  const scenes = useMemo<Record<string, Scene>>(
     () =>
       pkg.data
-        ? buildScene(pkg.data.package, pkg.data.package.floors[0]!.id, lightMap)
-        : null,
+        ? Object.fromEntries(
+            pkg.data.package.floors.map((f) => [
+              f.id,
+              buildScene(pkg.data!.package, f.id, lightMap),
+            ]),
+          )
+        : {},
     [pkg.data],
   );
+  const floors = useMemo<Floor[]>(
+    () =>
+      [...(pkg.data?.package.floors ?? [])]
+        .sort((a, b) => a.level - b.level)
+        .map((f) => ({ id: f.id, label: f.label, level: f.level })),
+    [pkg.data],
+  );
+  const [chosenFloor, setFloorId] = useState<string | null>(null);
+  const floorId =
+    chosenFloor && scenes[chosenFloor] ? chosenFloor : (floors[0]?.id ?? null);
+  const scene = floorId ? (scenes[floorId] ?? null) : null;
   const reload = () => {
     venue.reload();
     pkg.reload();
@@ -58,7 +82,19 @@ export function VenuePage({
       </div>
     );
   const v = venue.data;
-  const ctx: VenueCtx = { venue: v, pkg: pkg.data, scene, reload };
+  const ctx: VenueCtx = {
+    venue: v,
+    pkg: pkg.data,
+    scene,
+    scenes,
+    floors,
+    floorId,
+    setFloorId,
+    floorPicker: (
+      <FloorPicker floors={floors} value={floorId} onChange={setFloorId} />
+    ),
+    reload,
+  };
   return (
     <div className="page">
       <div className="page-head">
@@ -114,7 +150,7 @@ export function VenuePage({
   );
 }
 
-function OverviewTab({ venue, pkg, scene }: VenueCtx) {
+function OverviewTab({ venue, pkg, scene, floorId, floorPicker }: VenueCtx) {
   const described = pkg
     ? pkg.package.pois.filter(
         (p) =>
@@ -250,11 +286,14 @@ function OverviewTab({ venue, pkg, scene }: VenueCtx) {
             <MapCanvas
               scene={scene}
               height={380}
-              anchors={pkg?.package.anchors.map((a) => ({
-                id: a.id,
-                label: a.label,
-                ...a.position,
-              }))}
+              toolbar={floorPicker}
+              anchors={pkg?.package.anchors
+                .filter((a) => a.floorId === floorId)
+                .map((a) => ({
+                  id: a.id,
+                  label: a.label,
+                  ...a.position,
+                }))}
             />
           </div>
         )}

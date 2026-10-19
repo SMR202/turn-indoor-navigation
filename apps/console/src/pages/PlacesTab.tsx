@@ -6,11 +6,19 @@ import { href } from '../router';
 import { CatBadge, Drawer, Empty, Icon, useToast } from '../ui';
 import type { VenueCtx } from './Venue';
 
-export function PlacesTab({ venue, scene, reload }: VenueCtx) {
+export function PlacesTab({ venue, scene, scenes, floors, reload }: VenueCtx) {
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<PlaceCategory | 'all'>('all');
   const [editing, setEditing] = useState<ScenePlace | null>(null);
-  const places = useMemo(() => scene?.places ?? [], [scene]);
+  const floorName = (id: string) =>
+    floors.find((f) => f.id === id)?.label ?? id;
+  const places = useMemo(
+    () =>
+      Object.entries(scenes).flatMap(([fid, s]) =>
+        s.places.map((p) => ({ ...p, floorId: fid })),
+      ),
+    [scenes],
+  );
   const cats = [...new Set(places.map((p) => p.category))];
   const rows = places.filter(
     (p) =>
@@ -68,6 +76,7 @@ export function PlacesTab({ venue, scene, reload }: VenueCtx) {
             <tr>
               <th>Place</th>
               <th>Category</th>
+              {floors.length > 1 && <th>Floor</th>}
               <th>Hours</th>
               <th>Description</th>
               <th style={{ textAlign: 'right' }}>Status</th>
@@ -85,6 +94,9 @@ export function PlacesTab({ venue, scene, reload }: VenueCtx) {
                     </div>
                   </td>
                   <td className="muted">{p.categoryLabel}</td>
+                  {floors.length > 1 && (
+                    <td className="muted">{floorName(p.floorId)}</td>
+                  )}
                   <td className="muted">{c.hours ?? '—'}</td>
                   <td
                     className="muted"

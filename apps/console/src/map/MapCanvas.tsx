@@ -31,6 +31,8 @@ type Props = {
   route?: P[] | null;
   placeMarkers?: boolean;
   legend?: ReactNode;
+  /** Controls drawn over the map, top left (for example the floor picker). */
+  toolbar?: ReactNode;
   cursor?: string;
 };
 type Cam = { cx: number; cy: number; s: number };
@@ -430,6 +432,11 @@ export function MapCanvas(props: Props) {
         </button>
       </div>
       {props.legend && <div className="map-legend">{props.legend}</div>}
+      {props.toolbar && (
+        <div style={{ position: 'absolute', left: 12, top: 12 }}>
+          {props.toolbar}
+        </div>
+      )}
     </div>
   );
 }

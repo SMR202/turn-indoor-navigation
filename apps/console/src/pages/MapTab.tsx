@@ -7,7 +7,16 @@ import { href } from '../router';
 import { CatBadge, Empty, Icon, useToast } from '../ui';
 import type { VenueCtx } from './Venue';
 
-export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
+export function MapTab({
+  venue,
+  pkg,
+  scene,
+  floors,
+  floorId,
+  setFloorId,
+  floorPicker,
+  reload,
+}: VenueCtx) {
   const toast = useToast();
   const [selected, setSelected] = useState<string | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -17,7 +26,21 @@ export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
-  const [floorLabel, setFloorLabel] = useState('Ground floor');
+  // Import target: the whole map, a new floor, or an existing floor (replaced).
+  const [target, setTarget] = useState<string>(pkg ? 'new' : 'all');
+  const nextLevel = floors.length
+    ? Math.max(...floors.map((f) => f.level)) + 1
+    : 0;
+  const [floorLabel, setFloorLabel] = useState(
+    pkg ? `Level ${nextLevel}` : 'Ground floor',
+  );
+  const [level, setLevel] = useState(nextLevel);
+  const slug = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'floor';
   const file = useRef<HTMLInputElement>(null);
 
   const importFile = async (f: File) => {
@@ -26,8 +49,23 @@ export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
       const geojson = JSON.parse(await f.text()) as unknown;
       const r = await api<{ report: ImportReport; validation: Validation }>(
         `/venues/${venue.id}/import`,
-        { body: { geojson, floorLabel } },
+        {
+          body:
+            target === 'all'
+              ? { geojson, floorLabel }
+              : target === 'new'
+                ? { geojson, floorLabel, floorId: slug(floorLabel), level }
+                : {
+                    geojson,
+                    floorLabel:
+                      floors.find((f) => f.id === target)?.label ?? floorLabel,
+                    floorId: target,
+                    level: floors.find((f) => f.id === target)?.level ?? 0,
+                  },
+        },
       );
+      if (target === 'new') setFloorId(slug(floorLabel));
+      else if (target !== 'all') setFloorId(target);
       setReport(r);
       toast(
         r.validation.ok
@@ -47,9 +85,7 @@ export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
   };
   const addMarker = async (p: P) => {
     if (!pkg) return;
-    const nodes = pkg.package.nodes.filter(
-      (n) => n.floorId === pkg.package.floors[0]!.id,
-    );
+    const nodes = pkg.package.nodes.filter((n) => n.floorId === floorId);
     const near = nodes
       .map((n) => ({ n, d: Math.hypot(n.x - p.x, n.y - p.y) }))
       .sort((a, b) => a.d - b.d)[0];
@@ -113,11 +149,14 @@ export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
             onRoomClick={(id) => setSelected(id)}
             onMapClick={placing ? (p) => void addMarker(p) : undefined}
             cursor={placing ? 'crosshair' : undefined}
-            anchors={pkg?.package.anchors.map((a) => ({
-              id: a.id,
-              label: a.label,
-              ...a.position,
-            }))}
+            toolbar={floorPicker}
+            anchors={pkg?.package.anchors
+              .filter((a) => a.floorId === floorId)
+              .map((a) => ({
+                id: a.id,
+                label: a.label,
+                ...a.position,
+              }))}
             legend={
               <>
                 <span>
@@ -286,13 +325,51 @@ export function MapTab({ venue, pkg, scene, reload }: VenueCtx) {
             are derived; the result is saved as a draft.
           </p>
           <div className="field" style={{ marginTop: 14 }}>
-            <label>Floor label</label>
-            <input
-              className="input"
-              value={floorLabel}
-              onChange={(e) => setFloorLabel(e.target.value)}
-            />
+            <label>Import into</label>
+            <select
+              className="select"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+            >
+              {pkg && <option value="new">A new floor</option>}
+              {floors.map((f) => (
+                <option key={f.id} value={f.id}>
+                  Replace {f.label}
+                </option>
+              ))}
+              <option value="all">Replace the whole map</option>
+            </select>
           </div>
+          {(target === 'new' || target === 'all') && (
+            <div className="grid g2" style={{ marginTop: 10, gap: 10 }}>
+              <div className="field">
+                <label>Floor label</label>
+                <input
+                  className="input"
+                  value={floorLabel}
+                  onChange={(e) => setFloorLabel(e.target.value)}
+                />
+              </div>
+              {target === 'new' && (
+                <div className="field">
+                  <label>Level</label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={level}
+                    onChange={(e) => setLevel(Number(e.target.value) || 0)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {target !== 'all' && (
+            <p className="subtle" style={{ marginTop: 8, fontSize: 12.5 }}>
+              Floors must share one coordinate frame (same image origin and
+              scale). Stairs and lift rooms on neighbouring levels are linked
+              automatically by name or position.
+            </p>
+          )}
           <div
             className={`drop ${over ? 'over' : ''}`}
             style={{ marginTop: 12 }}
