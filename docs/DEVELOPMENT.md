@@ -3,6 +3,10 @@
 Node 24.19.0 (.nvmrc; compatible >=24.3 <25), npm 10/11, Git. Use a normal version manager. Run npm ci at root. No machine-specific paths required.
 SDK 57's documented native baseline is Android 7+ and iOS 16.4+; local iOS builds need Xcode 26.4+. These are toolchain constraints, not a verified product/device support promise. See [SDK 57 reference](https://docs.expo.dev/versions/v57.0.0/); confirm installed phone OS before testing.
 
+## Product platform
+
+`npm run platform` starts the API (8090), TURN Studio/Ops (5173) and the visitor app's Metro server (8082) together, prints the LAN addresses and saves a phone launch QR to `work/navigator-phone-qr.png` (the Expo launch QR for the installed TURN dev build, not a TURN location marker). Individually: `npm run api`, `npm run console`, `npm run navigator`. Development sign-in accounts are listed by the API on start. Beacon hardware: [beacon setup](BEACON_SETUP.md); floor plans: [map import format](MAP_IMPORT_FORMAT.md).
+
 ## Mobile
 
 npm run mobile starts Metro. Try matching Expo Go for the initial compatible UI/SVG slice. Its development QR launches the app; it is not a TURN position anchor. Device/computer need Metro connectivity. npm run web validates UI only.

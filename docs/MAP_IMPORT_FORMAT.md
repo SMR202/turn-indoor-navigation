@@ -40,4 +40,4 @@ A complete example (pixel units, four spaces, three doors, one explicit place) i
 - Snap shared edges between neighbouring rooms to identical coordinates.
 - Emit a `door` point for every opening, even when walls are not emitted.
 - Keep names human ("Kitchen", "Meeting Room A"); TURN infers categories from names when `category` is missing.
-- Multi-floor: one file per floor for now.
+- Multi-floor: one file per floor, all in the same coordinate frame (same image origin and scale). In TURN Studio choose **Import into → A new floor** with its label and level, or replace one floor. Draw stairs and lifts as `stairs` polygons named like "Stairs & Lift" on each floor in the same place: TURN links rooms on neighbouring levels by name or position (within 4 m) and creates stairs, lift, escalator or ramp connectors from the name. Lifts and ramps are step-free; stairs and escalators are not.

@@ -41,7 +41,8 @@
     "navigator": "expo start apps/navigator --port 8082",
     "navigator:web": "expo start apps/navigator --web --port 8082",
     "console": "npm run dev --workspace @turn/console",
-    "build:console": "npm run build --workspace @turn/console"
+    "build:console": "npm run build --workspace @turn/console",
+    "platform": "node scripts/platform.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

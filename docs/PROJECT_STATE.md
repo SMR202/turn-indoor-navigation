@@ -14,7 +14,7 @@ TURN now has three product surfaces beside the test app:
 - **TURN Studio / TURN Ops** (`apps/console`);
 - a development **API** (`apps/api`).
 
-The positioning runtime is shared through `@turn/positioning-runtime`; the test app keeps working through re-export shims. Brand tokens and assets live in `@turn/design`. The visitor app and console were exercised in the browser only. The visitor app has not yet run on a phone, and live guidance has no measured accuracy. [Plan 003](../plans/active/003-product-platform.md), [backend/admin status](workstreams/backend-admin/STATUS.md), [mobile status](workstreams/mobile/STATUS.md).
+The positioning runtime is shared through `@turn/positioning-runtime`; the test app keeps working through re-export shims. Brand tokens and assets live in `@turn/design`. Since then: multi-floor venues end to end (import, linking, routing, maps), beacon health, team management, venue branding and Eddystone-UID support in the native scanners (needs new native builds). The visitor app and console were exercised in the browser only. The visitor app has not yet run on a phone, and live guidance has no measured accuracy. [Plan 003](../plans/active/003-product-platform.md), [backend/admin status](workstreams/backend-admin/STATUS.md), [mobile status](workstreams/mobile/STATUS.md).
 
 ## Fingerprinting pilot and app interface
 
