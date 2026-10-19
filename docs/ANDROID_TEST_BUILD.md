@@ -8,6 +8,8 @@ The first permission-enabled APK did not resolve this: two subsequent recordings
 
 Build 4 (versionCode 4) adds the `TurnBle` native module and Bluetooth permissions (BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT; legacy BLUETOOTH/ADMIN for older Android): a **Beacons** tab lets a phone act as a TURN beacon and Survey can include BLE signals. See [BLE beacon protocol](FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4). Motion and Wi-Fi acquisition are unchanged. Install it over the existing app; every beacon phone also needs this build. Rebuilding with `expo prebuild` regenerates `apps/mobile/android` (ignored) and rewrites the `ios` script in `apps/mobile/package.json`; discard that incidental change.
 
+Build 6 (versionCode 6, 2026-10-19) adds Eddystone-UID scanning for commercial beacons beside TURN phone beacons ([beacon setup](BEACON_SETUP.md)). It was built locally with the commands below (debug, arm64, 97 MB; SHA-256 prefix b14d73b4aa9a8209) and has not been installed on a phone yet. Install it over build 5 on every scanning phone; serve it with `npm run phone:android:install`.
+
 Build 5 (versionCode 5, `turn-ble-2`) adds a continuous TURN-beacon stream and beacon placement/calibration for shadow-mode proximity logging ([ADR-0008](../decisions/0008-ble-proximity-anchors-shadow-mode.md)). Install it over build 4 on the walking phone; beacon phones only need an installed beacon-capable build.
 
 ## Build 3
