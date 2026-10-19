@@ -374,6 +374,45 @@ export function BeaconsTab({
                 </div>
                 <button
                   className="btn ghost sm"
+                  title="Enter the median RSSI measured one metre from this beacon with the TURN test app"
+                  onClick={() => {
+                    const raw = window.prompt(
+                      'Median RSSI one metre from this beacon, measured on site with the TURN test app (dBm, for example -62). Leave empty to go back to the model value.',
+                      b.calibratedAt && b.referenceRssi !== undefined
+                        ? String(b.referenceRssi)
+                        : '',
+                    );
+                    if (raw === null) return;
+                    if (!raw.trim()) {
+                      setBeacons((bs) =>
+                        bs.map((x) =>
+                          x.tag === b.tag
+                            ? { tag: x.tag, floorId: x.floorId, x: x.x, y: x.y }
+                            : x,
+                        ),
+                      );
+                      return;
+                    }
+                    const v = Number(raw);
+                    if (!Number.isFinite(v) || v < -110 || v > -20)
+                      return toast('Enter a value between -110 and -20 dBm.');
+                    setBeacons((bs) =>
+                      bs.map((x) =>
+                        x.tag === b.tag
+                          ? {
+                              ...x,
+                              referenceRssi: Math.round(v),
+                              calibratedAt: new Date().toISOString(),
+                            }
+                          : x,
+                      ),
+                    );
+                  }}
+                >
+                  Calibrate
+                </button>
+                <button
+                  className="btn ghost sm"
                   title="Use the beacon's Eddystone instance ID (12 hex digits) or the phone beacon's name"
                   onClick={() => {
                     const next = window
