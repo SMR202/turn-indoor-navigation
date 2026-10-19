@@ -22,4 +22,5 @@ Scanning Eddystone-UID needs the **next native build** of the TURN app (Android 
 ## 4. Check they work
 
 - Walk with live guidance in the visitor app (usage sharing on). Studio's beacon list then shows **Heard today**, reports per 24 h and the median RSSI per beacon; **Never heard** means check power, ID and placement.
-- Calibrate per phone family with the test app's 1 m calibration, then record walks with landmark marks and evaluate them ([evaluation](EVALUATION.md)) before claiming any accuracy.
+- Calibrate: measure the median RSSI one metre from each beacon with the test app’s 1 m calibration, then in Studio press **Calibrate** on that beacon and enter it (it replaces the model value; publish to send it to phones). Then record walks with landmark marks and evaluate them ([evaluation](EVALUATION.md)) before claiming any accuracy.
+- Visitors with live guidance can also **Find me with venue beacons** (route preview → From) once two or more calibrated or modelled beacons are saved.
