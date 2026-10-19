@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Platform,
   ScrollView,
@@ -253,6 +254,7 @@ function Experience({
   const [category, setCategory] = useState<PlaceCategory | null>(null);
   const [sheetIndex, setSheetIndex] = useState(0);
   const [pickingStart, setPickingStart] = useState(false);
+  const [locating, setLocating] = useState<string | null>(null);
   const [stepFree, setStepFree] = useState(prefs.stepFree);
   const live = useLiveGuidance(pkg, bundle.content, start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
@@ -1015,6 +1017,57 @@ function Experience({
         </View>
         {pickingStart ? (
           <View style={{ gap: 2 }}>
+            {live.canLocate && (
+              <Tap
+                disabled={locating === 'busy'}
+                onPress={() => {
+                  setLocating('busy');
+                  void live.locate().then((r) => {
+                    if (!r.fix) {
+                      setLocating(r.reason);
+                      return;
+                    }
+                    const node = nearestRoutableNode(pkg, r.fix.floorId, r.fix);
+                    setStart({
+                      key: `beacons-${Date.now()}`,
+                      label: `Your position (±${Math.round(r.fix.sigma)} m, ${r.heard} beacons)`,
+                      nodeId: node.id,
+                      point: { x: r.fix.x, y: r.fix.y },
+                      floorId: r.fix.floorId,
+                      kind: 'marker',
+                    });
+                    setFloorId(r.fix.floorId);
+                    setLocating(null);
+                    setPickingStart(false);
+                  });
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <Badge icon="beacon" color={c.accent} size={34} />
+                <View style={{ flex: 1 }}>
+                  <T v="callout" weight="600">
+                    {locating === 'busy'
+                      ? 'Listening for beacons…'
+                      : 'Find me with venue beacons'}
+                  </T>
+                  {locating && locating !== 'busy' ? (
+                    <T v="caption" color={c.danger}>
+                      {locating}
+                    </T>
+                  ) : (
+                    <T v="caption" color={c.textSubtle}>
+                      Hold still for about 6 seconds
+                    </T>
+                  )}
+                </View>
+                {locating === 'busy' && <ActivityIndicator color={c.accent} />}
+              </Tap>
+            )}
             <Tap
               onPress={() => router.push('/scan')}
               style={{
@@ -1264,6 +1317,29 @@ function Experience({
         command={command}
         follow={mode.kind === 'navigate' && follow}
         onSelect={select}
+        onMapTap={
+          mode.kind === 'navigate' &&
+          guidance === 'live' &&
+          livePhase === 'tracking'
+            ? (p) => {
+                const apply = () => {
+                  live.correct(p);
+                  setFollow(true);
+                };
+                if (Platform.OS === 'web') {
+                  if (globalThis.confirm?.('Set your position here?')) apply();
+                } else
+                  Alert.alert(
+                    'Set your position here?',
+                    'Use this when the dot is clearly in the wrong place.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Set position', onPress: apply },
+                    ],
+                  );
+              }
+            : undefined
+        }
         onGesture={() => mode.kind === 'navigate' && setFollow(false)}
       />
 

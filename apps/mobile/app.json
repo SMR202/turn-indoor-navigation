@@ -14,7 +14,7 @@
       }
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "package": "com.turn.navigation.dev",
       "permissions": [
         "android.permission.HIGH_SAMPLING_RATE_SENSORS",

@@ -3,6 +3,7 @@ import type { BeaconPlacement } from '@turn/positioning-core';
 import {
   LivePositioning,
   liveAvailability,
+  locateWithBeacons,
   type LiveState,
 } from '@turn/positioning-runtime';
 import type { VenuePackage } from '@turn/venue-model';
@@ -28,6 +29,12 @@ export function placementsFrom(
         : {}),
       ...(b.calibratedAt ? { calibratedAt: b.calibratedAt } : {}),
     }));
+}
+
+/** Every floor's beacons, for "locate me" (which picks the floor it hears best). */
+export function allPlacements(content: VenueContent): BeaconPlacement[] {
+  const floors = new Set(content.beacons.map((b) => b.floorId));
+  return [...floors].flatMap((f) => placementsFrom(content, f));
 }
 
 /** Live positioning for one venue screen: start from a known point, stop on leave. */
@@ -95,11 +102,24 @@ export function useLiveGuidance(
     }, 30000);
     return () => clearInterval(timer);
   }, [running, pkg.venueId]);
+  const correct = useCallback((p: P) => ref.current?.correct(p), []);
+  const everyBeacon = useMemo(() => allPlacements(content), [content]);
+  /** Beacon-only start position, when the venue has at least two beacons with a reference RSSI. */
+  const canLocate =
+    availability.available &&
+    everyBeacon.filter((b) => b.referenceRssi !== undefined).length >= 2;
+  const locate = useCallback(
+    () => locateWithBeacons(pkg, everyBeacon, 6000),
+    [pkg, everyBeacon],
+  );
   return {
     availability,
     beaconCount: beacons.filter((b) => b.referenceRssi !== undefined).length,
     state,
     start,
     stop,
+    correct,
+    canLocate,
+    locate,
   };
 }

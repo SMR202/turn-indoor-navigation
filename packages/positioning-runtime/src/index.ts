@@ -14,3 +14,4 @@ export {
   type MotionBatch,
   type RawMotionEvent,
 } from './turn-motion';
+export * from './locate';

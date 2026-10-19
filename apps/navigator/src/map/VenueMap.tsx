@@ -71,6 +71,8 @@ type Props = {
   command: CameraCommand | null;
   follow?: boolean;
   onSelect: (placeId: string | null) => void;
+  /** When set, taps report the map point instead of selecting places (position corrections). */
+  onMapTap?: (p: P) => void;
   onGesture?: () => void;
   /** Small labelled pins, such as "To Level 1" where the route changes floor. */
   markers?: { key: string; x: number; y: number; text: string; icon: string }[];
@@ -348,6 +350,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     },
   });
   const onSelect = props.onSelect;
+  const onMapTap = props.onMapTap;
   const pick = useCallback(
     (sx: number, sy: number) => {
       const s = cs.value;
@@ -355,6 +358,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         x: cx.value + (sx - vw.value / 2) / s,
         y: cy.value + (vh.value / 2 - sy) / s,
       };
+      if (onMapTap) return onMapTap(m);
       const near = scene.places
         .map((p) => ({ p, d: Math.hypot(p.x - m.x, p.y - m.y) * s }))
         .filter((o) => o.d < 22)
@@ -365,7 +369,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         .sort((a, b) => a.area - b.area)[0];
       onSelect(room?.placeId ?? null);
     },
-    [scene, onSelect, cs, cx, cy, vw, vh],
+    [scene, onSelect, onMapTap, cs, cx, cy, vw, vh],
   );
   const tap = useTapGesture({
     requireToFail: doubleTap,
