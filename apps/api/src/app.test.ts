@@ -258,3 +258,90 @@ describe('content publishing', () => {
     expect(versions.map((v) => v.status)).toEqual(['published', 'archived']);
   });
 });
+
+describe('multi-floor import', () => {
+  it('adds a second floor and links the stairs core', async () => {
+    const owner = await login('owner@harbour.demo');
+    const created = (await (
+      await app.request(
+        '/venues',
+        json({ orgId: 'org_harbour', name: 'Twin Floors' }, owner),
+      )
+    ).json()) as { id: string };
+    const sq = (x0: number, y0: number, x1: number, y1: number) => [
+      [
+        [x0, y0],
+        [x1, y0],
+        [x1, y1],
+        [x0, y1],
+      ],
+    ];
+    const floor = (shop: string) => ({
+      type: 'FeatureCollection',
+      turn: { units: 'metres' },
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: sq(0, 0, 20, 4) },
+          properties: { kind: 'circulation', name: 'Hall' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: sq(0, 4, 12, 10) },
+          properties: { name: shop },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: sq(12, 4, 20, 10) },
+          properties: { kind: 'stairs', name: 'Stairs & Lift' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [6, 4] },
+          properties: { kind: 'door' },
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [16, 4] },
+          properties: { kind: 'door' },
+        },
+      ],
+    });
+    await app.request(
+      `/venues/${created.id}/import`,
+      json(
+        {
+          geojson: floor('Bakery'),
+          floorId: 'ground',
+          floorLabel: 'Ground',
+          level: 0,
+        },
+        owner,
+      ),
+    );
+    const r = (await (
+      await app.request(
+        `/venues/${created.id}/import`,
+        json(
+          {
+            geojson: floor('Books'),
+            floorId: 'level-1',
+            floorLabel: 'Level 1',
+            level: 1,
+          },
+          owner,
+        ),
+      )
+    ).json()) as {
+      report: { floors: number; verticalLinks: number };
+      validation: { ok: boolean };
+    };
+    expect(r.report.floors).toBe(2);
+    expect(r.report.verticalLinks).toBe(2);
+    expect(r.validation.ok).toBe(true);
+    expect(
+      (await app.request(`/venues/${created.id}/publish`, json({}, owner)))
+        .status,
+    ).toBe(200);
+  });
+});

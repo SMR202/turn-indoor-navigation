@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import {
   importFloorGeoJson,
+  mergeFloor,
   parseVenuePackage,
   wallCrossings,
   type TurnFloorGeoJson,
@@ -472,10 +473,16 @@ export function createApp(
       .object({
         geojson: z.unknown(),
         floorLabel: z.string().max(40).optional(),
+        /** Add or replace this floor in the current map; omit to replace the whole map. */
+        floorId: z
+          .string()
+          .regex(/^[a-z0-9-]{1,40}$/)
+          .optional(),
+        level: z.number().int().min(-10).max(200).optional(),
       })
       .parse(await c.req.json());
     try {
-      const { venue, report } = importFloorGeoJson(
+      const { venue: single, report } = importFloorGeoJson(
         body.geojson as TurnFloorGeoJson,
         {
           venueId: v.id,
@@ -483,8 +490,32 @@ export function createApp(
           floorLabel: body.floorLabel,
         },
       );
+      const cur = currentPackage(v.id);
+      let venue = single;
+      let floors = { links: 0, warnings: [] as string[] };
+      if (body.floorId) {
+        const merged = mergeFloor(
+          cur ? (JSON.parse(cur.package) as VenuePackage) : null,
+          single,
+          {
+            floorId: body.floorId,
+            label: body.floorLabel ?? body.floorId,
+            level: body.level ?? 0,
+          },
+        );
+        venue = merged.venue;
+        floors = { links: merged.links, warnings: merged.warnings };
+      }
       saveDraft(v.id, venue, c.get('user').id);
-      return c.json({ report, validation: validatePackage(venue) });
+      return c.json({
+        report: {
+          ...report,
+          floors: venue.floors.length,
+          verticalLinks: floors.links,
+          warnings: [...report.warnings, ...floors.warnings],
+        },
+        validation: validatePackage(venue),
+      });
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
     }

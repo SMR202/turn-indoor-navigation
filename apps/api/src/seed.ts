@@ -4,6 +4,76 @@ import type { Db } from './db';
 
 const now = () => new Date().toISOString();
 
+/** Place details for the demo's Level 1 (fictional). */
+const upperContent = {
+  'poi-l1-food-court': {
+    description:
+      'Twelve kitchens around shared seating with a view over the harbour.',
+    hours: '11:00–22:00',
+    tags: ['lunch', 'dinner', 'food'],
+    accessible: true,
+  },
+  'poi-l1-cinema': {
+    description: 'Six screens, including one with audio description.',
+    hours: '12:00–23:30',
+    tags: ['movies', 'film'],
+    accessible: true,
+  },
+  'poi-l1-play': {
+    description: 'Soft play for ages 1–8.',
+    hours: '09:00–19:00',
+  },
+  'poi-l1-restrooms': {
+    description: 'Restrooms with baby changing.',
+    accessible: true,
+  },
+};
+
+/**
+ * Brings an existing development database up to the current fictional demo venue: publishes the new
+ * demo revision as a new version and adds missing place details. Never touches other venues.
+ */
+export function upgradeDemo(db: Db) {
+  const live = db
+    .prepare(
+      "SELECT number, package FROM versions WHERE venue_id = 'turn-demo-centre' AND status = 'published'",
+    )
+    .get() as { number: number; package: string } | undefined;
+  if (
+    !live ||
+    (JSON.parse(live.package) as { revision: string }).revision ===
+      demoCentre.revision
+  )
+    return false;
+  const row = db
+    .prepare("SELECT content FROM venues WHERE id = 'turn-demo-centre'")
+    .get() as { content: string };
+  const content = JSON.parse(row.content) as {
+    places: Record<string, unknown>;
+  };
+  content.places = { ...upperContent, ...content.places };
+  const t = now();
+  const max = (
+    db
+      .prepare(
+        "SELECT MAX(number) AS n FROM versions WHERE venue_id = 'turn-demo-centre'",
+      )
+      .get() as { n: number }
+  ).n;
+  db.exec('BEGIN');
+  db.prepare(
+    "UPDATE versions SET status = 'archived' WHERE venue_id = 'turn-demo-centre' AND status IN ('published', 'draft')",
+  ).run();
+  db.prepare(
+    "INSERT INTO versions (venue_id, number, status, package, content, notes, created_by, created_at, published_at) VALUES ('turn-demo-centre', ?, 'published', ?, ?, 'Level 1 with stairs and lift (demo upgrade)', NULL, ?, ?)",
+  ).run(max + 1, JSON.stringify(demoCentre), JSON.stringify(content), t, t);
+  db.prepare(
+    "UPDATE venues SET content = ?, updated_at = ? WHERE id = 'turn-demo-centre'",
+  ).run(JSON.stringify(content), t);
+  db.exec('COMMIT');
+  return true;
+}
+
 /** Deterministic pseudo-random numbers so seeded sample analytics are stable between runs. */
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -98,10 +168,10 @@ export function seed(db: Db, options: { privateVenuePath?: string } = {}) {
         tags: ['bookable'],
       },
       'poi-stairs': {
-        description:
-          'Stairs and step-free lift to the upper level (coming soon).',
+        description: 'Stairs and a step-free lift to Level 1.',
         accessible: true,
       },
+      ...upperContent,
     },
     beacons: [],
     branding: {},

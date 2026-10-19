@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { openDb } from './db';
-import { seed } from './seed';
+import { seed, upgradeDemo } from './seed';
 
 // Local development server. Data lives in ignored work/api-data. The private home venue is served
 // to the LAN only when TURN_API_PRIVATE_LAN is not "0" (local phone testing, as its rights allow).
@@ -15,6 +15,9 @@ const db = openDb(resolve(dataDir, 'turn.db'));
 const seeded = seed(db, {
   privateVenuePath: resolve(root, 'work/private/venue.json'),
 });
+const upgraded = upgradeDemo(db);
+if (upgraded)
+  console.log('Demo venue upgraded to the latest fictional demo map.');
 const port = Number(process.env.TURN_API_PORT ?? 8090);
 const lanAddress = Object.values(networkInterfaces())
   .flat()
