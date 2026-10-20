@@ -6,13 +6,15 @@ import {
   type BeaconInfo,
   type StreamSample,
 } from '@turn/positioning-runtime';
-import type { VenueContent } from './api';
+import { getJson, putJson, type VenueContent } from './api';
 import {
   EMPTY_LAYOUT as EMPTY,
   median,
   mergeLayout,
   type LocalLayout,
   type NearbyDevice,
+  syncPlan,
+  type SharedLayout,
   type Stored,
 } from './beacon-layout';
 import { load, save } from './storage';
@@ -28,19 +30,92 @@ function emit(venueId: string, layout: LocalLayout) {
   for (const l of listeners.get(venueId) ?? []) l(layout);
 }
 
-export function useBeaconLayout(venueId: string, content: VenueContent) {
+/** `local`: a public venue, whose shared layout is set up in TURN Studio. */
+export type SyncState = 'idle' | 'syncing' | 'saved' | 'offline' | 'local';
+const syncListeners = new Map<string, Set<(s: SyncState) => void>>();
+const syncing = new Set<string>();
+function setSync(venueId: string, s: SyncState) {
+  for (const l of syncListeners.get(venueId) ?? []) l(s);
+}
+
+/**
+ * Exchanges this phone's beacon layout with the TURN server so every phone sees the same setup
+ * (private LAN venues). Safe to call often: one request runs at a time per venue.
+ */
+async function syncLayout(venueId: string, shared: boolean) {
+  if (syncing.has(venueId)) return;
+  syncing.add(venueId);
+  setSync(venueId, 'syncing');
+  const path = `/public/venues/${encodeURIComponent(venueId)}/beacon-layout`;
+  try {
+    const { status, body } = await getJson<{
+      layout: SharedLayout | null;
+      updatedAt: string | null;
+    }>(path);
+    if (status !== 200 || !body) {
+      setSync(venueId, 'offline');
+      return;
+    }
+    const local = load<LocalLayout>(key(venueId), EMPTY);
+    const plan = syncPlan(local, body);
+    if (plan && 'push' in plan && !shared) {
+      setSync(venueId, 'local');
+      return;
+    }
+    if (plan && 'push' in plan) {
+      const saved = await putJson<{ updatedAt: string }>(path, plan.push);
+      if (!saved) {
+        setSync(venueId, 'offline');
+        return;
+      }
+      // Keep edits made while the request was in flight.
+      const now = load<LocalLayout>(key(venueId), EMPTY);
+      const changed =
+        JSON.stringify([now.overrides, now.added]) !==
+        JSON.stringify([local.overrides, local.added]);
+      emit(
+        venueId,
+        changed
+          ? { ...now, dirty: true, syncedAt: saved.updatedAt }
+          : { ...plan.push, dirty: false, syncedAt: saved.updatedAt },
+      );
+    } else if (plan && 'take' in plan)
+      emit(venueId, { ...plan.take, dirty: false, syncedAt: plan.at });
+    setSync(venueId, 'saved');
+  } catch {
+    setSync(venueId, 'offline');
+  } finally {
+    syncing.delete(venueId);
+  }
+}
+
+export function useBeaconLayout(
+  venueId: string,
+  content: VenueContent,
+  /** Private LAN venues share phone setups through the TURN server. */
+  shared: boolean,
+) {
   const [local, setLocal] = useState<LocalLayout>(() =>
     load(key(venueId), EMPTY),
   );
+  const [sync, setSyncState] = useState<SyncState>('idle');
   useEffect(() => {
     const set = listeners.get(venueId) ?? new Set();
     listeners.set(venueId, set);
     set.add(setLocal);
+    const ss = syncListeners.get(venueId) ?? new Set();
+    syncListeners.set(venueId, ss);
+    ss.add(setSyncState);
     setLocal(load(key(venueId), EMPTY));
+    // Share with the other phones now and every 15 s while the venue is open.
+    void syncLayout(venueId, shared);
+    const timer = setInterval(() => void syncLayout(venueId, shared), 15000);
     return () => {
+      clearInterval(timer);
       set.delete(setLocal);
+      ss.delete(setSyncState);
     };
-  }, [venueId]);
+  }, [venueId, shared]);
   const beacons = mergeLayout(content.beacons, local);
   // iPhones range only the iBeacon UUIDs they are told about.
   const uuids = beacons
@@ -50,39 +125,59 @@ export function useBeaconLayout(venueId: string, content: VenueContent) {
   useEffect(() => {
     if (uuids) registerIBeaconUuids(uuids.split(','));
   }, [uuids]);
+  const edit = useCallback(
+    (next: LocalLayout) => {
+      emit(venueId, { ...next, dirty: true });
+      void syncLayout(venueId, shared);
+    },
+    [venueId, shared],
+  );
   const upsert = useCallback(
     (b: Stored) => {
       const current = load<LocalLayout>(key(venueId), EMPTY);
       const published = content.beacons.some((p) => p.tag === b.tag);
-      const next: LocalLayout = published
-        ? {
-            ...current,
-            overrides: { ...current.overrides, [b.tag]: { ...b } },
-          }
-        : {
-            ...current,
-            added: [...current.added.filter((x) => x.tag !== b.tag), b],
-          };
-      emit(venueId, next);
+      edit(
+        published
+          ? {
+              ...current,
+              overrides: { ...current.overrides, [b.tag]: { ...b } },
+            }
+          : {
+              ...current,
+              added: [...current.added.filter((x) => x.tag !== b.tag), b],
+            },
+      );
     },
-    [venueId, content.beacons],
+    [venueId, content.beacons, edit],
   );
   const remove = useCallback(
     (tag: string) => {
       const current = load<LocalLayout>(key(venueId), EMPTY);
       const published = content.beacons.some((p) => p.tag === tag);
-      emit(venueId, {
+      edit({
+        ...current,
         overrides: published
           ? { ...current.overrides, [tag]: { removed: true } }
           : current.overrides,
         added: current.added.filter((x) => x.tag !== tag),
       });
     },
-    [venueId, content.beacons],
+    [venueId, content.beacons, edit],
   );
-  const reset = useCallback(() => emit(venueId, EMPTY), [venueId]);
+  const reset = useCallback(
+    () =>
+      edit({
+        ...EMPTY,
+        syncedAt: load<LocalLayout>(key(venueId), EMPTY).syncedAt,
+      }),
+    [venueId, edit],
+  );
+  const refresh = useCallback(
+    () => void syncLayout(venueId, shared),
+    [venueId, shared],
+  );
   const edited = Object.keys(local.overrides).length + local.added.length > 0;
-  return { beacons, upsert, remove, reset, edited };
+  return { beacons, upsert, remove, reset, refresh, edited, sync };
 }
 
 // ---- Nearby devices ------------------------------------------------------------------------------

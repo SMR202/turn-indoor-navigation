@@ -39,10 +39,12 @@ export function locateFromSamples(
         : 'No venue beacons heard here.',
     };
   const [floorId, count] = best;
+  // Use every reading of the listen (iPhones range iBeacons about once a second, and many
+  // beacons advertise slowly): the live window of 2.5 s would leave too few packets.
   const assist = new AssistFusion(
     buildFusionMap(venue, floorId),
     usable.filter((b) => b.floorId === floorId),
-    {},
+    { windowSeconds: Math.max(4, at + 1), minPackets: 2 },
     1,
   );
   for (const s of samples) assist.addSample(s.at, s.tag, s.rssi);

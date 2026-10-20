@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   adoptionTag,
   describe as describeDevice,
@@ -6,6 +6,7 @@ import {
   MODEL_RSSI_AT_1M,
   placementsFor,
   roughDistance,
+  syncPlan,
   type NearbyDevice,
 } from './beacon-layout';
 
@@ -73,7 +74,10 @@ it('keeps beacons that share one iBeacon ID apart by address or name', () => {
   const a = device({ key: 'a', alt: ['MCAABBCC01', 'NMbeacon01'] });
   const b = device({ key: 'b', alt: ['MCAABBCC02'] });
   expect(adoptionTag(a, [a])).toEqual({ tag: 'IB00010001', note: null });
-  expect(adoptionTag(a, [a, b]).tag).toBe('MCAABBCC01');
+  // A unique name works on both platforms; an address only on Android.
+  expect(adoptionTag(a, [a, b]).tag).toBe('NMbeacon01');
+  const twin = device({ key: 'e', alt: ['MCAABBCC05', 'NMbeacon01'] });
+  expect(adoptionTag(a, [a, b, twin]).tag).toBe('MCAABBCC01');
   const named = device({ key: 'c', alt: ['NMbeacon03'] });
   expect(adoptionTag(named, [named, b]).tag).toBe('NMbeacon03');
   // iPhone: shared identity and nothing else to tell them apart.
@@ -87,4 +91,46 @@ it('describes devices for people and estimates rough distances', () => {
   expect(describeDevice({ tag: '0A0B0C0D0E0F' }).kind).toBe('Eddystone');
   expect(roughDistance(-59, -59)).toBeCloseTo(1, 5);
   expect(roughDistance(-82, -59)).toBeGreaterThan(8);
+});
+
+describe('sharing the layout between phones', () => {
+  const placed = { tag: 'IB00010001', floorId: 'g', x: 1, y: 2 };
+  const other = { tag: 'IB00010002', floorId: 'g', x: 5, y: 6 };
+  it('uploads work made before sharing existed, keeping the other phone’s too', () => {
+    // The iPhone's existing setup (no sync record yet) meets a server layout from Android.
+    const plan = syncPlan(
+      { overrides: {}, added: [placed] },
+      { layout: { overrides: {}, added: [other] }, updatedAt: 't1' },
+    );
+    expect(plan && 'push' in plan && plan.push.added.map((b) => b.tag)).toEqual(
+      ['IB00010002', 'IB00010001'],
+    );
+  });
+  it('takes the other phone’s newer layout when this phone has no edits', () => {
+    const plan = syncPlan(
+      { overrides: {}, added: [placed], dirty: false, syncedAt: 't1' },
+      { layout: { overrides: {}, added: [placed, other] }, updatedAt: 't2' },
+    );
+    expect(plan).toEqual({
+      take: { overrides: {}, added: [placed, other] },
+      at: 't2',
+    });
+    expect(
+      syncPlan(
+        { overrides: {}, added: [placed], dirty: false, syncedAt: 't2' },
+        { layout: { overrides: {}, added: [placed] }, updatedAt: 't2' },
+      ),
+    ).toBeNull();
+  });
+  it('lets this phone’s later edits (including removals) win', () => {
+    const plan = syncPlan(
+      { overrides: {}, added: [], dirty: true, syncedAt: 't1' },
+      { layout: { overrides: {}, added: [placed] }, updatedAt: 't1' },
+    );
+    expect(plan).toEqual({ push: { overrides: {}, added: [] } });
+    // Nothing on this phone and nothing on the server: nothing to do.
+    expect(
+      syncPlan({ overrides: {}, added: [] }, { layout: null, updatedAt: null }),
+    ).toBeNull();
+  });
 });

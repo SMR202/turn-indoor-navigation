@@ -979,6 +979,67 @@ export function createApp(
     return c.json({ stored: accepted.length });
   });
 
+  // A venue's beacon setup made with phones (visitor app → Beacons): placements and 1 m
+  // calibrations shared by every phone. Phones may write it only for private LAN venues (a home or
+  // test site served on the local network); public venues are set up in TURN Studio.
+  const placementSchema = z.object({
+    tag: z.string().regex(/^[A-Za-z0-9]{1,12}$/),
+    floorId: z.string().max(80).optional(),
+    x: z.number().finite().optional(),
+    y: z.number().finite().optional(),
+    referenceRssi: z.number().min(-110).max(0).optional(),
+    calibratedAt: z.string().max(40).optional(),
+    label: z.string().max(40).optional(),
+    uuid: z.string().max(40).optional(),
+    txAt1m: z.number().min(-110).max(20).optional(),
+    removed: z.boolean().optional(),
+  });
+  const layoutSchema = z.object({
+    overrides: z
+      .record(z.string().max(12), placementSchema.omit({ tag: true }))
+      .default({}),
+    added: z
+      .array(placementSchema.required({ floorId: true, x: true, y: true }))
+      .max(64)
+      .default([]),
+  });
+  const layoutVenue = (id: string) =>
+    one<{ visibility: string }>(
+      "SELECT v.visibility FROM venues v JOIN versions s ON s.venue_id = v.id WHERE v.id = ? AND s.status = 'published'",
+      id,
+    );
+  app.get('/public/venues/:id/beacon-layout', (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    const row = one<{ layout: string; updated_at: string }>(
+      'SELECT layout, updated_at FROM beacon_layouts WHERE venue_id = ?',
+      param(c, 'id'),
+    );
+    return c.json(
+      row
+        ? { layout: JSON.parse(row.layout), updatedAt: row.updated_at }
+        : { layout: null, updatedAt: null },
+    );
+  });
+  app.put('/public/venues/:id/beacon-layout', async (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    if (v.visibility !== 'private-lan')
+      return c.json(
+        { error: 'Set up beacons for public venues in TURN Studio.' },
+        403,
+      );
+    const layout = layoutSchema.parse(await c.req.json());
+    const at = now();
+    run(
+      'INSERT INTO beacon_layouts (venue_id, layout, updated_at) VALUES (?, ?, ?) ON CONFLICT(venue_id) DO UPDATE SET layout = excluded.layout, updated_at = excluded.updated_at',
+      param(c, 'id'),
+      JSON.stringify(layout),
+      at,
+    );
+    return c.json({ updatedAt: at });
+  });
+
   // Errors from TURN apps on test phones, so a problem can be read without a cable. The last 50
   // stay in memory and are printed to the server log; they carry no position or venue data.
   const clientErrors: Record<string, string>[] = [];

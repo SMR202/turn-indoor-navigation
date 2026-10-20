@@ -38,6 +38,23 @@ it('places a still visitor near the beacons they hear, on the right floor', () =
   expect(Math.hypot(r.fix.x - at.x, r.fix.y - at.y)).toBeLessThan(8);
 });
 
+it('locates from slow beacons heard about once a second (iPhone iBeacon ranging)', () => {
+  const at = { x: 28, y: 18 };
+  const samples = [];
+  for (let t = 0.5; t < 5; t += 1)
+    for (const b of beacons.slice(0, 3))
+      samples.push({
+        at: t,
+        tag: b.tag,
+        rssi: predictRssi(
+          { refRssi: -59, exponent: 2.3 },
+          Math.hypot(b.x - at.x, b.y - at.y),
+        ),
+      });
+  const r = locateFromSamples(demoCentre, beacons, samples, 5);
+  expect(r.fix).not.toBeNull();
+});
+
 it('explains why it cannot locate', async () => {
   expect(locateFromSamples(demoCentre, beacons, [], 6)).toEqual({
     fix: null,

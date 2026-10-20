@@ -1,6 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Platform, ScrollView, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Polyline } from 'react-native-svg';
@@ -58,11 +64,16 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const pkg = bundle.pkg;
-  const layout = useBeaconLayout(bundle.summary.id, bundle.content);
+  const layout = useBeaconLayout(
+    bundle.summary.id,
+    bundle.content,
+    bundle.summary.private,
+  );
   const nearby = useNearbyBeacons(true, true);
   const [showAll, setShowAll] = useState(false);
   const [sel, setSel] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<LayoutBeacon | null>(null);
+  const [overview, setOverview] = useState(false);
 
   const deviceFor = (b: LayoutBeacon) =>
     nearby.devices.find((d) => d.tag === b.tag || d.alt.includes(b.tag)) ??
@@ -113,15 +124,30 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
 
   if (placing)
     return (
-      <Placement
+      <BeaconMap
         bundle={bundle}
+        mode="place"
         beacon={placing}
-        others={layout.beacons.filter((b) => b.tag !== placing.tag)}
+        beacons={layout.beacons}
         onCancel={() => setPlacing(null)}
         onSave={(b) => {
           layout.upsert(stripSource(b));
           setPlacing(null);
           setSel({ device: null, tag: b.tag });
+        }}
+      />
+    );
+  if (overview)
+    return (
+      <BeaconMap
+        bundle={bundle}
+        mode="overview"
+        beacon={null}
+        beacons={layout.beacons}
+        onCancel={() => setOverview(false)}
+        onOpen={(b) => {
+          setOverview(false);
+          setSel({ device: deviceFor(b)?.key ?? null, tag: b.tag });
         }}
       />
     );
@@ -183,14 +209,35 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
             </T>
           </Card>
         )}
-        <Section
-          title={`In this venue (${layout.beacons.length})`}
-          action={
-            layout.edited
-              ? { label: 'Use venue layout', onPress: layout.reset }
-              : undefined
-          }
+        <Tap
+          onPress={() => setOverview(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            padding: 14,
+            borderRadius: 16,
+            backgroundColor: c.surface,
+          }}
         >
+          <Badge icon="layers" color={c.accent} size={34} />
+          <View style={{ flex: 1 }}>
+            <T v="callout" weight="600">
+              See all beacons on the map
+            </T>
+            <T v="caption" color={c.textMuted}>
+              {layout.sync === 'local' || !bundle.summary.private
+                ? 'Saved on this phone · shared beacon layouts for this venue are set up in TURN Studio'
+                : layout.sync === 'offline'
+                  ? 'Saved on this phone · TURN server not reachable, will share later'
+                  : layout.sync === 'syncing'
+                    ? 'Sharing with your other phones…'
+                    : 'Shared with every phone that opens this venue'}
+            </T>
+          </View>
+          <Icon name="forward" size={18} color={c.textMuted} />
+        </Tap>
+        <Section title={`In this venue (${layout.beacons.length})`}>
           {layout.beacons.length === 0 ? (
             <T v="caption" color={c.textMuted} style={{ padding: 16 }}>
               No beacons yet. Hold the phone next to a beacon: it rises to the
@@ -234,9 +281,11 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
         >
           {loose.length === 0 ? (
             <T v="caption" color={c.textMuted} style={{ padding: 16 }}>
-              {nearby.listening
-                ? 'Listening… beacons appear here within a few seconds.'
-                : 'Starting the Bluetooth scan…'}
+              {nearby.error
+                ? 'No Bluetooth scan is running.'
+                : nearby.listening
+                  ? 'Listening… beacons appear here within a few seconds.'
+                  : 'Starting the Bluetooth scan…'}
             </T>
           ) : (
             loose.map((d, i) => {
@@ -265,9 +314,10 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
           <T v="caption" color={c.textMuted}>
             1. Mount each beacon about 2 m high, spread in a zigzag through the
             rooms, not in one line.{'\n'}2. Stand next to one: it rises to the
-            top. Add it and tap where it is on the map.{'\n'}3. Calibrate: hold
-            the phone 1 m from the beacon for {CALIBRATION_SECONDS} seconds.
-            {'\n'}Placements and calibrations are kept on this phone.
+            top. Add it, then move the map under the pin and Set here.{'\n'}3.
+            Calibrate: hold the phone 1 m from the beacon for{' '}
+            {CALIBRATION_SECONDS} seconds.{'\n'}Your setup is shared with your
+            other phones through the TURN server.
           </T>
         </Card>
       </ScrollView>
@@ -940,68 +990,142 @@ function formatMetres(m: number) {
   return `${Math.round(m)} m`;
 }
 
-/** Full-screen map: tap where the beacon is mounted. */
-function Placement({
+/**
+ * Full-screen beacon map. "place": move the map until the crosshair sits where the beacon is
+ * mounted, then Set here (no tap can drop it somewhere else). "overview": every placed beacon on
+ * the floor; tap one to open it.
+ */
+function BeaconMap({
   bundle,
+  mode,
   beacon,
-  others,
+  beacons,
   onCancel,
   onSave,
+  onOpen,
 }: {
   bundle: VenueBundle;
-  beacon: LayoutBeacon;
-  others: LayoutBeacon[];
+  mode: 'place' | 'overview';
+  beacon: LayoutBeacon | null;
+  beacons: LayoutBeacon[];
   onCancel: () => void;
-  onSave: (b: LayoutBeacon) => void;
+  onSave?: (b: LayoutBeacon) => void;
+  onOpen?: (b: LayoutBeacon) => void;
 }) {
   const { c, dark, map } = useTheme();
   const insets = useSafeAreaInsets();
+  const { height: H } = useWindowDimensions();
   const pkg = bundle.pkg;
-  const [floorId, setFloorId] = useState(beacon.floorId);
-  const [point, setPoint] = useState<P | null>(
-    Number.isFinite(beacon.x) ? { x: beacon.x, y: beacon.y } : null,
+  const placed = (b: LayoutBeacon) =>
+    Number.isFinite(b.x) && Number.isFinite(b.y);
+  const [floorId, setFloorId] = useState(
+    beacon?.floorId ?? beacons.find(placed)?.floorId ?? pkg.floors[0]!.id,
   );
+  const [center, setCenter] = useState<P | null>(null);
   const scene = useMemo(
     () =>
       applyPlaceOverrides(buildScene(pkg, floorId, map), bundle.content.places),
     [pkg, floorId, map, bundle.content.places],
   );
-  const [command] = useState<CameraCommand>({ kind: 'fit', id: 1 });
-  const markers = [
-    ...others
-      .filter((b) => b.floorId === floorId && Number.isFinite(b.x))
-      .map((b) => ({
-        key: b.tag,
-        x: b.x,
-        y: b.y,
-        text: b.label ?? b.tag,
-        icon: 'beacon',
-      })),
-    ...(point && floorId
-      ? [
-          {
-            key: '__new',
-            x: point.x,
-            y: point.y,
-            text: beacon.label ?? 'Beacon',
-            icon: 'beacon',
-          },
-        ]
-      : []),
-  ];
+  const top = insets.top + 132;
+  const bottom = insets.bottom + 168;
+  const mapInsets = useMemo(() => ({ top, bottom }), [top, bottom]);
+  // Start on the beacon's current spot when it has one; the overview frames the placed beacons.
+  const [command, setCommand] = useState<CameraCommand>(() => {
+    const here = beacons.filter((b) => placed(b) && b.floorId === floorId);
+    if (beacon && placed(beacon) && beacon.floorId === floorId)
+      return { kind: 'point', x: beacon.x, y: beacon.y, id: 1 };
+    if (mode === 'overview' && here.length > 1)
+      return {
+        kind: 'points',
+        points: here.map((b) => ({ x: b.x, y: b.y })),
+        id: 1,
+      };
+    return { kind: 'fit', id: 1 };
+  });
+  const markers = beacons
+    .filter(
+      (b) =>
+        placed(b) &&
+        b.floorId === floorId &&
+        (mode === 'overview' || b.tag !== beacon?.tag),
+    )
+    .map((b) => ({
+      key: b.tag,
+      x: b.x,
+      y: b.y,
+      text: b.label ?? b.tag,
+      icon: 'beacon',
+    }));
+  const onFloor = beacons.filter((b) => placed(b) && b.floorId === floorId);
+  const visibleMid = top + (H - top - bottom) / 2;
+  const room = center ? roomNameAt(pkg, floorId, center) : null;
   return (
     <View style={{ flex: 1, backgroundColor: map.land }}>
       <VenueMap
         scene={scene}
-        insets={{ top: insets.top + 120, bottom: 150 + insets.bottom }}
+        insets={mapInsets}
         selectedPlace={null}
         route={null}
         user={null}
         command={command}
         markers={markers}
         onSelect={() => undefined}
-        onMapTap={(p) => setPoint(p)}
+        onCenterChange={mode === 'place' ? setCenter : undefined}
+        onMapTap={
+          mode === 'overview'
+            ? (p, s) => {
+                // The beacon nearest the tap, within a finger's width.
+                const hit = onFloor
+                  .map((b) => ({ b, d: Math.hypot(b.x - p.x, b.y - p.y) * s }))
+                  .filter((h) => h.d < 40)
+                  .sort((a, b) => a.d - b.d)[0];
+                if (hit) onOpen?.(hit.b);
+              }
+            : () => undefined
+        }
       />
+      {mode === 'place' && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: visibleMid - 52,
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={[
+              {
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: c.accent,
+                borderWidth: 3,
+                borderColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+              shadow('floating', dark),
+            ]}
+          >
+            <Icon name="beacon" size={20} color="#FFFFFF" stroke={2.3} />
+          </View>
+          <View style={{ width: 3, height: 10, backgroundColor: c.accent }} />
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: c.accent,
+              borderWidth: 2,
+              borderColor: '#FFFFFF',
+            }}
+          />
+        </View>
+      )}
       <View
         style={[
           {
@@ -1011,17 +1135,21 @@ function Placement({
             right: 12,
             borderRadius: 22,
             padding: 16,
-            gap: 10,
+            gap: 8,
             backgroundColor: c.surface,
           },
           shadow('floating', dark),
         ]}
       >
         <T v="callout" weight="600">
-          Tap where {beacon.label ?? 'the beacon'} is mounted
+          {mode === 'place'
+            ? `Move the map to where ${beacon?.label ?? 'the beacon'} is`
+            : `Beacons on the map (${onFloor.length})`}
         </T>
         <T v="caption" color={c.textMuted}>
-          Zoom in for accuracy; tap again to move it.
+          {mode === 'place'
+            ? 'Drag and zoom until the pin points at the beacon, then Set here. Taps do not move it.'
+            : 'Tap a beacon to see its signal, move it or calibrate it.'}
         </T>
         {pkg.floors.length > 1 && (
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
@@ -1034,7 +1162,8 @@ function Placement({
                   selected={f.id === floorId}
                   onPress={() => {
                     setFloorId(f.id);
-                    setPoint(null);
+                    setCenter(null);
+                    setCommand((cmd) => ({ kind: 'fit', id: cmd.id + 1 }));
                   }}
                 />
               ))}
@@ -1058,28 +1187,36 @@ function Placement({
           shadow('sheet', dark),
         ]}
       >
-        <T v="caption" color={c.textMuted}>
-          {point
-            ? `${roomNameAt(pkg, floorId, point) ?? 'Spot chosen'} - tap again to adjust.`
-            : 'Nothing placed yet.'}
+        <T v="caption" color={c.textMuted} lines={2}>
+          {mode === 'place'
+            ? center
+              ? `Pin in ${room ?? 'this spot'}${pkg.floors.length > 1 ? ` · ${pkg.floors.find((f) => f.id === floorId)?.label ?? ''}` : ''}`
+              : 'Move the map to place the pin.'
+            : onFloor.length
+              ? onFloor.map((b) => b.label ?? b.tag).join(' · ')
+              : 'No beacons placed on this floor yet.'}
         </T>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Button
-            label="Cancel"
+            label={mode === 'place' ? 'Cancel' : 'Close'}
             kind="secondary"
             size="md"
             grow
             onPress={onCancel}
           />
-          <Button
-            label="Save"
-            size="md"
-            grow
-            disabled={!point}
-            onPress={() =>
-              point && onSave({ ...beacon, floorId, x: point.x, y: point.y })
-            }
-          />
+          {mode === 'place' && beacon && (
+            <Button
+              label="Set here"
+              icon="pin"
+              size="md"
+              grow
+              disabled={!center}
+              onPress={() =>
+                center &&
+                onSave?.({ ...beacon, floorId, x: center.x, y: center.y })
+              }
+            />
+          )}
         </View>
       </View>
     </View>

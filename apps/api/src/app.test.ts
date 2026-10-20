@@ -346,6 +346,61 @@ describe('multi-floor import', () => {
   });
 });
 
+describe('shared beacon layout (phone setup)', () => {
+  const layout = {
+    overrides: { B1: { referenceRssi: -64 } },
+    added: [
+      { tag: 'IB0001000A', floorId: 'ground', x: 3, y: 4, label: 'Beacon 1' },
+    ],
+  };
+  it('is shared by every phone for private LAN venues only', async () => {
+    const put = (a: typeof app) =>
+      a.request(
+        '/public/venues/turn-demo-centre/beacon-layout',
+        json(layout, undefined, 'PUT'),
+      );
+    // Public venue: read-only for phones, set up in Studio.
+    expect((await put(app)).status).toBe(403);
+    const empty = (await (
+      await app.request('/public/venues/turn-demo-centre/beacon-layout')
+    ).json()) as { layout: unknown };
+    expect(empty.layout).toBeNull();
+    // A private LAN venue on the LAN server: phones share one layout.
+    const db = openDb(':memory:');
+    seed(db);
+    db.prepare(
+      "UPDATE venues SET visibility = 'private-lan' WHERE id = 'turn-demo-centre'",
+    ).run();
+    expect(
+      (
+        await createApp(db).request(
+          '/public/venues/turn-demo-centre/beacon-layout',
+        )
+      ).status,
+    ).toBe(404); // not served off the LAN
+    const lan = createApp(db, { includePrivateLan: true });
+    expect((await put(lan)).status).toBe(200);
+    const got = (await (
+      await lan.request('/public/venues/turn-demo-centre/beacon-layout')
+    ).json()) as { layout: typeof layout; updatedAt: string };
+    expect(got.layout.added[0]!.tag).toBe('IB0001000A');
+    expect(got.layout.overrides.B1!.referenceRssi).toBe(-64);
+    expect(got.updatedAt).toBeTruthy();
+    expect(
+      (
+        await lan.request(
+          '/public/venues/turn-demo-centre/beacon-layout',
+          json(
+            { added: [{ tag: 'bad tag!', floorId: 'g', x: 0, y: 0 }] },
+            undefined,
+            'PUT',
+          ),
+        )
+      ).status,
+    ).not.toBe(200);
+  });
+});
+
 describe('client error reports', () => {
   it('keeps the latest phone errors for signed-in staff, size-limited', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

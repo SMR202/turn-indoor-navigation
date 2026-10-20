@@ -283,7 +283,11 @@ function Experience({
   const [stepFree, setStepFree] = useState(prefs.stepFree);
   const venueId = bundle.summary.id;
   // Beacons: the venue's layout with this phone's placements and calibrations on top.
-  const beaconLayout = useBeaconLayout(venueId, bundle.content);
+  const beaconLayout = useBeaconLayout(
+    venueId,
+    bundle.content,
+    bundle.summary.private,
+  );
   const placements = useMemo(
     () => placementsFor(beaconLayout.beacons),
     [beaconLayout.beacons],
@@ -542,6 +546,12 @@ function Experience({
   // Locate automatically: at a scanned TURN code, or with the venue's beacons.
   const autoLocated = useRef(false);
   const [locateNote, setLocateNote] = useState<string | null>(null);
+  // A failed "find me" says why for a few seconds, then gets out of the way.
+  useEffect(() => {
+    if (!locateNote) return;
+    const t = setTimeout(() => setLocateNote(null), 7000);
+    return () => clearTimeout(t);
+  }, [locateNote]);
   const findMe = useCallback(
     (silent = false) => {
       if (!live.canLocate) return;
@@ -748,8 +758,12 @@ function Experience({
     () => buildFusionMap(pkg, floor.id).walkable,
     [pkg, floor.id],
   );
+  // Where: move the map under a fixed pin (no tap can drop it elsewhere). Facing: tap ahead.
+  const [mapCenter, setMapCenter] = useState<P | null>(null);
   const beginPick = () => {
     setPickingStart(false);
+    setFollow(false);
+    setMapCenter(null);
     setPick({
       stage: 'where',
       point: null,
@@ -757,19 +771,34 @@ function Experience({
       heading: null,
       error: null,
     });
+    // Start the pin on the walker's last known spot when there is one.
+    const last =
+      here && liveFloor === floorId
+        ? here
+        : start.floorId === floorId
+          ? start.point
+          : null;
+    if (last) camera({ kind: 'point', x: last.x, y: last.y });
+  };
+  const confirmWhere = () => {
+    if (!pick || !mapCenter) return;
+    if (!walkable.some((poly) => pointInPolygon(mapCenter, poly)))
+      setPick({
+        ...pick,
+        error:
+          'The pin is outside the rooms and corridors. Move the map so it is inside one.',
+      });
+    else
+      setPick({
+        ...pick,
+        stage: 'facing',
+        point: mapCenter,
+        floorId,
+        error: null,
+      });
   };
   const pickTap = (p: P) => {
-    if (!pick) return;
-    if (pick.stage === 'where') {
-      if (!walkable.some((poly) => pointInPolygon(p, poly)))
-        setPick({
-          ...pick,
-          error:
-            'That spot is outside the rooms and corridors. Tap inside one.',
-        });
-      else setPick({ ...pick, point: p, floorId, error: null });
-      return;
-    }
+    if (!pick || pick.stage === 'where') return;
     if (pick.point && pick.floorId === floorId) {
       const dx = p.x - pick.point.x,
         dy = p.y - pick.point.y;
@@ -1587,6 +1616,7 @@ function Experience({
         command={command}
         follow={(navigating || live.running) && follow}
         onSelect={select}
+        onCenterChange={pick?.stage === 'where' ? setMapCenter : undefined}
         onMapTap={
           pick
             ? pickTap
@@ -1615,6 +1645,58 @@ function Experience({
         }
         onGesture={() => setFollow(false)}
       />
+      {pick?.stage === 'where' && (
+        // The pin stays still; the map moves under it. Its tip is the chosen spot.
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top:
+              mapInsets.top + (H - mapInsets.top - mapInsets.bottom) / 2 - 52,
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={[
+              {
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: palette.dot,
+                borderWidth: 3,
+                borderColor: '#FFFFFF',
+                alignItems: 'center',
+                justifyContent: 'center',
+              },
+              shadow('floating', dark),
+            ]}
+          >
+            <View
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#FFFFFF',
+              }}
+            />
+          </View>
+          <View
+            style={{ width: 3, height: 10, backgroundColor: palette.dot }}
+          />
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: palette.dot,
+              borderWidth: 2,
+              borderColor: '#FFFFFF',
+            }}
+          />
+        </View>
+      )}
 
       {/* Top: search, categories / navigation banner */}
       {pick ? (
@@ -1656,12 +1738,12 @@ function Experience({
           <View style={{ flex: 1 }}>
             <T v="callout" weight="600" color={c.background}>
               {pick.stage === 'where'
-                ? 'Tap where you are'
+                ? 'Move the map to where you are'
                 : 'Which way are you facing?'}
             </T>
             <T v="caption" color={dark ? 'rgba(11,18,32,0.66)' : '#B9BFCA'}>
               {pick.stage === 'where'
-                ? `On ${floor.label}. Zoom in for a precise spot; tap again to move it.`
+                ? `On ${floor.label}. Drag and zoom until the pin is on your spot.`
                 : 'Tap a point straight ahead of you. Skip if you are not sure.'}
             </T>
           </View>
@@ -1970,6 +2052,7 @@ function Experience({
             </ScrollView>
           )}
           {(locating === 'busy' ||
+            locateNote !== null ||
             (live.running && livePhase !== 'tracking') ||
             livePhase === 'stopped') && (
             <Animated.View
@@ -1981,7 +2064,8 @@ function Experience({
                   alignItems: 'center',
                   gap: 8,
                   paddingHorizontal: 14,
-                  height: 34,
+                  paddingVertical: 7,
+                  minHeight: 34,
                   maxWidth: W - 48,
                   borderRadius: 17,
                   backgroundColor: c.surface,
@@ -1989,17 +2073,20 @@ function Experience({
                 shadow('floating', dark),
               ]}
             >
-              {livePhase === 'stopped' && locating !== 'busy' ? (
+              {(livePhase === 'stopped' || locateNote) &&
+              locating !== 'busy' ? (
                 <Icon name="close" size={14} color={c.danger} />
               ) : (
                 <ActivityIndicator size="small" color={c.accent} />
               )}
-              <T v="caption" weight="600" lines={1}>
+              <T v="caption" weight="600" lines={2}>
                 {locating === 'busy'
                   ? 'Finding you with venue beacons…'
-                  : livePhase === 'stopped'
-                    ? live.state?.message || 'Live position stopped'
-                    : 'Starting live position · hold the phone in front of you'}
+                  : locateNote
+                    ? locateNote
+                    : livePhase === 'stopped'
+                      ? live.state?.message || 'Live position stopped'
+                      : 'Starting live position · hold the phone in front of you'}
               </T>
             </Animated.View>
           )}
@@ -2079,9 +2166,7 @@ function Experience({
                   ? follow
                     ? 'Show whole floor'
                     : 'Show my position'
-                  : live.canLocate
-                    ? 'Find me'
-                    : 'Show whole floor'
+                  : 'Find me'
               }
               size={46}
               active={(navigating || live.running) && follow}
@@ -2096,9 +2181,12 @@ function Experience({
                   }
                 } else if (navigating) setFollow(true);
                 else if (live.canLocate && locating !== 'busy') findMe();
-                else if (shownLeg)
-                  camera({ kind: 'points', points: shownLeg.points });
-                else camera({ kind: 'fit' });
+                else if (!live.canLocate)
+                  setLocateNote(
+                    Platform.OS === 'web'
+                      ? 'Finding you needs the TURN app on a phone.'
+                      : 'Set up two or more beacons to be found automatically, or use the pin to set your location.',
+                  );
               }}
             />
           </View>
@@ -2128,10 +2216,9 @@ function Experience({
           <T v="caption" color={pick.error ? c.danger : c.textMuted} lines={2}>
             {pick.error ??
               (pick.stage === 'where'
-                ? pick.point
-                  ? (roomNameAt(pkg, pick.floorId, pick.point) ??
-                      'Spot chosen') + ' - tap again to adjust.'
-                  : 'Your blue dot will start here.'
+                ? mapCenter
+                  ? `Pin in ${roomNameAt(pkg, floorId, mapCenter) ?? 'this spot'}: your blue dot starts here.`
+                  : 'Move the map to place the pin.'
                 : pick.heading === null
                   ? 'No direction yet: TURN will assume you face along the route.'
                   : 'Direction set - tap again to change it.')}
@@ -2147,11 +2234,11 @@ function Experience({
                   onPress={() => setPick(null)}
                 />
                 <Button
-                  label="Next"
+                  label="Set here"
                   size="md"
                   grow
-                  disabled={!pick.point}
-                  onPress={() => setPick({ ...pick, stage: 'facing' })}
+                  disabled={!mapCenter}
+                  onPress={confirmWhere}
                 />
               </>
             ) : (

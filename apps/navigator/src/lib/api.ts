@@ -112,7 +112,7 @@ export function apiBase(): string | null {
   return host ? `http://${host}:8090` : null;
 }
 
-async function getJson<T>(
+export async function getJson<T>(
   path: string,
   init?: RequestInit,
   timeoutMs = 5000,
@@ -280,6 +280,21 @@ function fromCache(id: string): VenueBundle | null {
   } catch {
     return null;
   }
+}
+
+/** PUT JSON to the TURN server; returns the parsed reply, or null when it did not succeed. */
+export async function putJson<T>(
+  path: string,
+  body: unknown,
+): Promise<T | null> {
+  const base = apiBase();
+  if (!base) return null;
+  const r = await fetch(`${base}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.ok ? ((await r.json()) as T) : null;
 }
 
 export async function postJson(path: string, body: unknown) {

@@ -18,11 +18,12 @@ How to bring a venue's BLE beacons into TURN. Phone beacons (the TURN test app's
 
 1. Open the venue → under its name, **Set up beacons** (or **Beacons · N set up**).
 2. **Nearby** lists every beacon this phone hears, strongest first, with live dBm bars. Hold the phone next to a beacon: it jumps to the top (marked _closest_). **Show other devices** reveals non-beacon Bluetooth devices, for beacons that only advertise a name.
-3. Tap it → **Add to venue** → tap where it is mounted on the map → **Save**. TURN picks the right ID (frame ID, or address/name when IDs are shared) and explains why.
-4. **Calibrate 1 m**: hold the phone one metre from the beacon at chest height for 12 seconds; save the median. Calibrations are per phone (phones hear the same beacon several dB apart). Until then TURN uses the beacon's advertised 1 m power or −59 dBm.
+3. Tap it → **Add to venue** → drag and zoom the map until the fixed pin points at the beacon → **Set here** (taps never move it). TURN picks the right ID (frame ID; when IDs are shared, a unique Bluetooth name that both platforms read, else the Android-only address) and explains why.
+4. **Calibrate 1 m**: hold the phone one metre from the beacon at chest height for 12 seconds; save the median. Until then TURN uses the beacon's advertised 1 m power or −59 dBm.
 5. Mount beacons about 2 m high, in a zigzag through the rooms, never in one line; aim for three or more heard everywhere.
+6. **See all beacons on the map** shows every placed beacon (a dot marks the exact spot); tap one to open it.
 
-Placements and calibrations are stored on that phone, layered over the venue's published layout (**Use venue layout** discards them). Publishing a layout for every phone still goes through TURN Studio.
+For **private LAN venues** (a home or test site) the setup is shared through the TURN server: every edit is uploaded, and phones fetch changes when the venue opens and every 15 s. A phone that set up beacons before sharing existed uploads them on its first sync, united with what other phones already shared. Calibrations are shared too, although phones hear the same beacon a few dB apart. Public venues keep phone edits on that phone; their shared layout is set up in TURN Studio.
 
 ## 3. Set up in TURN Studio (shared with every phone)
 

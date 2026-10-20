@@ -27,11 +27,49 @@ type Override = Partial<Omit<Stored, 'tag'>> & { removed?: boolean };
 export type LocalLayout = {
   overrides: Record<string, Override>;
   added: Stored[];
+  /** Edited on this phone and not yet saved on the TURN server. */
+  dirty?: boolean;
+  /** Server time of the layout this phone last saved or received. */
+  syncedAt?: string;
 };
+export type SharedLayout = Pick<LocalLayout, 'overrides' | 'added'>;
 
 /** Typical 1 m RSSI of a beacon at about 0 dBm; a model value until calibrated on site. */
 export const MODEL_RSSI_AT_1M = -59;
 export const EMPTY_LAYOUT: LocalLayout = { overrides: {}, added: [] };
+
+const hasContent = (l: SharedLayout) =>
+  Object.keys(l.overrides).length + l.added.length > 0;
+
+/**
+ * Sync plan between this phone and the server's shared layout. A phone that never synced keeps
+ * its work by uniting it with the server's (beacons placed before sharing existed are not lost);
+ * a phone whose edits came after its last sync wins; otherwise the server's layout is taken.
+ */
+export function syncPlan(
+  local: LocalLayout,
+  server: { layout: SharedLayout | null; updatedAt: string | null },
+): { push: SharedLayout } | { take: SharedLayout; at: string } | null {
+  const unsynced = local.dirty ?? (!local.syncedAt && hasContent(local));
+  const mine: SharedLayout = { overrides: local.overrides, added: local.added };
+  if (unsynced) {
+    if (!server.layout || local.syncedAt) return { push: mine };
+    return {
+      push: {
+        overrides: { ...server.layout.overrides, ...local.overrides },
+        added: [
+          ...server.layout.added.filter(
+            (s) => !local.added.some((b) => b.tag === s.tag),
+          ),
+          ...local.added,
+        ],
+      },
+    };
+  }
+  if (server.layout && server.updatedAt && server.updatedAt !== local.syncedAt)
+    return { take: server.layout, at: server.updatedAt };
+  return null;
+}
 
 export function mergeLayout(
   published: VenueContent['beacons'],
@@ -111,15 +149,19 @@ export function adoptionTag(
   const mac = d.alt.find((a) => beaconTagKind(a) === 'address');
   const name = d.alt.find((a) => beaconTagKind(a) === 'name');
   if (d.info?.kind !== 'ibeacon' || !shared) return { tag: d.tag, note: null };
+  // A name both platforms can read beats an address only Android can, if no other beacon has it.
+  const nameUnique =
+    name !== undefined &&
+    nearby.filter((x) => x.tag === name || x.alt.includes(name)).length <= 1;
+  if (name && nameUnique)
+    return {
+      tag: name,
+      note: 'Other beacons share this iBeacon ID, so TURN knows this one by its Bluetooth name (iPhone and Android).',
+    };
   if (mac)
     return {
       tag: mac,
       note: 'Other beacons share this iBeacon ID, so TURN uses this beacon’s Bluetooth address. iPhones cannot read addresses: give each beacon its own Minor value in the maker’s app for iPhone support.',
-    };
-  if (name)
-    return {
-      tag: name,
-      note: 'Other beacons share this iBeacon ID, so TURN uses this beacon’s Bluetooth name.',
     };
   return {
     tag: null,

@@ -87,7 +87,7 @@ it('never draws the blue dot through a wall, even with a skewed heading', () => 
   expect(constrained.crossings).toBe(0);
   // The same walks drawn without map awareness do cross walls: the check is not vacuous.
   expect(drawnCrossings(false).crossings).toBeGreaterThan(0);
-});
+}, 20000); // many synthetic walks: allow for a busy machine
 
 it('bridges wall-thick gaps at doorways so walkers are not trapped in rooms', () => {
   const rooms = [

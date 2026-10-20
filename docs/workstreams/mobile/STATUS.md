@@ -2,6 +2,14 @@
 
 Updated: 2026-10-19.
 
+## Visitor app: map placement fixes, shared beacon setup, locate me — 2026-10-21
+
+FIXED (user report from phone testing): taps are converted to map points on the UI thread with the live camera (the JS-thread copy could be stale after a pan, so beacons landed elsewhere) and drags of more than 10 px no longer count as taps. Placing a beacon and **Set my location** use a fixed centre pin: move the map under it, then **Set here**. Map commands sent while the map is still laying out are no longer lost (placement now opens on the beacon's current spot). Marker labels have a stem and a dot on the exact spot; room labels no longer fade out at old positions.
+
+IMPLEMENTED: **See all beacons on the map** overview; beacon layouts of private LAN venues shared between phones through the TURN API (`/public/venues/:id/beacon-layout`; unsynced phone work is united, never discarded); a unique Bluetooth name is preferred over an Android-only address for beacons sharing an iBeacon ID; **Locate me** uses every reading of its listen (it needed three in 2.5 s, too few for 1 Hz iBeacons) and shows why when it fails; error screen and crash reports to the TURN server (`/public/client-errors`). Android: the visitor app is also served on port 8081, which the reinstalled dev build reopened (the white screen).
+
+Validation: root check passes (220 tests); placement, Set my location, overview and tap selection checked in the browser at phone size. Native gesture behaviour not yet confirmed on the phones.
+
 ## Visitor app: beacons screen, always-on live dot — 2026-10-20
 
 IMPLEMENTED ([ADR-0012](../../../decisions/0012-ibeacon-and-always-on-live.md)):

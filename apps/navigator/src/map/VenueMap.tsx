@@ -17,7 +17,6 @@ import Animated, {
   cancelAnimation,
   Easing,
   FadeIn,
-  FadeOut,
   interpolateColor,
   useAnimatedStyle,
   useFrameCallback,
@@ -74,8 +73,16 @@ type Props = {
   command: CameraCommand | null;
   follow?: boolean;
   onSelect: (placeId: string | null) => void;
-  /** When set, taps report the map point instead of selecting places (position corrections). */
-  onMapTap?: (p: P) => void;
+  /**
+   * When set, taps report the map point instead of selecting places (position corrections), with
+   * the current scale in screen pixels per metre.
+   */
+  onMapTap?: (p: P, pixelsPerMetre: number) => void;
+  /**
+   * The map point under the centre of the visible area (between the top overlay and the sheet),
+   * reported whenever the camera comes to rest: for "move the map under the pin" placement.
+   */
+  onCenterChange?: (p: P) => void;
   onGesture?: () => void;
   /** Small labelled pins, such as "To Level 1" where the route changes floor. */
   markers?: { key: string; x: number; y: number; text: string; icon: string }[];
@@ -209,6 +216,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     limits,
   ]);
 
+  const onCenterChange = props.onCenterChange;
   const commit = useCallback(
     (x: number, y: number, s: number) => {
       pending.value = false;
@@ -216,9 +224,25 @@ export const VenueMap = memo(function VenueMap(props: Props) {
       rendY.value = y;
       rendS.value = s;
       setRendered({ x, y, s });
+      if (onCenterChange && size.h) {
+        const visibleMid =
+          insets.top + (size.h - insets.top - insets.bottom) / 2;
+        onCenterChange({ x, y: y + (size.h / 2 - visibleMid) / s });
+      }
     },
-    [pending, rendX, rendY, rendS],
+    [pending, rendX, rendY, rendS, onCenterChange, size.h, insets],
   );
+
+  // Crosshair mode starting: report where the pin is now, before any camera move.
+  const renderedCam = rendered;
+  useEffect(() => {
+    if (!onCenterChange || !renderedCam || !size.h) return;
+    const visibleMid = insets.top + (size.h - insets.top - insets.bottom) / 2;
+    onCenterChange({
+      x: renderedCam.x,
+      y: renderedCam.y + (size.h / 2 - visibleMid) / renderedCam.s,
+    });
+  }, [onCenterChange, renderedCam === null]);
 
   const animateTo = useCallback(
     (cam: Camera, duration = 700) => {
@@ -252,7 +276,8 @@ export const VenueMap = memo(function VenueMap(props: Props) {
       const visibleMid = insets.top + (size.h - insets.top - insets.bottom) / 2;
       animateTo({ x: c.x, y: c.y + (visibleMid - size.h / 2) / s, s });
     }
-  }, [props.command?.id]);
+    // Also once the map is first laid out: a command sent at mount must not be lost.
+  }, [props.command?.id, rendered === null, size.w === 0]);
 
   // Follow the walker (navigation mode).
   useEffect(() => {
@@ -385,6 +410,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   });
   const doubleTap = useTapGesture({
     numberOfTaps: 2,
+    maxDistance: 14,
     onActivate: (e) => {
       'worklet';
       const l = limits.value;
@@ -402,13 +428,9 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   const onSelect = props.onSelect;
   const onMapTap = props.onMapTap;
   const pick = useCallback(
-    (sx: number, sy: number) => {
-      const s = cs.value;
-      const m = {
-        x: cx.value + (sx - vw.value / 2) / s,
-        y: cy.value + (vh.value / 2 - sy) / s,
-      };
-      if (onMapTap) return onMapTap(m);
+    (mx: number, my: number, s: number) => {
+      const m = { x: mx, y: my };
+      if (onMapTap) return onMapTap(m, s);
       const near = scene.places
         .map((p) => ({ p, d: Math.hypot(p.x - m.x, p.y - m.y) * s }))
         .filter((o) => o.d < 22)
@@ -419,12 +441,24 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         .sort((a, b) => a.area - b.area)[0];
       onSelect(room?.placeId ?? null);
     },
-    [scene, onSelect, onMapTap, cs, cx, cy, vw, vh],
+    [scene, onSelect, onMapTap],
   );
+  // The camera lives on the UI thread: convert the tap there, where it is current, and only then
+  // hand the map point to JavaScript. A finger that moves more than a few pixels is a pan.
   const tap = useTapGesture({
     requireToFail: doubleTap,
-    runOnJS: true,
-    onActivate: (e) => pick(e.x, e.y),
+    maxDistance: 10,
+    maxDuration: 450,
+    onActivate: (e) => {
+      'worklet';
+      const s = cs.value;
+      scheduleOnRN(
+        pick,
+        cx.value + (e.x - vw.value / 2) / s,
+        cy.value + (vh.value / 2 - e.y) / s,
+        s,
+      );
+    },
   });
   const gesture = useSimultaneousGestures(pan, pinch, doubleTap, tap);
 
@@ -771,11 +805,7 @@ const MapLabel = memo(function MapLabel({
   const pos = useScreenPoint(cam, label.x, label.y);
   const icon = label.icon;
   return (
-    <Animated.View
-      entering={FadeIn.duration(260)}
-      exiting={FadeOut.duration(140)}
-      style={[styles.anchor, pos]}
-    >
+    <Animated.View entering={FadeIn.duration(200)} style={[styles.anchor, pos]}>
       <View
         style={[
           styles.label,
@@ -927,12 +957,36 @@ function MapPill({
   pal: Scene['palette'];
 }) {
   const pos = useScreenPoint(cam, marker.x, marker.y);
+  // The label floats above the spot; a stem and a dot mark the exact point.
   return (
     <Animated.View entering={FadeIn.duration(240)} style={[styles.anchor, pos]}>
       <View
         style={{
           position: 'absolute',
-          bottom: 10,
+          left: -1,
+          bottom: 3,
+          width: 2,
+          height: 13,
+          backgroundColor: pal.route,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          left: -5,
+          top: -5,
+          width: 10,
+          height: 10,
+          borderRadius: 5,
+          backgroundColor: pal.route,
+          borderWidth: 2,
+          borderColor: '#FFFFFF',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 16,
           left: -110,
           width: 220,
           alignItems: 'center',
