@@ -25,9 +25,12 @@ import expo.modules.kotlin.modules.ModuleDefinition
 
 /**
  * TURN BLE. Advertises the TURN manufacturer payload (test company id 0xFFFF + "TURN" + version +
- * ASCII beacon tag) and scans for it and for commercial Eddystone-UID beacons (service 0xFEAA,
- * frame 0x00), whose 6-byte instance id becomes a 12-hex-digit tag. Every other device is filtered
- * in the controller and never reaches JavaScript. Foreground use only.
+ * ASCII beacon tag) and scans for it and for commercial beacons: Eddystone-UID (service 0xFEAA,
+ * frame 0x00; the 6-byte instance becomes a 12-hex-digit tag) and iBeacon (Apple manufacturer data
+ * 02 15; tag "IB" + major + minor in hex). Beacon frames also carry the device address as an
+ * alternative tag ("MC" + its last four bytes) for beacons that share an iBeacon identity.
+ * Discovery mode (the setup screen only) reports every advertising device; TURN never stores them.
+ * Foreground use only.
  */
 class TurnBleModule : Module() {
   private val handler = Handler(Looper.getMainLooper())
@@ -36,6 +39,7 @@ class TurnBleModule : Module() {
   private val version: Byte = 1
   private val tagPattern = Regex("^[A-Za-z0-9]{1,12}$")
   private val eddystone = ParcelUuid.fromString("0000FEAA-0000-1000-8000-00805F9B34FB")
+  private val apple = 0x004C
   private val okStatus = "Fresh BLE scan"
 
   private var pending: Promise? = null
@@ -69,10 +73,14 @@ class TurnBleModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("TurnBle")
-    Constant("revision") { "turn-ble-2" }
+    Constant("revision") { "turn-ble-3" }
     Events("onSamples")
     Function("capabilities") { capabilities() }
-    AsyncFunction("startStream") { token: String, promise: Promise -> handler.post { beginStream(token, promise) } }
+    AsyncFunction("startStream") { token: String, promise: Promise -> handler.post { beginStream(token, false, promise) } }
+    // iBeacon UUIDs are only needed on iOS (Core Location ranging); Android reads every iBeacon frame.
+    AsyncFunction("startStreamWith") { token: String, discover: Boolean, _uuids: List<String>, promise: Promise ->
+      handler.post { beginStream(token, discover, promise) }
+    }
     Function("stopStream") { handler.post { endStream("stopped") }; Unit }
     AsyncFunction("scan") { durationMs: Int, promise: Promise -> handler.post { beginScan(durationMs, promise) } }
     Function("cancelScan") { handler.post { finish("BLE scan cancelled.", failed = true) }; Unit }
@@ -128,10 +136,6 @@ class TurnBleModule : Module() {
       check(scanner != null) { "Bluetooth LE scanning is unavailable." }
       samples.clear()
       scanDurationSeconds = durationMs / 1000.0
-      val filter = ScanFilter.Builder()
-        .setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build()
-      val uidFilter = ScanFilter.Builder()
-        .setServiceData(eddystone, byteArrayOf(0x00), byteArrayOf(-1)).build()
       val settings = ScanSettings.Builder()
         .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
       val callback = object : ScanCallback() {
@@ -147,29 +151,84 @@ class TurnBleModule : Module() {
       }
       scanCallback = callback
       scanStartNanos = SystemClock.elapsedRealtimeNanos()
-      scanner.startScan(listOf(filter, uidFilter), settings, callback)
+      scanner.startScan(beaconFilters(), settings, callback)
       handler.postDelayed(finishScan, durationMs.toLong())
     } catch (error: Exception) {
       finish(error.message ?: "BLE unavailable.", failed = true)
     }
   }
 
-  private fun parseTag(result: ScanResult): String? {
-    val record = result.scanRecord ?: return null
-    val payload = record.getManufacturerSpecificData(companyId)
-    if (payload != null) {
-      if (payload.size < 6 || payload.size > 5 + 12 || payload[4] != version) return null
-      for (i in magic.indices) if (payload[i] != magic[i]) return null
-      val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
-      return if (tagPattern.matches(tag)) tag else null
-    }
-    // Eddystone-UID: frame type 0x00, tx power, 10-byte namespace, 6-byte instance.
-    val uid = record.getServiceData(eddystone) ?: return null
-    if (uid.size < 18 || uid[0] != 0x00.toByte()) return null
-    return (12 until 18).joinToString("") { "%02X".format(uid[it].toInt() and 0xFF) }
+  /** Controller-side filters: TURN, Eddystone-UID and iBeacon frames only. */
+  private fun beaconFilters() = listOf(
+    ScanFilter.Builder().setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build(),
+    ScanFilter.Builder().setServiceData(eddystone, byteArrayOf(0x00), byteArrayOf(-1)).build(),
+    ScanFilter.Builder().setManufacturerData(apple, byteArrayOf(0x02, 0x15), byteArrayOf(-1, -1)).build(),
+  )
+
+  private fun hex(bytes: ByteArray, from: Int, to: Int) =
+    (from until to).joinToString("") { "%02X".format(bytes[it].toInt() and 0xFF) }
+
+  /** "MC" + the last four bytes of the device address (stable for beacons, which do not rotate it). */
+  private fun macTag(result: ScanResult): String? {
+    val parts = result.device?.address?.split(":") ?: return null
+    if (parts.size != 6) return null
+    return "MC" + parts.takeLast(4).joinToString("").uppercase()
   }
 
-  private fun beginStream(token: String, promise: Promise) {
+  /** "NM" + the last ten letters/digits of the advertised name. */
+  private fun nameTag(name: String?): String? {
+    val clean = name?.filter { it.isLetterOrDigit() && it.code < 128 } ?: return null
+    return if (clean.isEmpty()) null else "NM" + clean.takeLast(10)
+  }
+
+  private class Seen(val id: String, val alt: List<String>, val info: Map<String, Any>)
+
+  /**
+   * Identities of one advertisement, most specific first, or null when it is not a beacon (and
+   * discovery is off). `info` describes the frame for the setup screen.
+   */
+  private fun identify(result: ScanResult, discover: Boolean): Seen? {
+    val record = result.scanRecord ?: return null
+    val mac = macTag(result)
+    val name = record.deviceName
+    val named = nameTag(name)
+    val withName = if (name != null) mapOf("name" to name) else emptyMap()
+    val payload = record.getManufacturerSpecificData(companyId)
+    if (payload != null && payload.size in 6..17 && payload[4] == version &&
+      magic.indices.all { payload[it] == magic[it] }) {
+      val tag = String(payload, 5, payload.size - 5, Charsets.US_ASCII)
+      if (tagPattern.matches(tag)) return Seen(tag, listOfNotNull(mac), mapOf("kind" to "turn"))
+    }
+    // Eddystone-UID: frame type 0x00, tx power, 10-byte namespace, 6-byte instance.
+    val uid = record.getServiceData(eddystone)
+    if (uid != null && uid.size >= 18 && uid[0] == 0x00.toByte()) {
+      return Seen(hex(uid, 12, 18), listOfNotNull(mac, named), mapOf(
+        "kind" to "eddystone", "namespace" to hex(uid, 2, 12), "tx" to uid[1].toInt(),
+      ) + withName)
+    }
+    // iBeacon: 02 15, 16-byte proximity UUID, major, minor, measured power at 1 m.
+    val ib = record.getManufacturerSpecificData(apple)
+    if (ib != null && ib.size >= 23 && ib[0] == 0x02.toByte() && ib[1] == 0x15.toByte()) {
+      val u = hex(ib, 2, 18)
+      val uuid = u.substring(0, 8) + "-" + u.substring(8, 12) + "-" + u.substring(12, 16) + "-" +
+        u.substring(16, 20) + "-" + u.substring(20)
+      val major = ((ib[18].toInt() and 0xFF) shl 8) or (ib[19].toInt() and 0xFF)
+      val minor = ((ib[20].toInt() and 0xFF) shl 8) or (ib[21].toInt() and 0xFF)
+      return Seen("IB" + hex(ib, 18, 22), listOfNotNull(mac, named), mapOf(
+        "kind" to "ibeacon", "uuid" to uuid, "major" to major, "minor" to minor, "tx" to ib[22].toInt(),
+      ) + withName)
+    }
+    if (!discover) return null
+    val id = named ?: mac ?: return null
+    val data = record.manufacturerSpecificData
+    val company = if (data != null && data.size() > 0) data.keyAt(0) else null
+    return Seen(id, listOfNotNull(if (id == mac) null else mac),
+      mapOf("kind" to "other") + withName + (if (company != null) mapOf("company" to company) else emptyMap()))
+  }
+
+  private fun parseTag(result: ScanResult): String? = identify(result, false)?.id
+
+  private fun beginStream(token: String, discover: Boolean, promise: Promise) {
     val context = context()
     try {
       check(context != null) { "Android context unavailable." }
@@ -185,16 +244,20 @@ class TurnBleModule : Module() {
       val scanner = adapter.bluetoothLeScanner
       check(scanner != null) { "Bluetooth LE scanning is unavailable." }
       endStream("restarted")
-      val filter = ScanFilter.Builder().setManufacturerData(companyId, magic, byteArrayOf(-1, -1, -1, -1)).build()
-      val uidFilter = ScanFilter.Builder().setServiceData(eddystone, byteArrayOf(0x00), byteArrayOf(-1)).build()
       val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
       val callback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-          val tag = parseTag(result) ?: return
+          val seen = identify(result, discover) ?: return
           val t = (result.timestampNanos - streamStartNanos) / 1e9
           if (t < 0.0) return
           if (streamBuffer.size >= 2000) { streamDropped++; return }
-          streamBuffer.add(mapOf("t" to t, "id" to tag, "rssi" to result.rssi.toDouble()))
+          val sample = mutableMapOf<String, Any>("t" to t, "id" to seen.id, "rssi" to result.rssi.toDouble())
+          if (seen.alt.isNotEmpty()) sample["alt"] = seen.alt
+          if (discover) {
+            sample["info"] = seen.info
+            result.device?.address?.let { sample["key"] = it }
+          }
+          streamBuffer.add(sample)
         }
         override fun onScanFailed(errorCode: Int) {
           val failedToken = streamToken
@@ -207,7 +270,8 @@ class TurnBleModule : Module() {
       streamStartNanos = SystemClock.elapsedRealtimeNanos()
       streamBuffer.clear()
       streamDropped = 0
-      scanner.startScan(listOf(filter, uidFilter), settings, callback)
+      // Discovery lists every advertising device (setup screen); otherwise beacon frames only.
+      scanner.startScan(if (discover) null else beaconFilters(), settings, callback)
       handler.postDelayed(flushStream, 500)
       promise.resolve(mapOf("token" to token))
     } catch (error: Exception) {

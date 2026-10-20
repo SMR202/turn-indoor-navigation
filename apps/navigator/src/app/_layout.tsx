@@ -45,6 +45,7 @@ function Shell() {
         <Stack.Screen name="index" />
         <Stack.Screen name="venue/[id]" options={{ animation: 'fade' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="beacons/[id]" />
         <Stack.Screen
           name="scan"
           options={{ presentation: 'fullScreenModal', animation: 'fade' }}

@@ -173,10 +173,14 @@ export class AssistFusion {
     return this.current;
   }
 
-  /** Cold start from beacons alone; false when fewer than two beacons are heard. */
-  locate(at: number) {
+  /**
+   * Cold start from beacons alone; false when fewer than two beacons are heard. `headingSigma`
+   * (rad) is how unsure the walking heading is (a full circle when nothing is known).
+   */
+  locate(at: number, headingSigma = 0.15) {
     const r = this.readings(at);
-    if (r.length < 2 || !this.fusion.initFromRssi(r)) return false;
+    if (r.length < 2 || !this.fusion.initFromRssi(r, 1.5, headingSigma))
+      return false;
     this.positioned = true;
     this.lastUsed = r.length;
     this.settleLeft = this.config.settleRadioUpdates;

@@ -10,11 +10,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.turn.navigation.dev",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "TURN listens for its own indoor-navigation beacons to recognize known places. Other Bluetooth devices are ignored."
+        "NSBluetoothAlwaysUsageDescription": "TURN listens for indoor-navigation beacons to find where you are inside a venue. Other Bluetooth devices are ignored.",
+        "NSLocationWhenInUseUsageDescription": "TURN uses location only to hear iBeacon indoor-navigation beacons (such as April beacons) while you use the app. Your position stays on this phone."
       }
     },
     "android": {
-      "versionCode": 6,
+      "versionCode": 7,
       "package": "com.turn.navigation.dev",
       "permissions": [
         "android.permission.HIGH_SAMPLING_RATE_SENSORS",

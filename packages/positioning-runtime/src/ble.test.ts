@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   platform: { OS: 'android', Version: 34 },
   request: vi.fn(),
+  appState: { listener: null as null | ((s: string) => void) },
   native: {
     revision: 'turn-ble-1',
     capabilities: vi.fn(),
@@ -18,6 +19,12 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('react-native', () => ({
   Platform: mocks.platform,
+  AppState: {
+    addEventListener: (_e: string, fn: (s: string) => void) => {
+      mocks.appState.listener = fn;
+      return { remove() {} };
+    },
+  },
   PermissionsAndroid: {
     PERMISSIONS: {
       ACCESS_FINE_LOCATION: 'fine',
@@ -157,4 +164,76 @@ it('streams only valid TURN samples for its own token and stops cleanly', async 
   stop();
   expect(remove).toHaveBeenCalledOnce();
   expect(mocks.native.stopStream).toHaveBeenCalledOnce();
+});
+
+it('shares one native stream between listeners and serves discovery to setup screens only', async () => {
+  let listener: (e: unknown) => void = () => {};
+  mocks.native.addListener.mockImplementation(
+    (_event: string, fn: (e: unknown) => void) => {
+      listener = fn;
+      return { remove: vi.fn() };
+    },
+  );
+  const rich = vi.fn().mockResolvedValue({ token: 'x' });
+  (mocks.native as Record<string, unknown>).startStreamWith = rich;
+  const { startBeaconStream, DEFAULT_IBEACON_UUIDS } = await import('./ble');
+  const live: unknown[][] = [];
+  const setup: unknown[][] = [];
+  const stopLive = await startBeaconStream(
+    (b) => live.push(b),
+    () => {},
+  );
+  expect(rich).toHaveBeenCalledTimes(1);
+  expect(rich.mock.calls[0]![1]).toBe(false);
+  expect(rich.mock.calls[0]![2]).toEqual(
+    expect.arrayContaining(DEFAULT_IBEACON_UUIDS),
+  );
+  const stopSetup = await startBeaconStream(
+    (b) => setup.push(b),
+    () => {},
+    {
+      discover: true,
+    },
+  );
+  // Discovery restarts the one native scan; the live listener keeps receiving.
+  expect(rich).toHaveBeenCalledTimes(2);
+  expect(rich.mock.calls[1]![1]).toBe(true);
+  const token = rich.mock.calls[1]![0];
+  listener({
+    token,
+    dropped: 0,
+    samples: [
+      {
+        t: 1,
+        id: 'IB0001000A',
+        rssi: -60,
+        alt: ['MCAABBCCDD'],
+        key: 'k1',
+        info: { kind: 'ibeacon', major: 1, minor: 10 },
+      },
+      {
+        t: 1,
+        id: 'NMphone',
+        rssi: -70,
+        key: 'k2',
+        info: { kind: 'other', name: 'phone' },
+      },
+    ],
+  });
+  expect(live).toEqual([
+    [expect.objectContaining({ tag: 'IB0001000A', alt: ['MCAABBCCDD'] })],
+  ]);
+  expect(setup[0]).toHaveLength(2);
+  stopSetup();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(rich).toHaveBeenCalledTimes(3); // back to beacon frames only
+  expect(rich.mock.calls[2]![1]).toBe(false);
+  // After the app returns from the background, the stream starts again.
+  mocks.appState.listener?.('background');
+  mocks.appState.listener?.('active');
+  await new Promise((r) => setTimeout(r, 0));
+  expect(rich).toHaveBeenCalledTimes(4);
+  stopLive();
+  expect(mocks.native.stopStream).toHaveBeenCalled();
+  delete (mocks.native as Record<string, unknown>).startStreamWith;
 });

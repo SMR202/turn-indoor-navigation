@@ -229,3 +229,42 @@ describe('map constraints (synthetic mechanics, not venue accuracy)', () => {
     expect(after.y).toBeGreaterThan(3);
   });
 });
+
+describe('unknown start heading (synthetic mechanics, not venue accuracy)', () => {
+  it('finds the walking direction from the walls when nothing is known', () => {
+    // A 2 m wide, 30 m long corridor; the phone believes it walks "up" (+y), the walker goes +x.
+    const corridor: FusionMap = {
+      floorId: 'f',
+      walkable: [
+        [
+          { x: 0, y: 0 },
+          { x: 30, y: 0 },
+          { x: 30, y: 2 },
+          { x: 0, y: 2 },
+        ],
+      ],
+      walls: [
+        { from: { x: 0, y: 0 }, to: { x: 30, y: 0 } },
+        { from: { x: 30, y: 0 }, to: { x: 30, y: 2 } },
+        { from: { x: 30, y: 2 }, to: { x: 0, y: 2 } },
+        { from: { x: 0, y: 2 }, to: { x: 0, y: 0 } },
+      ],
+    };
+    const f = new ParticleFusion(corridor, [], { seed: 9, particles: 800 });
+    f.reset(2, 1, 0.3, Math.PI);
+    expect(f.estimate().headingBiasSpread).toBeGreaterThan(1.5);
+    for (let i = 0; i < 25; i++) f.predict(0, 0.7);
+    const e = f.estimate();
+    // True heading = believed (+90°) + bias, so the bias should settle near -90° (or +90°: the
+    // corridor alone cannot tell forwards from backwards).
+    expect(Math.abs(Math.abs(e.headingBiasRad) - Math.PI / 2)).toBeLessThan(
+      0.35,
+    );
+    expect(e.headingBiasSpread).toBeLessThan(1.2);
+  });
+  it('reports a tight heading spread when the start heading is known', () => {
+    const f = new ParticleFusion(map, [], { seed: 2 });
+    f.reset(3, 3, 0.5, 0.1);
+    expect(f.estimate().headingBiasSpread).toBeLessThan(0.2);
+  });
+});

@@ -2,6 +2,17 @@
 
 Updated: 2026-10-19.
 
+## Visitor app: beacons screen, always-on live dot — 2026-10-20
+
+IMPLEMENTED ([ADR-0012](../../../decisions/0012-ibeacon-and-always-on-live.md)):
+
+- **Beacons** screen (venue → Set up beacons): live strength list, closest beacon, signal meter and history, add to venue, place on the map, 12 s 1 m calibration, warnings for shared iBeacon IDs and missing permissions; stored per phone over the published layout.
+- The live dot now runs whenever the walker is located (beacons on opening, Set my location, a TURN code, or starting a route) — while browsing, previewing, navigating and after arrival — and routes start from it. It resumes after the app returns from the background and learns the venue's compass offset.
+- The dot animates on the UI thread with a frame-by-frame camera follow; the demo walk uses the same dot.
+- Native: TurnBle `turn-ble-3` (Android build 7) / `turn-ble-ios-3` (next IPA) read iBeacon and discovery frames; iOS asks for location "While Using" for iBeacon ranging.
+
+Validation: all typechecks and 214 tests pass; demo walk and Beacons screen checked in the browser (web cannot scan or run live position). **Not yet run on a phone; frame rate not measured on a device.**
+
 ## Visitor app: map-constrained live dot and Set my location — 2026-10-19
 
 IMPLEMENTED: the live dot moves through doors along the walk graph and along the route, never through walls ([ADR-0011](../../../decisions/0011-map-constraints.md)); the filter gets the route being followed (also after re-routes and floor changes). **Set my location**: a map button (and "Choose on the map" in the route's From list) — tap where you are (inside rooms and corridors only), then optionally tap the way you are facing. Live guidance then starts from that point with the marked heading ("Face the way you marked"), or along the route when skipped.

@@ -5,7 +5,14 @@ import type { Observation } from '@turn/contracts';
 export class SettledStart {
   private alignedAt: number | null = null;
   private warmupAt: number | null = null;
-  consume(event: Observation, headingRad: number) {
+  /**
+   * `headingRad` is the venue heading the walker faces, or a function of the phone's yaw at that
+   * moment (compass start: venue heading = venue north offset + yaw).
+   */
+  consume(
+    event: Observation,
+    headingRad: number | ((yawRad: number) => number),
+  ) {
     let alignment: Observation | null = null;
     if (
       this.alignedAt === null &&
@@ -19,7 +26,10 @@ export class SettledStart {
         source: 'settled-user-heading',
         timestampSeconds: event.timestampSeconds,
         type: 'heading-alignment',
-        headingRad,
+        headingRad:
+          typeof headingRad === 'function'
+            ? headingRad(event.yawRad)
+            : headingRad,
         frame: 'venue',
       };
     }

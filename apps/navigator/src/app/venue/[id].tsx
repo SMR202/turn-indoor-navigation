@@ -36,7 +36,6 @@ import {
 } from '@turn/map-scene';
 import {
   buildFusionMap,
-  DisplayPose,
   nearestRoutableNode,
   roomNameAt,
 } from '@turn/positioning-runtime';
@@ -63,7 +62,9 @@ import {
   type Step,
 } from '../../lib/directions';
 import { planJourney, positionOnJourney } from '../../lib/journey';
-import { useLiveGuidance } from '../../lib/live';
+import { placementsFor, useBeaconLayout } from '../../lib/beacons';
+import { useLiveSession } from '../../lib/live';
+import { LiveDot } from '../../lib/live-dot';
 import { useStored } from '../../lib/storage';
 import {
   VenueMap,
@@ -131,7 +132,7 @@ type Start = {
   nodeId: string;
   point: P;
   floorId: string;
-  kind: 'marker' | 'place' | 'entrance' | 'picked';
+  kind: 'marker' | 'place' | 'entrance' | 'picked' | 'live';
   /** Direction the walker marked as facing (venue frame, rad); unset means "along the route". */
   headingRad?: number | null;
 };
@@ -280,9 +281,17 @@ function Experience({
   const [locating, setLocating] = useState<string | null>(null);
   const [pick, setPick] = useState<Pick | null>(null);
   const [stepFree, setStepFree] = useState(prefs.stepFree);
-  const live = useLiveGuidance(pkg, bundle.content, start.floorId);
+  const venueId = bundle.summary.id;
+  // Beacons: the venue's layout with this phone's placements and calibrations on top.
+  const beaconLayout = useBeaconLayout(venueId, bundle.content);
+  const placements = useMemo(
+    () => placementsFor(beaconLayout.beacons),
+    [beaconLayout.beacons],
+  );
+  const live = useLiveSession(pkg, venueId, placements);
+  const liveAvailability = live.availableOn(start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
-    live.availability.available ? 'live' : 'demo',
+    liveAvailability.available ? 'live' : 'demo',
   );
   const [walked, setWalked] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
@@ -296,9 +305,85 @@ function Experience({
   const [saved, setSaved] = useStored<string[]>('saved', []);
   const [recent, setRecent] = useStored<string[]>('recent-searches', []);
   const input = useRef<TextInput>(null);
-  const venueId = bundle.summary.id;
 
   useEffect(() => track({ venueId, type: 'venue_opened' }), [venueId]);
+
+  // ---- Live position: one continuous blue dot, from locating until leaving the venue ----------
+  const dotRef = useRef<LiveDot | null>(null);
+  dotRef.current ??= new LiveDot();
+  const liveDot = dotRef.current;
+  const liveFloor = live.floorId;
+  const livePhase = live.state?.phase ?? 'idle';
+  const navigating = mode.kind === 'navigate';
+  const navLive = navigating && guidance === 'live';
+  // The screen hears the dot about once a second while browsing, three times while navigating.
+  const navLiveRef = useRef(navLive);
+  navLiveRef.current = navLive;
+  const [here, setHere] = useState<P | null>(null);
+  useEffect(() => {
+    let last = 0;
+    return liveDot.subscribe((p) => {
+      const now = Date.now();
+      if (!p || navLiveRef.current || now - last >= 1000) {
+        last = now;
+        setHere(p);
+      }
+    });
+  }, [liveDot]);
+  // The smooth dot is driven by live positioning, or by the demo walk along the route.
+  const dotDriver: 'live' | 'demo' | null =
+    navigating && guidance === 'demo' ? 'demo' : live.running ? 'live' : null;
+  const driverRef = useRef(dotDriver);
+  driverRef.current = dotDriver;
+  const demoHeading = useRef<number | null>(null);
+  const heading = live.heading;
+  useEffect(() => {
+    if (!dotDriver) {
+      liveDot.stop();
+      return;
+    }
+    liveDot.run(
+      dotDriver === 'live'
+        ? () => heading()?.headingRad ?? null
+        : () => demoHeading.current,
+    );
+    return () => liveDot.stop();
+  }, [dotDriver, liveDot, heading]);
+  useEffect(
+    () =>
+      live.onFix((st) => {
+        if (st.fix && driverRef.current === 'live')
+          liveDot.update(st.fix, st.steps, st.fix.source === 'fix');
+      }),
+    [live.onFix, liveDot],
+  );
+  useEffect(
+    () => liveDot.setTracking(dotDriver === 'demo' || livePhase === 'tracking'),
+    [liveDot, livePhase, dotDriver],
+  );
+  // Routes start from the live position unless the walker picked another start.
+  const [useLiveStart, setUseLiveStart] = useState(true);
+  const [navStart, setNavStart] = useState<Start | null>(null);
+  const liveNodeId = useMemo(
+    () =>
+      here && liveFloor ? nearestRoutableNode(pkg, liveFloor, here).id : null,
+    [pkg, liveFloor, here],
+  );
+  const liveStart: Start | null =
+    live.running && here && liveFloor && liveNodeId
+      ? {
+          key: 'live',
+          label: 'Your location',
+          nodeId: liveNodeId,
+          point: here,
+          floorId: liveFloor,
+          kind: 'live',
+        }
+      : null;
+  const origin: Start =
+    (mode.kind === 'navigate' || mode.kind === 'arrived') && navStart
+      ? navStart
+      : ((useLiveStart ? liveStart : null) ?? start);
 
   const destination = 'placeId' in mode ? placeById(mode.placeId) : null;
   const routing =
@@ -309,13 +394,13 @@ function Experience({
     if (!routing || !destination) return null;
     return planJourney(
       pkg,
-      start.nodeId,
+      origin.nodeId,
       destination.nodeId,
       { stepFree },
       scenes,
       destination.name,
     );
-  }, [routing, destination, pkg, start.nodeId, stepFree, scenes]);
+  }, [routing, destination, pkg, origin.nodeId, stepFree, scenes]);
   // Where the walker is on the journey, and the leg drawn on the floor being shown.
   const at = route ? positionOnJourney(route, walked) : null;
   const shownLegIndex = route
@@ -334,11 +419,11 @@ function Experience({
   const distances = useMemo(() => {
     const out = new Map<string, number>();
     for (const p of places) {
-      const r = calculateRoute(pkg, start.nodeId, p.nodeId, { stepFree });
+      const r = calculateRoute(pkg, origin.nodeId, p.nodeId, { stepFree });
       if (r.status === 'ok') out.set(p.id, r.route.distanceMetres);
     }
     return out;
-  }, [places, pkg, start.nodeId, stepFree]);
+  }, [places, pkg, origin.nodeId, stepFree]);
 
   // ---- Guidance -------------------------------------------------------------------------------
   useEffect(() => {
@@ -355,71 +440,49 @@ function Experience({
       setWalked(route.steps[stepIndex]?.along ?? 0);
   }, [stepIndex, guidance, mode.kind, route]);
 
-  // Live: a smoothed, route-snapped dot from the positioning runtime drives progress and re-routing.
-  const display = useRef(new DisplayPose()).current;
-  const [shown, setShown] = useState<P | null>(null);
-  const lastSteps = useRef(0);
+  // Live navigation: the route snaps the dot and gently pulls the filter; progress follows the dot.
   const offRouteSince = useRef<number | null>(null);
-  const liveOn = mode.kind === 'navigate' && guidance === 'live';
-  const fix = live.state?.fix ?? null;
-  const liveSteps = live.state?.steps ?? 0;
   const liveLeg = at?.leg ?? 0;
-  useEffect(
-    () => display.setRoute(route?.legs[liveLeg]?.points ?? null),
-    [display, route, liveLeg],
-  );
-  // The walker's floor: the dot moves through doors along the walk graph, never through walls,
-  // and the filter gets a soft pull towards the route being followed.
-  const liveFloorId = route?.legs[liveLeg]?.floorId ?? start.floorId;
-  useEffect(
-    () => display.setMap(buildFusionMap(pkg, liveFloorId)),
-    [display, pkg, liveFloorId],
-  );
+  const liveRoute = navLive ? (route?.legs[liveLeg]?.points ?? null) : null;
   const setLiveRoute = live.setRoute;
+  useEffect(() => setLiveRoute(liveRoute), [setLiveRoute, liveRoute]);
+  // The dot's floor and route: walls and doors of that floor, the leg being walked.
+  const dotFloor = dotDriver === 'demo' ? (at?.floorId ?? null) : liveFloor;
+  const dotRoute =
+    dotDriver === 'demo' ? (route?.legs[liveLeg]?.points ?? null) : liveRoute;
   useEffect(
-    () => setLiveRoute(route?.legs[liveLeg]?.points ?? null),
-    [setLiveRoute, route, liveLeg],
+    () => liveDot.setMap(dotFloor ? buildFusionMap(pkg, dotFloor) : null),
+    [liveDot, pkg, dotFloor],
   );
+  useEffect(() => liveDot.setRoute(dotRoute), [liveDot, dotRoute]);
   useEffect(() => {
-    if (!liveOn || !fix) return;
-    display.update(
-      fix,
-      performance.now() / 1000,
-      liveSteps !== lastSteps.current,
-      fix.source === 'fix',
+    if (dotDriver !== 'demo' || !at) return;
+    demoHeading.current = at.headingRad;
+    liveDot.update(
+      { x: at.x, y: at.y, sigma: 1.2 },
+      Math.round(walked * 10),
+      false,
     );
-    lastSteps.current = liveSteps;
-  }, [liveOn, fix, liveSteps, display]);
+  }, [dotDriver, at?.x, at?.y, walked, liveDot]);
+  const liveSigma = live.state?.sigma ?? null;
   useEffect(() => {
-    if (!liveOn) return;
-    display.reset();
-    lastSteps.current = 0;
-    const timer = setInterval(() => {
-      const p = display.step(0.25);
-      if (p) setShown({ x: p.x, y: p.y });
-    }, 250);
-    return () => {
-      clearInterval(timer);
-      setShown(null);
-    };
-  }, [liveOn, display]);
-  useEffect(() => {
-    if (!liveOn || !shown || !route) return;
+    if (!navLive || !here || !route) return;
     const leg = route.legs[liveLeg]!;
-    const pr = projectOnPolyline(leg.points, shown);
-    if (pr.distance > Math.max(4, 2 * (fix?.sigma ?? 2))) {
+    if (leg.floorId !== liveFloor) return;
+    const pr = projectOnPolyline(leg.points, here);
+    if (pr.distance > Math.max(4, 2 * (liveSigma ?? 2))) {
       offRouteSince.current ??= Date.now();
       if (Date.now() - offRouteSince.current > 6000) {
         // Off the route for a while: route again from where the walker is.
         offRouteSince.current = null;
-        const node = nearestRoutableNode(pkg, leg.floorId, shown);
-        setStart({
+        const node = nearestRoutableNode(pkg, leg.floorId, here);
+        setNavStart({
           key: `live-${Date.now()}`,
-          label: 'Your position',
+          label: 'Your location',
           nodeId: node.id,
-          point: shown,
+          point: here,
           floorId: leg.floorId,
-          kind: 'place',
+          kind: 'live',
         });
         setWalked(0);
       }
@@ -433,10 +496,10 @@ function Experience({
         Math.min(leg.offset + pr.along, leg.offset + leg.length - 0.01),
       ),
     );
-  }, [liveOn, shown, route, liveLeg, fix?.sigma, pkg]);
+  }, [navLive, here, route, liveLeg, liveSigma, pkg, liveFloor]);
   const nextLeg = route?.legs[liveLeg + 1] ?? null;
   const atFloorChange = Boolean(
-    liveOn &&
+    navLive &&
     route &&
     nextLeg &&
     walked >= route.legs[liveLeg]!.offset + route.legs[liveLeg]!.length - 2.5,
@@ -447,12 +510,11 @@ function Experience({
     setWalked(nextLeg.offset + 0.05);
     setFloorId(nextLeg.floorId);
     setFollow(true);
-    void live.start(
-      nextLeg.points[0]!,
-      a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
-      nextLeg.floorId,
-      { route: nextLeg.points },
-    );
+    void live.start(nextLeg.points[0]!, nextLeg.floorId, {
+      heading: a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0,
+      facing: 'route',
+      route: nextLeg.points,
+    });
   };
   // Demo and step guidance carry the map to the walker's floor.
   useEffect(() => {
@@ -470,15 +532,57 @@ function Experience({
     if (mode.kind === 'navigate' && route && walked >= route.length - within) {
       const id = mode.placeId;
       const t = setTimeout(() => {
-        live.stop();
         setMode({ kind: 'arrived', placeId: id });
         track({ venueId, type: 'arrived', placeId: id });
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [walked, mode, route, venueId, guidance, live.stop]);
+  }, [walked, mode, route, venueId, guidance]);
 
-  const livePhase = live.state?.phase ?? 'idle';
+  // Locate automatically: at a scanned TURN code, or with the venue's beacons.
+  const autoLocated = useRef(false);
+  const [locateNote, setLocateNote] = useState<string | null>(null);
+  const findMe = useCallback(
+    (silent = false) => {
+      if (!live.canLocate) return;
+      setLocating('busy');
+      void live.locate(5000).then((r) => {
+        setLocating(null);
+        if (!r.fix || !live.availableOn(r.fix.floorId).available) {
+          if (!silent) setLocateNote(r.fix ? null : r.reason);
+          return;
+        }
+        setLocateNote(null);
+        setFloorId(r.fix.floorId);
+        setUseLiveStart(true);
+        setFollow(true);
+        void live.start({ x: r.fix.x, y: r.fix.y }, r.fix.floorId, {
+          sigma: Math.max(1.5, r.fix.sigma),
+        });
+      });
+    },
+    [live.canLocate, live.locate, live.availableOn, live.start],
+  );
+  useEffect(() => {
+    if (Platform.OS === 'web' || live.running || autoLocated.current) return;
+    if (anchorId && start.kind === 'marker') {
+      autoLocated.current = true;
+      if (live.availableOn(start.floorId).available)
+        void live.start(start.point, start.floorId);
+      return;
+    }
+    if (live.canLocate) {
+      autoLocated.current = true;
+      findMe(true);
+    }
+  }, [live.canLocate, live.running, anchorId, start, findMe]);
+  const showLive =
+    !pick &&
+    ((dotDriver === 'live' &&
+      liveFloor === floorId &&
+      !(navigating && guidance !== 'live')) ||
+      (dotDriver === 'demo' && at?.floorId === floorId));
+
   const user: MapUser | null = useMemo(() => {
     if (pick)
       return pick.point && pick.floorId === floorId
@@ -490,20 +594,9 @@ function Experience({
             live: true,
           }
         : null;
-    if (mode.kind === 'navigate' && guidance === 'live') {
-      if ((route?.legs[liveLeg]?.floorId ?? start.floorId) !== floorId)
-        return null;
-      const p = shown ?? fix;
-      return p
-        ? {
-            x: p.x,
-            y: p.y,
-            sigma: fix?.sigma ?? 2,
-            heading: fix?.headingRad ?? null,
-            live: livePhase === 'tracking',
-          }
-        : null;
-    }
+    // The live dot is drawn by the map itself (LiveDot); these are the other dots.
+    if (live.running && !(navigating && guidance !== 'live')) return null;
+    if (mode.kind === 'navigate' && guidance !== 'steps') return null;
     if (mode.kind === 'navigate' && route && at) {
       if (at.floorId !== floorId) return null;
       return {
@@ -540,10 +633,8 @@ function Experience({
     start.point,
     start.floorId,
     floorId,
-    liveLeg,
-    shown,
-    fix,
-    livePhase,
+    live.running,
+    navigating,
   ]);
 
   const current = route
@@ -593,6 +684,8 @@ function Experience({
       if (p.floorId !== floorId) setFloorId(p.floorId);
       setMode({ kind: 'place', placeId: p.id });
       setSheetIndex(0);
+      // Looking at a place: stop following the live dot until the walker asks again.
+      setFollow(false);
       camera({ kind: 'point', x: p.x, y: p.y });
       track({ venueId, type: 'place_viewed', placeId: p.id });
       if (query.trim()) {
@@ -615,6 +708,7 @@ function Experience({
     if (mode.kind !== 'route' || !route) return;
     const first = route.legs[0]!;
     setFloorId(first.floorId);
+    setFollow(false);
     camera({ kind: 'points', points: first.points });
   }, [mode.kind, route]);
   const startGuidance = () => {
@@ -623,22 +717,25 @@ function Experience({
     setStepIndex(0);
     setFollow(true);
     setMode({ kind: 'navigate', placeId: mode.placeId });
+    setNavStart(origin);
     track({ venueId, type: 'route_started', placeId: mode.placeId });
     if (guidance === 'live' && route) {
       const first = route.legs[0]!;
-      const [a, b] = first.points;
-      const marked = start.headingRad ?? null;
       setFloorId(first.floorId);
-      void live.start(
-        start.point,
-        marked ?? (a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0),
-        first.floorId,
-        { facing: marked === null ? 'route' : 'chosen', route: first.points },
-      );
+      // Already live on this floor: keep the running dot. Otherwise start at the route's start.
+      if (!live.running || liveFloor !== first.floorId) {
+        const [a, b] = first.points;
+        const marked = origin.headingRad ?? null;
+        void live.start(origin.point, first.floorId, {
+          heading: marked ?? (a && b ? Math.atan2(b.y - a.y, b.x - a.x) : 0),
+          facing: marked === null ? 'route' : 'chosen',
+          route: first.points,
+        });
+      }
     }
   };
   const end = () => {
-    live.stop();
+    setNavStart(null);
     if (mode.kind === 'navigate')
       track({ venueId, type: 'route_cancelled', placeId: mode.placeId });
     const id = 'placeId' in mode ? mode.placeId : null;
@@ -694,6 +791,17 @@ function Experience({
     });
     setFloorId(pick.floorId);
     setPick(null);
+    setUseLiveStart(true);
+    if (Platform.OS !== 'web' && live.availableOn(pick.floorId).available) {
+      setFollow(true);
+      if (heading !== null || !live.running || liveFloor !== pick.floorId)
+        void live.start(
+          pick.point,
+          pick.floorId,
+          heading !== null ? { heading, facing: 'chosen' } : {},
+        );
+      else live.correct(pick.point);
+    }
   };
 
   const back = useCallback(() => {
@@ -830,12 +938,39 @@ function Experience({
           {[
             bundle.summary.address || null,
             `${places.length} places`,
-            atMarker ? `You are at ${start.label}` : null,
+            live.running
+              ? livePhase === 'tracking'
+                ? 'Live position on'
+                : 'Starting live position'
+              : atMarker
+                ? `You are at ${start.label}`
+                : null,
             bundle.source === 'cached' ? 'Offline copy' : null,
           ]
             .filter(Boolean)
             .join(' · ')}
         </T>
+        {Platform.OS !== 'web' && (
+          <Tap
+            onPress={() =>
+              router.push(`/beacons/${encodeURIComponent(venueId)}`)
+            }
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 8,
+              alignSelf: 'flex-start',
+            }}
+          >
+            <Icon name="beacon" size={16} color={c.accent} />
+            <T v="caption" weight="600" color={c.accent}>
+              {beaconLayout.beacons.length
+                ? `Beacons · ${beaconLayout.beacons.length} set up`
+                : 'Set up beacons'}
+            </T>
+          </Tap>
+        )}
       </View>
       <Divider />
       {savedHere.length > 0 && (
@@ -1000,7 +1135,7 @@ function Experience({
             {formatDuration(distances.get(destination.id)! / WALK_SPEED)}
           </T>{' '}
           walk · {formatDistance(distances.get(destination.id)!)} from{' '}
-          {start.label}
+          {origin.label}
         </T>
       )}
       <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1083,7 +1218,7 @@ function Experience({
                 From
               </T>
               <T v="callout" weight="600" lines={1}>
-                {start.label}
+                {origin.label}
               </T>
             </View>
             <Icon
@@ -1123,29 +1258,36 @@ function Experience({
         </View>
         {pickingStart ? (
           <View style={{ gap: 2 }}>
+            {liveStart && (
+              <Tap
+                onPress={() => {
+                  setUseLiveStart(true);
+                  setPickingStart(false);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <Badge icon="locate" color={c.accent} size={34} />
+                <View style={{ flex: 1 }}>
+                  <T v="callout" weight="600">
+                    Your location
+                  </T>
+                  <T v="caption" color={c.textSubtle}>
+                    Live, follows you as you walk
+                  </T>
+                </View>
+              </Tap>
+            )}
             {live.canLocate && (
               <Tap
                 disabled={locating === 'busy'}
                 onPress={() => {
-                  setLocating('busy');
-                  void live.locate().then((r) => {
-                    if (!r.fix) {
-                      setLocating(r.reason);
-                      return;
-                    }
-                    const node = nearestRoutableNode(pkg, r.fix.floorId, r.fix);
-                    setStart({
-                      key: `beacons-${Date.now()}`,
-                      label: `Your position (±${Math.round(r.fix.sigma)} m, ${r.heard} beacons)`,
-                      nodeId: node.id,
-                      point: { x: r.fix.x, y: r.fix.y },
-                      floorId: r.fix.floorId,
-                      kind: 'marker',
-                    });
-                    setFloorId(r.fix.floorId);
-                    setLocating(null);
-                    setPickingStart(false);
-                  });
+                  setPickingStart(false);
+                  findMe();
                 }}
                 style={{
                   flexDirection: 'row',
@@ -1161,9 +1303,9 @@ function Experience({
                       ? 'Listening for beacons…'
                       : 'Find me with venue beacons'}
                   </T>
-                  {locating && locating !== 'busy' ? (
+                  {locateNote ? (
                     <T v="caption" color={c.danger}>
-                      {locating}
+                      {locateNote}
                     </T>
                   ) : (
                     <T v="caption" color={c.textSubtle}>
@@ -1214,6 +1356,7 @@ function Experience({
                   key={s.key}
                   onPress={() => {
                     setStart(s);
+                    setUseLiveStart(false);
                     setPickingStart(false);
                   }}
                   style={{
@@ -1283,7 +1426,7 @@ function Experience({
               ).map(([g, label]) => (
                 <Tap
                   key={g}
-                  disabled={g === 'live' && !live.availability.available}
+                  disabled={g === 'live' && !liveAvailability.available}
                   onPress={() => setGuidance(g)}
                   style={{
                     flex: 1,
@@ -1293,7 +1436,7 @@ function Experience({
                     justifyContent: 'center',
                     backgroundColor: guidance === g ? c.surface : 'transparent',
                     opacity:
-                      g === 'live' && !live.availability.available ? 0.45 : 1,
+                      g === 'live' && !liveAvailability.available ? 0.45 : 1,
                   }}
                 >
                   <T
@@ -1314,9 +1457,9 @@ function Experience({
                   ? 'Demo walk moves the dot along the route at walking pace — no positioning.'
                   : guidance === 'steps'
                     ? 'Move through the directions yourself, one turn at a time.'
-                    : live.availability.available
+                    : liveAvailability.available
                       ? `Live follows your steps${live.beaconCount ? ` and ${live.beaconCount} venue beacons` : ''}. Hold the phone in front of you, screen up.`
-                      : (live.availability.reason ??
+                      : (liveAvailability.reason ??
                         'Live position is unavailable here.')}
               </T>
               <Chip
@@ -1434,13 +1577,15 @@ function Experience({
             : 0
         }
         routeStart={
-          mode.kind === 'route' && start.floorId === floorId
-            ? start.point
+          mode.kind === 'route' && origin.floorId === floorId
+            ? origin.point
             : null
         }
         user={user}
+        liveDot={liveDot.values}
+        liveVisible={showLive}
         command={command}
-        follow={mode.kind === 'navigate' && follow}
+        follow={(navigating || live.running) && follow}
         onSelect={select}
         onMapTap={
           pick
@@ -1468,7 +1613,7 @@ function Experience({
                 }
               : undefined
         }
-        onGesture={() => mode.kind === 'navigate' && setFollow(false)}
+        onGesture={() => setFollow(false)}
       />
 
       {/* Top: search, categories / navigation banner */}
@@ -1558,7 +1703,7 @@ function Experience({
             onPress={continueOnNextFloor}
           />
         </Animated.View>
-      ) : liveOn && livePhase !== 'tracking' ? (
+      ) : navLive && livePhase !== 'tracking' ? (
         <Animated.View
           entering={FadeInUp.duration(320)}
           style={[
@@ -1613,7 +1758,7 @@ function Experience({
               </View>
               <View style={{ flex: 1 }}>
                 <T v="callout" weight="600" color={c.background}>
-                  {start.headingRad != null
+                  {origin.headingRad != null
                     ? 'Face the way you marked'
                     : 'Face along the blue line'}
                 </T>
@@ -1824,6 +1969,40 @@ function Experience({
               ))}
             </ScrollView>
           )}
+          {(locating === 'busy' ||
+            (live.running && livePhase !== 'tracking') ||
+            livePhase === 'stopped') && (
+            <Animated.View
+              entering={FadeIn.duration(250)}
+              style={[
+                {
+                  alignSelf: 'center',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  paddingHorizontal: 14,
+                  height: 34,
+                  maxWidth: W - 48,
+                  borderRadius: 17,
+                  backgroundColor: c.surface,
+                },
+                shadow('floating', dark),
+              ]}
+            >
+              {livePhase === 'stopped' && locating !== 'busy' ? (
+                <Icon name="close" size={14} color={c.danger} />
+              ) : (
+                <ActivityIndicator size="small" color={c.accent} />
+              )}
+              <T v="caption" weight="600" lines={1}>
+                {locating === 'busy'
+                  ? 'Finding you with venue beacons…'
+                  : livePhase === 'stopped'
+                    ? live.state?.message || 'Live position stopped'
+                    : 'Starting live position · hold the phone in front of you'}
+              </T>
+            </Animated.View>
+          )}
         </View>
       ) : null}
 
@@ -1896,12 +2075,27 @@ function Experience({
             <IconButton
               icon="locate"
               label={
-                mode.kind === 'navigate' ? 'Re-centre' : 'Show whole floor'
+                live.running || navigating
+                  ? follow
+                    ? 'Show whole floor'
+                    : 'Show my position'
+                  : live.canLocate
+                    ? 'Find me'
+                    : 'Show whole floor'
               }
               size={46}
-              active={mode.kind === 'navigate' && follow}
+              active={(navigating || live.running) && follow}
               onPress={() => {
-                if (mode.kind === 'navigate') setFollow(true);
+                if (live.running && liveFloor) {
+                  if (follow && !navigating) {
+                    setFollow(false);
+                    camera({ kind: 'fit' });
+                  } else {
+                    setFloorId(liveFloor);
+                    setFollow(true);
+                  }
+                } else if (navigating) setFollow(true);
+                else if (live.canLocate && locating !== 'busy') findMe();
                 else if (shownLeg)
                   camera({ kind: 'points', points: shownLeg.points });
                 else camera({ kind: 'fit' });
@@ -2012,7 +2206,7 @@ function Experience({
                   ? 'Demo walk'
                   : guidance === 'live'
                     ? live.beaconCount
-                      ? `Live · ${fix?.beaconsUsed ?? 0} beacons heard`
+                      ? `Live · ${live.state?.beaconsUsed ?? 0} beacons heard`
                       : 'Live · steps and map'
                     : 'Step by step'}
               </T>

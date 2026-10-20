@@ -37,14 +37,39 @@ export type LiveState = {
   steps: number;
   message: string;
 };
-/** How sure the start heading is (rad): the walker faced the route, or marked their direction. */
-export const START_HEADING_SIGMA = { route: 0.5, chosen: 0.3 } as const;
+/**
+ * How sure the start heading is (rad): the walker faced the route, marked their direction, the
+ * phone's compass with this venue's learned north offset, or nothing is known (a full circle that
+ * walls, doors and beacons narrow down while walking).
+ */
+export const START_HEADING_SIGMA = {
+  route: 0.5,
+  chosen: 0.3,
+  compass: 0.5,
+  unknown: Math.PI,
+} as const;
 export type LiveStart = {
-  /** What the start heading is: the route's first direction, or one the walker marked on the map. */
+  /** Where the start heading comes from (default: the route's first direction). */
   facing?: keyof typeof START_HEADING_SIGMA;
+  /** Venue heading = this + the phone's yaw (rad); required for `facing: 'compass'`. */
+  northOffset?: number;
+  /** Start position uncertainty (metres), larger for a beacon fix than for a tap. */
+  sigma?: number;
   /** The route being followed on this floor (soft prior and display snapping). */
   route?: P[] | null;
 };
+/** The phone's heading in the venue frame, and what it says about the venue's north offset. */
+export type LiveHeading = {
+  /** Venue heading the walker faces (rad, +x counter-clockwise), null while unknown. */
+  headingRad: number | null;
+  /** Spread of the filter's heading correction (rad). */
+  spreadRad: number;
+  /** Venue heading minus phone yaw (rad): learn it once and later starts know the heading. */
+  northOffset: number | null;
+  /** Metres walked in this session, so callers only trust the offset after real walking. */
+  walkedMetres: number;
+};
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export type LiveOptions = {
   venue: VenuePackage;
   floorId: string;
@@ -95,6 +120,8 @@ export class LivePositioning {
   };
   private lastStepCount = 0;
   private route: P[] | null = null;
+  private lastYaw: number | null = null;
+  private facing: LiveStart['facing'] = 'route';
 
   constructor(private readonly options: LiveOptions) {}
 
@@ -125,7 +152,12 @@ export class LivePositioning {
    * treats it as approximate and lets walls and doors settle the rest in the first metres.
    */
   async start(start: P, headingRad: number, how: LiveStart = {}) {
-    const facing = how.facing ?? 'route';
+    const facing =
+      how.facing === 'compass' && how.northOffset === undefined
+        ? 'unknown'
+        : (how.facing ?? 'route');
+    this.facing = facing;
+    this.lastYaw = null;
     if (how.route !== undefined) this.route = how.route;
     this.stop();
     const token = ++this.generation;
@@ -154,6 +186,8 @@ export class LivePositioning {
         : null,
       platform: Platform.OS === 'ios' ? 'ios' : 'android',
       save: this.options.save,
+      // iPhones range iBeacons about once a second: a longer window, two packets are enough.
+      assist: { windowSeconds: 4, minPackets: 2 },
     });
     this.tracker = tracker;
     tracker.subscribe((e) => {
@@ -169,7 +203,12 @@ export class LivePositioning {
         },
       });
     });
-    tracker.setPosition(start.x, start.y, 1.2, START_HEADING_SIGMA[facing]);
+    tracker.setPosition(
+      start.x,
+      start.y,
+      how.sigma ?? 1.2,
+      START_HEADING_SIGMA[facing],
+    );
     tracker.setRoute(this.route);
     // The step engine is anchored at the nearest venue anchor; the tracker turns its positions
     // into displacements from that point, so any start position works.
@@ -203,7 +242,14 @@ export class LivePositioning {
         sessionId,
         (event) => {
           if (token !== this.generation) return;
-          const s = settled.consume(event, headingRad);
+          if (event.type === 'attitude') this.lastYaw = event.yawRad;
+          const north = how.northOffset;
+          const s = settled.consume(
+            event,
+            facing === 'compass' && north !== undefined
+              ? (yaw) => wrap(north + yaw)
+              : headingRad,
+          );
           if (s.alignment) engine.consume(s.alignment);
           const next = engine.consume(event);
           if (next.stopped) {
@@ -229,7 +275,9 @@ export class LivePositioning {
                 phase === 'settling'
                   ? facing === 'chosen'
                     ? 'Hold the phone in front of you, facing the way you marked.'
-                    : 'Hold the phone in front of you and face along the blue line.'
+                    : facing === 'route'
+                      ? 'Hold the phone in front of you and face along the blue line.'
+                      : 'Hold the phone in front of you for a moment.'
                   : (next.warning ?? ''),
             });
         },
@@ -254,6 +302,26 @@ export class LivePositioning {
       }
       throw e;
     }
+  }
+
+  /**
+   * Where the phone points in the venue frame (walking-sensor heading corrected by the filter),
+   * updated at sensor rate; the heading is null while it is still unknown.
+   */
+  heading(): LiveHeading | null {
+    const pose = this.engine?.snapshot().pose;
+    const e = this.tracker?.estimate();
+    if (!pose || pose.headingRad === null || !e) return null;
+    const venue = wrap(pose.headingRad + e.headingBiasRad);
+    const known =
+      e.headingBiasSpread < 0.6 ||
+      (this.facing !== 'unknown' && this.state.steps < 3);
+    return {
+      headingRad: known ? venue : null,
+      spreadRad: e.headingBiasSpread,
+      northOffset: this.lastYaw === null ? null : wrap(venue - this.lastYaw),
+      walkedMetres: this.state.steps * (this.options.stepLengthMetres ?? 0.62),
+    };
   }
 
   /** Beacons in the layout and when this phone last heard them (empty without a beacon stream). */

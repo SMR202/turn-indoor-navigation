@@ -1,6 +1,7 @@
 import { AssistFusion, type BeaconPlacement } from '@turn/positioning-core';
 import type { VenuePackage } from '@turn/venue-model';
 import { buildFusionMap } from './assist-helpers';
+import { matchTag } from './assisted-tracker';
 import { bleBuildAvailable, startBeaconStream } from './ble';
 
 export type BeaconLocateResult =
@@ -75,6 +76,7 @@ export async function locateWithBeacons(
       reason: 'This venue has fewer than two beacons set up.',
     };
   const samples: Sample[] = [];
+  const tags = new Set(beacons.map((b) => b.tag));
   const t0 = performance.now() / 1000;
   let failure: string | null = null;
   let stop: (() => void) | null = null;
@@ -82,11 +84,15 @@ export async function locateWithBeacons(
     stop = await startBeaconStream(
       (batch) => {
         const at = performance.now() / 1000 - t0;
-        for (const s of batch) samples.push({ at, tag: s.tag, rssi: s.rssi });
+        for (const s of batch) {
+          const tag = matchTag(s, tags);
+          if (tag) samples.push({ at, tag, rssi: s.rssi });
+        }
       },
       (message) => {
         failure = message;
       },
+      { discover: [...tags].some((t) => t.startsWith('NM')) },
     );
     await new Promise((r) => setTimeout(r, waitMs));
   } catch (e) {

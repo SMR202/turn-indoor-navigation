@@ -18,7 +18,9 @@ import Animated, {
   Easing,
   FadeIn,
   FadeOut,
+  interpolateColor,
   useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
   withDecay,
   withRepeat,
@@ -41,6 +43,7 @@ import {
   type ScenePlace,
 } from '@turn/map-scene';
 import { Icon } from '../components/icon';
+import type { LiveDotValues } from '../lib/live-dot';
 import { catColor, F } from '../theme';
 
 /** Camera: map point (x, y) in metres at the screen centre, `s` screen pixels per metre. */
@@ -76,6 +79,12 @@ type Props = {
   onGesture?: () => void;
   /** Small labelled pins, such as "To Level 1" where the route changes floor. */
   markers?: { key: string; x: number; y: number; text: string; icon: string }[];
+  /**
+   * The live blue dot, animated on the UI thread (pass the same object on every render). With
+   * `follow` the camera glides after it every frame.
+   */
+  liveDot?: LiveDotValues;
+  liveVisible?: boolean;
 };
 
 const MARGIN = 140; // pixels of map drawn beyond each screen edge so pans reveal content instantly
@@ -278,11 +287,51 @@ export const VenueMap = memo(function VenueMap(props: Props) {
       );
     } else scheduleOnRN(commit, cx.value, cy.value, cs.value);
   };
+  // Live follow: the camera eases after the animated dot every frame (UI thread), re-rendering the
+  // vector geometry only when it drifts past the drawn margin.
+  const dot = props.liveDot;
+  const followLive = useSharedValue(false);
+  const followDy = useSharedValue(0);
+  useEffect(() => {
+    const on = Boolean(props.follow && dot && props.liveVisible && size.w);
+    if (on) {
+      const visibleMid = insets.top + (size.h - insets.top - insets.bottom) / 2;
+      followDy.value = visibleMid - size.h / 2;
+      cancelAnimation(cx);
+      cancelAnimation(cy);
+      const s1 = Math.max(cs.value, limits.value.minS * 3.2);
+      if (s1 > cs.value * 1.01)
+        cs.value = withTiming(s1, { duration: 550, easing: EASE }, (done) => {
+          if (done) scheduleOnRN(commit, cx.value, cy.value, s1);
+        });
+    }
+    followLive.value = on;
+  }, [
+    props.follow,
+    props.liveVisible,
+    size.w,
+    size.h,
+    insets.top,
+    insets.bottom,
+  ]);
+  useFrameCallback((frame) => {
+    'worklet';
+    if (!followLive.value || !dot) return;
+    const dt = Math.min(0.1, (frame.timeSincePreviousFrame ?? 16) / 1000);
+    const k = 1 - Math.exp(-dt / 0.28);
+    const tx = dot.x.value;
+    const ty = dot.y.value + followDy.value / cs.value;
+    cx.value += (tx - cx.value) * k;
+    cy.value += (ty - cy.value) * k;
+    maybeCommit();
+  });
+
   const notify = props.onGesture;
   const pan = usePanGesture({
     maxPointers: 2,
     onBegin: () => {
       'worklet';
+      followLive.value = false;
       cancelAnimation(cx);
       cancelAnimation(cy);
       if (notify) scheduleOnRN(notify);
@@ -314,6 +363,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   const pinch = usePinchGesture({
     onBegin: () => {
       'worklet';
+      followLive.value = false;
       cancelAnimation(cs);
     },
     onUpdate: (e) => {
@@ -505,6 +555,15 @@ export const VenueMap = memo(function VenueMap(props: Props) {
               key={props.selectedPlace.id}
               place={props.selectedPlace}
               cam={cam}
+            />
+          )}
+          {dot && props.liveVisible && (
+            <LiveUserDot
+              v={dot}
+              cam={cam}
+              color={pal.dot}
+              halo={pal.dotHalo}
+              ring={pal.dotRing}
             />
           )}
           {props.user && (
@@ -1053,6 +1112,124 @@ function UserDot({
           borderColor: ring,
           boxShadow: '0 1px 4px rgba(11,18,32,0.35)',
         }}
+      />
+    </Animated.View>
+  );
+}
+
+/** The live dot: position, heading and accuracy straight from UI-thread values. */
+function LiveUserDot({
+  v,
+  cam,
+  color,
+  halo,
+  ring,
+}: {
+  v: LiveDotValues;
+  cam: Cam;
+  color: string;
+  halo: string;
+  ring: string;
+}) {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withTiming(1, {
+        duration: motion.pulseMs,
+        easing: Easing.out(Easing.quad),
+      }),
+      -1,
+      false,
+    );
+  }, [pulse]);
+  const pos = useAnimatedStyle(() => ({
+    opacity: v.visible.value,
+    transform: [
+      {
+        translateX:
+          cam.vw.value / 2 + (v.x.value - cam.cx.value) * cam.cs.value,
+      },
+      {
+        translateY:
+          cam.vh.value / 2 - (v.y.value - cam.cy.value) * cam.cs.value,
+      },
+    ],
+  }));
+  const haloStyle = useAnimatedStyle(() => {
+    const r = Math.max(16, v.sigma.value * cam.cs.value);
+    return { width: 2 * r, height: 2 * r, borderRadius: r, left: -r, top: -r };
+  });
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: 0.45 * (1 - pulse.value) * v.live.value,
+    transform: [{ scale: 1 + pulse.value * 1.6 }],
+  }));
+  const beam = useAnimatedStyle(() => ({
+    opacity: v.headingOn.value,
+    transform: [{ rotate: `${90 - (v.heading.value * 180) / Math.PI}deg` }],
+  }));
+  const core = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(v.live.value, [0, 1], ['#8A93A3', color]),
+  }));
+  return (
+    <Animated.View
+      testID="live-dot"
+      style={[styles.anchor, pos]}
+      pointerEvents="none"
+    >
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            backgroundColor: halo,
+            borderWidth: 1,
+            borderColor: `${color}33`,
+          },
+          haloStyle,
+        ]}
+      />
+      <Animated.View
+        style={[
+          { position: 'absolute', left: -36, top: -36, width: 72, height: 72 },
+          beam,
+        ]}
+      >
+        <Svg width={72} height={72} viewBox="0 0 64 64">
+          <Path
+            d="M32 32 L17 3 A31 31 0 0 1 47 3 Z"
+            fill={color}
+            opacity={0.32}
+          />
+        </Svg>
+      </Animated.View>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            left: -11,
+            top: -11,
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            backgroundColor: color,
+          },
+          pulseStyle,
+        ]}
+      />
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            left: -11,
+            top: -11,
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            borderWidth: 3.5,
+            borderColor: ring,
+            boxShadow: '0 1px 4px rgba(11,18,32,0.35)',
+          },
+          core,
+        ]}
       />
     </Animated.View>
   );

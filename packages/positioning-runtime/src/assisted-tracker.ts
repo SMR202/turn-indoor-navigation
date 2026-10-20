@@ -3,12 +3,19 @@ import {
   BLE_PROXIMITY_REVISION,
   DEFAULT_PROXIMITY_CONFIG,
   bleTraceRecordSchema,
+  type AssistConfig,
   type AssistEstimate,
   type BeaconPlacementSet,
   type BleTraceRecord,
   type FusionMap,
 } from '@turn/positioning-core';
 import { startBeaconStream, type StreamSample } from './ble';
+
+/** The layout tag a sample belongs to: its frame identity, or an address/name alternative. */
+export function matchTag(s: StreamSample, tags: Set<string>) {
+  if (tags.has(s.tag)) return s.tag;
+  return s.alt?.find((a) => tags.has(a)) ?? null;
+}
 
 const TICK_MS = 1000;
 const MAX_SAMPLES = 60000;
@@ -30,6 +37,8 @@ export type TrackerOptions = {
   navigationSessionId?: string;
   start?: typeof startBeaconStream;
   now?: Clock;
+  /** Evidence-policy overrides (for example a longer radio window for iBeacon ranging). */
+  assist?: Partial<AssistConfig>;
   /** Where finished traces go (the test app saves them for upload); none by default. */
   save?: (trace: BleTraceRecord) => void;
   seed?: number;
@@ -67,7 +76,7 @@ export class AssistedTracker {
     this.assist = new AssistFusion(
       options.map,
       options.placements?.beacons ?? [],
-      {},
+      options.assist ?? {},
       options.seed ?? 1,
     );
   }
@@ -95,19 +104,28 @@ export class AssistedTracker {
     this.startedIso = new Date().toISOString();
     if (this.assist.beaconCount === 0) return;
     const start = this.options.start ?? startBeaconStream;
+    const tags = new Set(
+      (this.options.placements?.beacons ?? []).map((b) => b.tag),
+    );
     this.stopStream = await start(
       (batch, drop) => {
         this.dropped += drop;
         const at = this.clock();
         for (const s of batch) {
-          if (this.samples.length < MAX_SAMPLES) this.samples.push(s);
+          // A beacon may be laid out by its address or name instead of its frame identity.
+          const tag = matchTag(s, tags);
+          if (!tag) continue;
+          if (this.samples.length < MAX_SAMPLES)
+            this.samples.push({ t: s.t, tag, rssi: s.rssi });
           else this.dropped++;
-          this.assist.addSample(at, s.tag, s.rssi);
+          this.assist.addSample(at, tag, s.rssi);
         }
       },
       (message) => {
         this.failure = message;
       },
+      // Beacons known only by their advertised name need discovery frames.
+      { discover: [...tags].some((t) => t.startsWith('NM')) },
     );
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }

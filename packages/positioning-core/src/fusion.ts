@@ -78,7 +78,10 @@ export type FusionEstimate = {
   sigmaMetres: number;
   /** Effective sample size / N, 1 = healthy, near 0 = degenerate. */
   essFraction: number;
+  /** Circular mean of the heading corrections (rad): true heading = walking-sensor heading + this. */
   headingBiasRad: number;
+  /** Circular spread of the heading corrections (rad); large while the heading is still unknown. */
+  headingBiasSpread: number;
   stepScale: number;
 };
 
@@ -156,6 +159,11 @@ function distanceToPolyline(x: number, y: number, path: FusionPoint[]) {
   return best;
 }
 
+/** Heading-bias limit for a start heading uncertainty: ±1 rad, or a full circle when unknown. */
+function limitFor(biasSigma: number) {
+  return biasSigma >= 1 ? Math.PI : 1;
+}
+
 export class ParticleFusion {
   readonly n: number;
   private x: Float64Array;
@@ -169,6 +177,8 @@ export class ParticleFusion {
   private bounds: { minX: number; maxX: number; minY: number; maxY: number };
   readonly config: FusionConfig;
   private resampled = 0;
+  /** How far a heading correction may drift (rad); a full circle when the start heading is unknown. */
+  private biasLimit = 1;
 
   constructor(
     private readonly map: FusionMap,
@@ -218,6 +228,7 @@ export class ParticleFusion {
 
   /** Start from a known position with Gaussian uncertainty (QR, confirmed fingerprint, user tap). */
   reset(x: number, y: number, sigma = 0.8, biasSigma = 0.1) {
+    this.biasLimit = limitFor(biasSigma);
     for (let i = 0; i < this.n; i++) {
       this.placeNear(i, x, y, sigma);
       this.bias[i] = this.randn() * biasSigma;
@@ -254,6 +265,7 @@ export class ParticleFusion {
   initFromRssi(
     readings: { tag: string; rssi: number }[],
     sigmaFloor = 1.5,
+    biasSigma = 0.15,
   ): boolean {
     const usable = readings.filter(
       (r) => this.beacons.has(r.tag) && r.rssi >= this.config.minRssi,
@@ -270,10 +282,11 @@ export class ParticleFusion {
       }
       this.x[i] = px;
       this.y[i] = py;
-      this.bias[i] = this.randn() * 0.15;
+      this.bias[i] = this.randn() * biasSigma;
       this.scale[i] = 1 + this.randn() * 0.05;
       this.w[i] = 1 / this.n;
     }
+    this.biasLimit = limitFor(biasSigma);
     this.updateRssi(usable);
     // One more resampling pass spreads out the survivors a little (roughening).
     this.resample(sigmaFloor * 0.3);
@@ -288,9 +301,8 @@ export class ParticleFusion {
     const { stepNoise, headingNoise, biasWalk, scaleWalk } = this.config;
     const sq = Math.sqrt(len);
     for (let i = 0; i < this.n; i++) {
-      this.bias[i] = Math.max(
-        -1,
-        Math.min(1, this.bias[i]! + this.randn() * biasWalk * len),
+      this.bias[i] = this.clampBias(
+        this.bias[i]! + this.randn() * biasWalk * len,
       );
       this.scale[i] = Math.max(
         0.6,
@@ -317,7 +329,7 @@ export class ParticleFusion {
         if (l2 < 0.05 || !this.tryMove(i, heading + d, l2)) continue;
         this.w[i] =
           this.w[i]! * Math.exp(-(d * d) / (2 * SLIDE_SIGMA * SLIDE_SIGMA));
-        this.bias[i] = Math.max(-1, Math.min(1, this.bias[i]! + 0.25 * d));
+        this.bias[i] = this.clampBias(this.bias[i]! + 0.25 * d);
         slid = true;
         break;
       }
@@ -326,6 +338,10 @@ export class ParticleFusion {
     }
     this.normalize();
     this.maybeResample();
+  }
+  private clampBias(b: number) {
+    if (this.biasLimit >= Math.PI) return Math.atan2(Math.sin(b), Math.cos(b));
+    return Math.max(-this.biasLimit, Math.min(this.biasLimit, b));
   }
   private tryMove(i: number, heading: number, l: number) {
     const nx = this.x[i]! + l * Math.cos(heading);
@@ -492,14 +508,18 @@ export class ParticleFusion {
   estimate(): FusionEstimate {
     let mx = 0,
       my = 0,
-      mb = 0,
+      bs = 0,
+      bc = 0,
       ms = 0;
     for (let i = 0; i < this.n; i++) {
       mx += this.w[i]! * this.x[i]!;
       my += this.w[i]! * this.y[i]!;
-      mb += this.w[i]! * this.bias[i]!;
+      bs += this.w[i]! * Math.sin(this.bias[i]!);
+      bc += this.w[i]! * Math.cos(this.bias[i]!);
       ms += this.w[i]! * this.scale[i]!;
     }
+    const mb = Math.atan2(bs, bc);
+    const concentration = Math.min(1, Math.hypot(bs, bc));
     // Report a particle, not the mean, when the mean falls outside walkable space (multi-modal cloud).
     if (!this.walkable(mx, my)) {
       let best = 0,
@@ -523,6 +543,9 @@ export class ParticleFusion {
       sigmaMetres: Math.sqrt(v),
       essFraction: this.ess(),
       headingBiasRad: mb,
+      headingBiasSpread: Math.sqrt(
+        -2 * Math.log(Math.max(1e-9, concentration)),
+      ),
       stepScale: ms,
     };
   }

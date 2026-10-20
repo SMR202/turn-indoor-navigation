@@ -1,6 +1,14 @@
 # Positioning workstream
 
-Updated: 2026-10-19.
+Updated: 2026-10-20.
+
+## iBeacon, shared beacon stream, unknown-heading starts — 2026-10-20
+
+DECISION: [ADR-0012](../../../decisions/0012-ibeacon-and-always-on-live.md). IMPLEMENTED: iBeacon decoding (Android controller filter; iOS Core Location ranging of factory and layout UUIDs), address/name alternative tags for beacons sharing an iBeacon identity, one shared native beacon stream with a discovery mode and foreground restart, full-circle heading uncertainty (`biasLimit`), circular heading-bias mean and spread, compass-aligned starts from a learned venue north offset, a 4 s / 2-packet radio window for 1 Hz iBeacon ranging.
+
+EXPERIMENT RESULT (synthetic): from a fully unknown heading a 25-step corridor walk settles the heading correction within ±0.35 rad; the ADR-0011 replay is unchanged. No April Brother beacon has been heard by a TURN build yet.
+
+Validation: root typecheck and 214 tests pass. Next: hear the April beacons with Android build 7, then landmark-labelled walks.
 
 ## Map constraints for the live dot — 2026-10-19
 
