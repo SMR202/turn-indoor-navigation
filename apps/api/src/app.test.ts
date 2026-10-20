@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { demoCentre } from '@turn/venue-model';
 import { createApp, validatePackage } from './app';
 import { openDb } from './db';
@@ -343,6 +343,40 @@ describe('multi-floor import', () => {
       (await app.request(`/venues/${created.id}/publish`, json({}, owner)))
         .status,
     ).toBe(200);
+  });
+});
+
+describe('client error reports', () => {
+  it('keeps the latest phone errors for signed-in staff, size-limited', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const report = {
+      app: 'navigator',
+      platform: 'android 34',
+      where: 'render',
+      message: 'boom',
+      stack: 'at Screen',
+    };
+    expect(
+      (await app.request('/public/client-errors', json(report))).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request(
+          '/public/client-errors',
+          json({ ...report, message: 'x'.repeat(600) }),
+        )
+      ).status,
+    ).not.toBe(200);
+    expect((await app.request('/client-errors')).status).toBe(401);
+    const owner = await login('owner@harbour.demo');
+    const list = (await (
+      await app.request('/client-errors', {
+        headers: { Authorization: `Bearer ${owner}` },
+      })
+    ).json()) as { message: string }[];
+    expect(list.map((e) => e.message)).toEqual(['boom']);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 

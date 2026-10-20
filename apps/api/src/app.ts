@@ -979,5 +979,27 @@ export function createApp(
     return c.json({ stored: accepted.length });
   });
 
+  // Errors from TURN apps on test phones, so a problem can be read without a cable. The last 50
+  // stay in memory and are printed to the server log; they carry no position or venue data.
+  const clientErrors: Record<string, string>[] = [];
+  app.post('/public/client-errors', async (c) => {
+    const e = z
+      .object({
+        app: z.string().max(40),
+        platform: z.string().max(40),
+        where: z.string().max(80),
+        message: z.string().max(500),
+        stack: z.string().max(4000).optional(),
+      })
+      .parse(await c.req.json());
+    clientErrors.push({ at: now(), ...e });
+    if (clientErrors.length > 50) clientErrors.shift();
+    console.warn(
+      `[client-error] ${e.app} ${e.platform} ${e.where}: ${e.message}`,
+    );
+    return c.json({ ok: true });
+  });
+  app.get('/client-errors', auth, (c) => c.json(clientErrors));
+
   return app;
 }

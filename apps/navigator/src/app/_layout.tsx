@@ -5,11 +5,16 @@ import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ErrorBoundary } from '../components/error-boundary';
 import { Mark } from '../components/icon';
+import { installCrashReporting, reportError } from '../lib/crash';
 import { PrefsProvider, useTheme } from '../theme';
+
+installCrashReporting();
 
 function Shell() {
   const theme = useTheme();
@@ -19,7 +24,17 @@ function Shell() {
     Inter_600SemiBold,
     Inter_700Bold,
   });
-  if (!loaded && !error)
+  // Never wait on fonts forever: after 4 s continue with the system font.
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (loaded || error) return;
+    const t = setTimeout(() => {
+      setGaveUp(true);
+      reportError(new Error('Fonts did not load within 4 s'), 'fonts');
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [loaded, error]);
+  if (!loaded && !error && !gaveUp)
     return (
       <View
         style={{
@@ -60,7 +75,9 @@ export default function Layout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <PrefsProvider>
-          <Shell />
+          <ErrorBoundary>
+            <Shell />
+          </ErrorBoundary>
         </PrefsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
