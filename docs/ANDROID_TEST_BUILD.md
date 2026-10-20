@@ -8,7 +8,7 @@ The first permission-enabled APK did not resolve this: two subsequent recordings
 
 Build 4 (versionCode 4) adds the `TurnBle` native module and Bluetooth permissions (BLUETOOTH_SCAN, BLUETOOTH_ADVERTISE, BLUETOOTH_CONNECT; legacy BLUETOOTH/ADMIN for older Android): a **Beacons** tab lets a phone act as a TURN beacon and Survey can include BLE signals. See [BLE beacon protocol](FINGERPRINT_TESTING.md#ble-beacons-with-spare-android-phones-build-4). Motion and Wi-Fi acquisition are unchanged. Install it over the existing app; every beacon phone also needs this build. Rebuilding with `expo prebuild` regenerates `apps/mobile/android` (ignored) and rewrites the `ios` script in `apps/mobile/package.json`; discard that incidental change.
 
-Build 7 (versionCode 7, 2026-10-20) reads **iBeacon** frames (April Brother and most vendors), reports device addresses for beacons that share an iBeacon ID, and adds a discovery stream for the visitor app's Beacons screen ([ADR-0012](../decisions/0012-ibeacon-and-always-on-live.md)). Built locally with the commands below; install it over build 6.
+Build 7 (versionCode 7, 2026-10-20) reads **iBeacon** frames (April Brother and most vendors), reports device addresses for beacons that share an iBeacon ID, and adds a discovery stream for the visitor app's Beacons screen ([ADR-0012](../decisions/0012-ibeacon-and-always-on-live.md)). Built locally with the commands below, which now include `-Pexpo.useLegacyPackaging=true` (50 MB; SHA-256 prefix 5be219b9a707260b); install it over earlier builds. The first build 7 package stored the native libraries uncompressed without extracting them at install. It showed a white screen on the user's Android phone and crashed at start on the Android 15 emulator (`libreactnative.so` not found). With the libraries extracted, it starts and loads the visitor app on the emulator; not yet confirmed on the phone.
 
 Build 6 (versionCode 6, 2026-10-19) adds Eddystone-UID scanning for commercial beacons beside TURN phone beacons ([beacon setup](BEACON_SETUP.md)). It was built locally with the commands below (debug, arm64, 97 MB; SHA-256 prefix b14d73b4aa9a8209) and has not been installed on a phone yet. Install it over build 5 on every scanning phone; serve it with `npm run phone:android:install`.
 
@@ -27,7 +27,7 @@ npm ci
 cd apps/mobile
 npx expo prebuild --platform android --no-install
 cd android
-./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a
+./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a -Pexpo.useLegacyPackaging=true
 ```
 
 On Windows use `gradlew.bat`. The ARM64 debug APK is at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk`; it supports the Pixel test device, not x86 emulators. Generated native directories and APKs stay ignored. App configuration declares the sensor permission and the local-only package ID `com.turn.navigation.dev`. Never distribute a private-venue release bundle publicly.
@@ -41,7 +41,7 @@ If SUBST produces React Native/Kotlin errors about files having different roots,
 $env:TURN_CANONICAL_ROOT = $PWD.Path
 $env:NODE_ENV = 'development'
 Set-Location T:\apps\mobile\android
-.\gradlew.bat :app:assembleDebug -PreactNativeArchitectures=arm64-v8a '-Pkotlin.incremental=false' '-Pkotlin.compiler.execution.strategy=in-process' --init-script T:\scripts\android-subst.gradle --max-workers=2
+.\gradlew.bat :app:assembleDebug -PreactNativeArchitectures=arm64-v8a '-Pkotlin.incremental=false' '-Pkotlin.compiler.execution.strategy=in-process' --init-script T:\scripts\android-subst.gradle --max-workers=2 '-Pexpo.useLegacyPackaging=true'
 ```
 
 The init script adjusts build-task CLI paths only; it does not patch dependencies or generated native source. Prefer a genuinely short checkout on future machines. The first build after disabling incremental caches recompiles Kotlin dependencies.
