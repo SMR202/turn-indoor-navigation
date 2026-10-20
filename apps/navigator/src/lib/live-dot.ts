@@ -1,6 +1,7 @@
 import {
   Easing,
   makeMutable,
+  ReduceMotion,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -8,6 +9,8 @@ import { DisplayPose, type DisplayMap } from '@turn/positioning-runtime';
 
 type P = { x: number; y: number };
 const TICK = 0.1;
+// The glide is position feedback, not decoration: keep it with the system's reduce-motion setting.
+const KEEP = ReduceMotion.Never;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** Animated values the map reads on the UI thread; React never re-renders for them. */
@@ -101,7 +104,11 @@ export class LiveDot {
         v.y.value = p.y;
         v.visible.value = withTiming(1, { duration: 300 });
       } else if (p.x !== this.shown.x || p.y !== this.shown.y) {
-        const cfg = { duration: TICK * 1000 + 20, easing: Easing.linear };
+        const cfg = {
+          duration: TICK * 1000 + 20,
+          easing: Easing.linear,
+          reduceMotion: KEEP,
+        };
         v.x.value = withTiming(p.x, cfg);
         v.y.value = withTiming(p.y, cfg);
       }
@@ -112,6 +119,7 @@ export class LiveDot {
       this.values.heading.value = withTiming(this.unwrapped, {
         duration: TICK * 1000 + 50,
         easing: Easing.linear,
+        reduceMotion: KEEP,
       });
     }
     if ((heading !== null) !== this.headingKnown) {
