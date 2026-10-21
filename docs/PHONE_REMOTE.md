@@ -27,6 +27,16 @@ One-time setup:
 
 Each session: iPhone on the cable and unlocked, then `npm run phone -- ios start` (starts `ios tunnel start --userspace`, mounts the image, runs WebDriverAgent and forwards port 8100; logs in `work/tools/logs/`). A locked iPhone gives black screenshots; the script never enters a passcode. Setting Auto-Lock to _Never_ while testing avoids that.
 
+### Without the cable (not finished)
+
+WebDriverAgent also answers on the iPhone's Wi-Fi address (`start` saves it in `work/tools/iphone-wda-url.txt`; other commands fall back to it when port 8100 is not forwarded). **EXPERIMENT RESULT (2026-10-21):** unplugging stops WebDriverAgent within seconds (`lost connection to testmanagerd`): its test session runs over the iOS 17+ developer tunnel, which go-ios 1.3.2 builds over USB only. Steps already taken towards a cable-free session:
+
+- **Apple Devices** (Microsoft Store; on current Windows it replaces iTunes for iPhones) → the iPhone → **Show this iPhone when on Wi-Fi** → Apply. The phone then reports `EnableWifiConnections: true`.
+- Apple's device service recognises the phone on Wi-Fi by the hardware Wi-Fi address in the pairing record, so **Private Wi-Fi Address** must be **Off** for that network on the iPhone. Then `ios list` shows `ConnectionType: Network`.
+- `python -m pymobiledevice3 lockdown start-tunnel --mobdev2 --udid <UDID>` (pymobiledevice3 9.15.1 is installed; set `PYTHONUTF8=1` on Windows) finds the phone over Wi-Fi but reports it unpaired (pymobiledevice3 keeps its own pairing records), and its tunnel uses a wintun adapter, which needs an Administrator terminal on Windows.
+
+Next: pair pymobiledevice3 once over USB (`python -m pymobiledevice3 lockdown pair`, tap Trust), run the Wi-Fi tunnel from an Administrator terminal, and start WebDriverAgent through it (go-ios `runwda --address=<tunnel ip> --rsd-port=<port>`, or `pymobiledevice3 developer dvt xcuitest`). Until then, keep the cable in for remote control; TURN itself (and the beacon test) needs no cable.
+
 ## Android
 
 `adb` from the Android SDK: an emulator, a USB phone, or **wireless debugging** without a cable (Android 11+): Developer options → Wireless debugging → Pair device with pairing code, then on the computer run `adb pair IP:PORT` (type the code yourself) and `adb connect IP:PORT` with the address shown on the Wireless debugging screen. With several devices set `ANDROID_SERIAL`. Pinch is not available through adb.

@@ -13,7 +13,13 @@
 // sideloaded as com.smr202.turnwda.xctrunner[.team] (WDA_BUNDLE overrides the prefix), adb from the
 // Android SDK (ADB overrides). See docs/PHONE_REMOTE.md.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,7 +29,28 @@ const IOS =
 // Sideloadly appends the signing team to bundle ids (com.turn.navigation.dev.UZPRC7UX69), so
 // installed apps are found by prefix.
 const WDA_PREFIX = process.env.WDA_BUNDLE ?? 'com.smr202.turnwda.xctrunner';
-const WDA = 'http://127.0.0.1:8100';
+// WebDriverAgent listens on the iPhone's Wi-Fi address too: `ios start` saves it, so commands work
+// over the cable's port forward or, unplugged, straight over Wi-Fi (IPHONE_WDA overrides).
+const WDA_USB = 'http://127.0.0.1:8100';
+const WIFI_FILE = resolve(root, 'work/tools/iphone-wda-url.txt');
+let WDA = WDA_USB;
+async function pickWda() {
+  const candidates = [
+    process.env.IPHONE_WDA,
+    WDA_USB,
+    existsSync(WIFI_FILE) ? readFileSync(WIFI_FILE, 'utf8').trim() : null,
+  ].filter(Boolean);
+  for (const url of candidates)
+    try {
+      const r = await fetch(`${url}/status`, {
+        signal: AbortSignal.timeout(2500),
+      });
+      if (r.ok) return (WDA = url);
+    } catch {
+      // try the next route
+    }
+  return WDA;
+}
 const ADB =
   process.env.ADB ??
   resolve(process.env.LOCALAPPDATA ?? '', 'Android/Sdk/platform-tools/adb.exe');
@@ -161,9 +188,22 @@ const iosCommands = {
   pinch: iosPinch,
   async start() {
     if (!existsSync(IOS)) throw new Error(`go-ios not found at ${IOS}.`);
-    if (!/"udid"/.test(ios('tunnel', 'ls'))) {
+    // iOS 17+: a userspace tunnel (USB or Wi-Fi) that the other commands use through go-ios's agent.
+    const tunnels = () => {
+      const out = spawnSync(IOS, ['tunnel', 'ls'], { encoding: 'utf8' }).stdout;
+      try {
+        return JSON.parse(out.trim().split('\n').pop() ?? '[]').length;
+      } catch {
+        return 0;
+      }
+    };
+    if (!tunnels()) {
       iosDetached('ios-tunnel', 'tunnel', 'start', '--userspace');
-      await sleep(4000);
+      for (let i = 0; i < 20 && !tunnels(); i++) await sleep(1000);
+      if (!tunnels())
+        throw new Error(
+          'No tunnel to the iPhone (USB, or Wi-Fi with "Show this iPhone when on Wi-Fi"); see work/tools/logs/ios-tunnel.log.',
+        );
     }
     const mounted = ios('image', 'list');
     if (
@@ -200,8 +240,10 @@ const iosCommands = {
       await sleep(1000);
       try {
         const s = await wda('/status');
+        const ip = s.value?.ios?.ip;
+        if (ip) writeFileSync(WIFI_FILE, `http://${ip}:8100`);
         return console.log(
-          `WebDriverAgent ready (${s.value?.os?.name ?? 'iOS'} ${s.value?.os?.version ?? ''}).`,
+          `WebDriverAgent ready (${s.value?.os?.name ?? 'iOS'} ${s.value?.os?.version ?? ''}${ip ? `, also on Wi-Fi at ${ip}:8100` : ''}).`,
         );
       } catch {
         // still starting
@@ -284,6 +326,7 @@ if (!table || !table[cmd]) {
   process.exit(1);
 }
 try {
+  if (os === 'ios' && cmd !== 'start') await pickWda();
   if (cmd === 'shot') {
     const png = await table.shot();
     const file =
