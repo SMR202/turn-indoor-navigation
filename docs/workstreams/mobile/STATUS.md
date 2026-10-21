@@ -2,6 +2,12 @@
 
 Updated: 2026-10-21.
 
+## Remote control of the test phones; iPhone map checked live — 2026-10-21
+
+IMPLEMENTED: `npm run phone -- <ios|android> <start|shot|tap|swipe|pinch|home|launch|status>` ([phone remote](../../PHONE_REMOTE.md)). iPhone: go-ios 1.3.2 (userspace tunnel, iOS 17+ developer image) and Appium's unsigned WebDriverAgent 16.15.3 sideloaded with unique bundle ids; Android: adb. Tools stay in `work/tools`, screenshots in `work/phone-shots` (both ignored).
+
+FACT: the iPhone had kept the JavaScript from before today's map fixes (suspended in the background, it missed every live update); it was switched to the production-mode server on port 8081 remotely. EXPERIMENT RESULT (iPhone 15 Pro, iOS 26.5, by remote pinch): after zooming in and out the floor plan, room labels and live dot stayed together, and the on-phone self-check reported 0.2 px at rest and no mismatch after the pinches. Windows needs Apple Root CA in the user's trusted roots for the developer image (done by the phone owner).
+
 ## Visitor app: zero-offset map layers, on-phone map self-check, beacon test — 2026-10-21
 
 FACT (user report: drift persisted on the iPhone). EXPERIMENT RESULT (Android emulator, on-phone self-check): a running app that received code edits through Fast Refresh measured the floor plan 591 px and the labels 192 px from where they belong; a clean start measured 0.1–0.2 px after zooms, redraws and pans. The phones had stayed open all day while code changed.

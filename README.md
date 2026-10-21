@@ -33,7 +33,7 @@ From the repository root, launch the phone app with `npm start -- --go --lan` (o
 | `npm test`           | UI-independent contracts/venue/routing tests      |
 | `npm run format`     | Format active code/docs                           |
 
-The SDK 57 app supports private, locally bundled plan-derived maps, room selection, zoom, guided test courses, saved calibration, walked trails and endpoint evaluation. A fresh clone uses the fictional demo; private plans are deliberately excluded from Git. See [local venues and guided testing](docs/LOCAL_VENUES.md). Experimental step/yaw tracking and replay are implemented; physical accuracy is unmeasured. [Phone testing](docs/PHONE_TESTING.md) covers the sensor protocol.
+The SDK 57 app supports private, locally bundled plan-derived maps, room selection, zoom, guided test courses, saved calibration, walked trails and endpoint evaluation. A fresh clone uses the fictional demo; private plans are deliberately excluded from Git. See [local venues and guided testing](docs/LOCAL_VENUES.md). Experimental step/yaw tracking and replay are implemented; physical accuracy is unmeasured. [Phone testing](docs/PHONE_TESTING.md) covers the sensor protocol. [Phone remote](docs/PHONE_REMOTE.md) takes screenshots and drives TURN on the test iPhone and Android phones from the computer.
 
 New **Survey** tab: magnetic fingerprints on both phones, optional Android Wi-Fi, independent recognition and confirmed navigation recovery. Follow the [fingerprint testing guide](docs/FINGERPRINT_TESTING.md); this station pilot does not yet continuously correct PDR. The interface now uses Navigate / Survey / Tests tabs.
 

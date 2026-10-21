@@ -16,6 +16,7 @@
     "analyze:ble": "tsx scripts/analyze-ble-traces.mjs",
     "replay:fingerprints": "tsx scripts/replay-fingerprints.mjs",
     "compare:motion": "tsx scripts/compare-motion.mjs",
+    "phone": "node scripts/phone-remote.mjs",
     "phone:tests": "tsx scripts/phone-tests.mjs",
     "phone:android:install": "node scripts/serve-android-build.mjs",
     "diagnose": "tsx scripts/diagnose-runs.mjs",
