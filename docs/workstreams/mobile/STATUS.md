@@ -2,6 +2,14 @@
 
 Updated: 2026-10-21.
 
+## Visitor app: zero-offset map layers, on-phone map self-check, beacon test — 2026-10-21
+
+FACT (user report: drift persisted on the iPhone). EXPERIMENT RESULT (Android emulator, on-phone self-check): a running app that received code edits through Fast Refresh measured the floor plan 591 px and the labels 192 px from where they belong; a clean start measured 0.1–0.2 px after zooms, redraws and pans. The phones had stayed open all day while code changed.
+
+IMPLEMENTED: `VenueMap` now draws everything for the camera it last rested at (SVG; labels, pins, markers and dots at plain `left`/`top`) and the UI thread adds only the live camera's difference, zero whenever the map is still and followed by a plain zero, so stale or replayed animation values cannot move a layer. `useMapSelfCheck` measures a probe drawn in the floor plan and one in the overlay layer (`measureInWindow`, transforms included) 1.5 s and 4 s after the map rests and posts mismatches (and one "ok" per session) to `/public/client-errors`. **Test beacons** screen (see the positioning status). Phones are served by a production-mode server (no Fast Refresh) on port 8081.
+
+Validation: root check passes (228 tests). Native: Android emulator self-check; the phones' reports will show in the API log.
+
 ## Visitor app: map layers locked together on phones, direction learned from a marked heading — 2026-10-21
 
 FIXED (user report with phone screenshots: floor plan drawn at the first whole-floor view while labels, beacon markers and the blue dot sat at the zoomed camera, so they appeared to move on zoom): on phones a React redraw re-sends each animated view's plain props (Reanimated passes the style computed at the view's first render), which can replace the UI-thread position until the next animation frame. At rest nothing animates, so each layer could snap back to an old camera. Every animated map layer now also carries its resting position as a plain style after the animated one (`rest` in `VenueMap`): the floor-plan transform, labels, pins, beacon markers, the route start and both dots (the live dot gets its resting position, accuracy, heading and state from `LiveDot.watch`). Following the live dot, the camera now stops writing once it has caught up and redraws once at the exact camera. The browser was never affected, which is why earlier browser checks passed.

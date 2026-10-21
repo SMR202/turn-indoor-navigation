@@ -401,6 +401,41 @@ describe('shared beacon layout (phone setup)', () => {
   });
 });
 
+describe('beacon test surveys', () => {
+  it('are kept for private LAN venues and readable on the LAN server', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const survey = {
+      platform: 'ios 26.0',
+      beacons: [{ tag: 'IB0001000A', x: 1, y: 2, label: 'Beacon 1' }],
+      spots: [
+        {
+          tag: 'IB0001000A',
+          at: '2026-10-21T10:00:00.000Z',
+          seconds: 10,
+          readings: { IB0001000A: { median: -58, count: 10 } },
+        },
+      ],
+      fit: null,
+    };
+    const path = '/public/venues/turn-demo-centre/beacon-survey';
+    expect((await app.request(path, json(survey))).status).toBe(403);
+    const db = openDb(':memory:');
+    seed(db);
+    db.prepare(
+      "UPDATE venues SET visibility = 'private-lan' WHERE id = 'turn-demo-centre'",
+    ).run();
+    const lan = createApp(db, { includePrivateLan: true });
+    expect((await lan.request(path, json(survey))).status).toBe(200);
+    const got = (await (await lan.request(path)).json()) as (typeof survey)[];
+    expect(got).toHaveLength(1);
+    expect(got[0]!.spots[0]!.readings.IB0001000A!.median).toBe(-58);
+    expect(
+      (await lan.request(path, json({ ...survey, spots: 'x' }))).status,
+    ).not.toBe(200);
+    warn.mockRestore();
+  });
+});
+
 describe('client error reports', () => {
   it('keeps the latest phone errors for signed-in staff, size-limited', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

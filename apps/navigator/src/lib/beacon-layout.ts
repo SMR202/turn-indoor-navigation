@@ -15,6 +15,8 @@ export type LayoutBeacon = {
   /** Median RSSI one metre away, measured with this phone (or the venue's value). */
   referenceRssi?: number;
   calibratedAt?: string;
+  /** Path-loss exponent fitted by a beacon test survey (set together with a survey reference). */
+  exponent?: number;
   label?: string;
   /** iBeacon proximity UUID (iPhones can only range iBeacons whose UUID they know). */
   uuid?: string;
@@ -105,6 +107,7 @@ export function placementsFor(
         y: b.y,
         ...(reference !== undefined ? { referenceRssi: reference } : {}),
         ...(b.calibratedAt ? { calibratedAt: b.calibratedAt } : {}),
+        ...(b.exponent !== undefined ? { exponent: b.exponent } : {}),
       };
     });
 }

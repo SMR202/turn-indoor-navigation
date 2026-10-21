@@ -2,6 +2,16 @@
 
 Updated: 2026-10-21.
 
+## Nearest-beacon zone, beacon test survey — 2026-10-21
+
+FACT (user report): standing next to a beacon in the rear bedroom, with that beacon clearly strongest, the dot stayed in the lounge, passage or entrance. Causes in the code: radio was applied only after 1 m of walking; the proximity detector needed 3 readings in 2 s (iPhone ranging gives 1 per second, so it never fired on iPhone) and a 6 dB lead, and fired once per approach.
+
+IMPLEMENTED (`AssistFusion`, replaces the proximity detector in live and replay): a nearest-beacon zone tuned for 1 Hz ranging (strongest beacon within 12 dB of its 1 m level and 3 dB above the runner-up for 2 s, two beacons heard) applies `ParticleFusion.updateNear`: Gaussian σ 2.2 m around the beacon times 0.35 per wall between hypothesis and beacon, restarting in the beacon's room when the cloud cannot explain it; on entry and every 4 s while it stays nearest, standing or walking. Beacon test survey in the visitor app (`beacon-survey.ts`): readings of every beacon while standing at each placed one, a pass/fail per beacon (strongest at its own spot) and a least-squares log-distance fit (one exponent for the building, one 1 m level per beacon); fitted placements carry their exponent and are not pooled. Surveys of private LAN venues are posted to the TURN API.
+
+EXPERIMENT RESULT (synthetic, mechanics only): a walker standing beside a beacon in the next room with a wrong start is moved into that room within 12 s at one reading per beacon per second; a walker in a doorway between rooms does not move. The survey fit recovers a known exponent within 0.3 and 1 m levels within 2.5 dB. No venue accuracy is established.
+
+Next: run **Test beacons** at home on both phones and read the posted surveys.
+
 ## Offset-robust beacon likelihood and pooled calibrations — 2026-10-21
 
 FACT (home layout shared by the phones): the nine identical April beacons were hand-calibrated at -58 to -79 dBm at 1 m, a 21 dB spread; one beacon model normally varies by a few dB, so several calibrations are probably off (Beacons 9, 2 and 7 read -79/-76/-75).

@@ -124,3 +124,93 @@ it('pulls scattered hand calibrations of one beacon model towards their median',
     pooledReferences([-58, -79].map(at), 0.5, 4).map((b) => b.referenceRssi),
   ).toEqual([-58, -79]);
 });
+
+describe('nearest beacon zone (synthetic mechanics, not venue accuracy)', () => {
+  // Two 10 x 10 m rooms; the wall at x = 10 has a door at y 4-6.
+  const rooms: FusionMap = {
+    floorId: 'f',
+    walkable: [
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 10 },
+        { x: 0, y: 10 },
+      ],
+      [
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+        { x: 20, y: 10 },
+        { x: 10, y: 10 },
+      ],
+    ],
+    walls: [
+      { from: { x: 0, y: 0 }, to: { x: 20, y: 0 } },
+      { from: { x: 20, y: 0 }, to: { x: 20, y: 10 } },
+      { from: { x: 20, y: 10 }, to: { x: 0, y: 10 } },
+      { from: { x: 0, y: 10 }, to: { x: 0, y: 0 } },
+      { from: { x: 10, y: 0 }, to: { x: 10, y: 4 } },
+      { from: { x: 10, y: 6 }, to: { x: 10, y: 10 } },
+    ],
+  };
+  const beacons: BeaconPlacement[] = [
+    { tag: 'A1', floorId: 'f', x: 3, y: 8, referenceRssi: -62 },
+    { tag: 'A2', floorId: 'f', x: 6, y: 2, referenceRssi: -62 },
+    { tag: 'B1', floorId: 'f', x: 17, y: 3, referenceRssi: -62 },
+    { tag: 'B2', floorId: 'f', x: 14, y: 8, referenceRssi: -62 },
+  ];
+  /** One reading per beacon per second (iPhone ranging), 6 dB per wall, ±3 dB noise. */
+  function standAt(
+    a: AssistFusion,
+    p: { x: number; y: number },
+    from: number,
+    seconds: number,
+  ) {
+    for (let s = 0; s < seconds; s++) {
+      const t = from + s;
+      for (const b of beacons) {
+        const walls = rooms.walls.filter((w) => {
+          const d = (
+            u: { x: number; y: number },
+            v: { x: number; y: number },
+            q: { x: number; y: number },
+          ) => (v.x - u.x) * (q.y - u.y) - (v.y - u.y) * (q.x - u.x);
+          return (
+            d(w.from, w.to, p) * d(w.from, w.to, b) < 0 &&
+            d(p, b, w.from) * d(p, b, w.to) < 0
+          );
+        }).length;
+        const noise = (((s * 7 + b.x * 13) % 7) - 3) * 1;
+        a.addSample(
+          t,
+          b.tag,
+          predictRssi(
+            { refRssi: -62, exponent: 2.3 },
+            Math.hypot(p.x - b.x, p.y - b.y),
+          ) -
+            6 * walls +
+            noise,
+        );
+      }
+      a.tick(t);
+    }
+  }
+  const live = { windowSeconds: 4, minPackets: 2 };
+
+  it('moves a standing walker into the room of the beacon they stand next to', () => {
+    const a = new AssistFusion(rooms, beacons, live, 4);
+    a.setPosition(4, 5, 1); // wrong: actually beside B1 in the other room
+    standAt(a, { x: 16.4, y: 3.4 }, 0, 12);
+    const e = a.estimate()!;
+    expect(e.x).toBeGreaterThan(10.2); // the right room
+    expect(Math.hypot(e.x - 17, e.y - 3)).toBeLessThan(2.5);
+  });
+  it('stays put between beacons when none is clearly nearest', () => {
+    const a = new AssistFusion(rooms, beacons, live, 4);
+    a.setPosition(10.5, 5, 1);
+    const before = a.estimate()!;
+    // In the doorway, about equally far from the beacons of both rooms.
+    standAt(a, { x: 10.5, y: 5 }, 0, 20);
+    const e = a.estimate()!;
+    expect(Math.hypot(e.x - before.x, e.y - before.y)).toBeLessThan(1);
+  });
+});

@@ -992,6 +992,7 @@ export function createApp(
     label: z.string().max(40).optional(),
     uuid: z.string().max(40).optional(),
     txAt1m: z.number().min(-110).max(20).optional(),
+    exponent: z.number().min(1.5).max(4).optional(),
     removed: z.boolean().optional(),
   });
   const layoutSchema = z.object({
@@ -1038,6 +1039,75 @@ export function createApp(
       at,
     );
     return c.json({ updatedAt: at });
+  });
+
+  // Beacon test surveys from phones (private LAN venues): RSSI of every beacon heard while
+  // standing at each placed beacon, kept so the setup can be analysed on the computer. Venue radio
+  // calibration only: no person, session or movement is recorded.
+  const surveySchema = z.object({
+    platform: z.string().max(40),
+    beacons: z
+      .array(
+        z.object({
+          tag: z.string().max(12),
+          x: z.number().finite(),
+          y: z.number().finite(),
+          label: z.string().max(40).optional(),
+        }),
+      )
+      .max(64),
+    spots: z
+      .array(
+        z.object({
+          tag: z.string().max(12),
+          at: z.string().max(40),
+          seconds: z.number().min(0).max(120),
+          readings: z.record(
+            z.string().max(12),
+            z.object({
+              median: z.number().min(-130).max(10),
+              count: z.number().int().min(0).max(10000),
+            }),
+          ),
+        }),
+      )
+      .max(64),
+    fit: z
+      .object({
+        exponent: z.number(),
+        references: z.record(z.string().max(12), z.number()),
+        rmsDb: z.number(),
+        observations: z.number(),
+      })
+      .nullable(),
+  });
+  const surveys = new Map<
+    string,
+    (z.infer<typeof surveySchema> & { at: string })[]
+  >();
+  app.post('/public/venues/:id/beacon-survey', async (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    if (v.visibility !== 'private-lan')
+      return c.json(
+        { error: 'Surveys are kept for private LAN venues only.' },
+        403,
+      );
+    const s = surveySchema.parse(await c.req.json());
+    const list = surveys.get(param(c, 'id')) ?? [];
+    list.push({ ...s, at: now() });
+    if (list.length > 20) list.shift();
+    surveys.set(param(c, 'id'), list);
+    console.warn(
+      `[beacon-survey] ${param(c, 'id')} ${s.platform}: ${s.spots.length} spots${s.fit ? `, exponent ${s.fit.exponent}, rms ${s.fit.rmsDb.toFixed(1)} dB` : ''}`,
+    );
+    return c.json({ ok: true });
+  });
+  app.get('/public/venues/:id/beacon-survey', (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v) || v.visibility !== 'private-lan')
+      return c.json({ error: 'Not found' }, 404);
+    return c.json(surveys.get(param(c, 'id')) ?? []);
   });
 
   // Errors from TURN apps on test phones, so a problem can be read without a cable. The last 50

@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Platform,
   StyleSheet,
@@ -42,6 +50,7 @@ import {
   type ScenePlace,
 } from '@turn/map-scene';
 import { Icon } from '../components/icon';
+import { reportError } from '../lib/crash';
 import type { DotSnapshot, LiveDot } from '../lib/live-dot';
 import { catColor, F } from '../theme';
 
@@ -104,10 +113,12 @@ const EASE = Easing.bezier(...motion.easing.standard);
  * settles pan and zoom run on the UI thread as a composited transform, so gestures stay at frame rate.
  * Labels, pins and the blue dot are native views positioned from the same shared camera.
  *
- * Every animated layer also carries its resting position as a plain style (`rest`), placed after
- * the animated one. On phones a React redraw re-sends a view's plain props, which can replace the
- * UI-thread values until the next animation frame; at rest nothing animates, so without these the
- * floor plan, labels and dot could each snap back to an old camera and drift apart.
+ * Everything is drawn by React for the camera the map last rested at (`rendered`): the SVG, and
+ * every label, pin and dot at plain `left`/`top`. The UI thread only adds the difference between
+ * the live camera and that one, which is exactly zero whenever the map is still, and each animated
+ * style is followed by a plain zero. On phones Reanimated can re-send a view's first-render style or
+ * an older settled value after a React redraw; with zero offsets at rest none of that can move a
+ * layer, so the floor plan, labels, beacons and the dot cannot drift apart.
  */
 export const VenueMap = memo(function VenueMap(props: Props) {
   const { scene, insets } = props;
@@ -118,10 +129,10 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   const cs = useSharedValue(1);
   const vw = useSharedValue(0);
   const vh = useSharedValue(0);
-  // Reference camera (fixed) and rendered camera; see transform composition below.
-  const refX = useSharedValue(0);
-  const refY = useSharedValue(0);
-  const refS = useSharedValue(1);
+  // The camera the mounted drawing is for (switched right after React mounts it).
+  const dX = useSharedValue(0);
+  const dY = useSharedValue(0);
+  const dS = useSharedValue(1);
   const pending = useSharedValue(false);
   const limits = useSharedValue({
     whole: 1,
@@ -133,7 +144,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     maxY: 1,
   });
   const [rendered, setRendered] = useState<Camera | null>(null);
-  const [ref, setRef] = useState<Camera | null>(null);
+  // The camera last asked to be drawn (drives redraw decisions on the UI thread).
   const rendS = useSharedValue(1);
   const rendX = useSharedValue(0);
   const rendY = useSharedValue(0);
@@ -199,29 +210,11 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     cx.value = cam.x;
     cy.value = cam.y;
     cs.value = cam.s;
-    refX.value = cam.x;
-    refY.value = cam.y;
-    refS.value = cam.s;
     rendX.value = cam.x;
     rendY.value = cam.y;
     rendS.value = cam.s;
-    setRef(cam);
     setRendered(cam);
-  }, [
-    size,
-    scene,
-    fit,
-    cx,
-    cy,
-    cs,
-    refX,
-    refY,
-    refS,
-    rendX,
-    rendY,
-    rendS,
-    limits,
-  ]);
+  }, [size, scene, fit, cx, cy, cs, rendX, rendY, rendS, limits]);
 
   const onCenterChange = props.onCenterChange;
   const commit = useCallback(
@@ -239,6 +232,14 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     },
     [pending, rendX, rendY, rendS, onCenterChange, size.h, insets],
   );
+
+  // A new drawing is mounted: from now on the UI thread offsets from its camera.
+  useLayoutEffect(() => {
+    if (!rendered) return;
+    dX.value = rendered.x;
+    dY.value = rendered.y;
+    dS.value = rendered.s;
+  }, [rendered, dX, dY, dS]);
 
   // Crosshair mode starting: report where the pin is now, before any camera move.
   const renderedCam = rendered;
@@ -488,36 +489,15 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   const gesture = useSimultaneousGestures(pan, pinch, doubleTap, tap);
 
   // ---- Composited transform -----------------------------------------------------------------
-  // screen = C + T + k (p - C). Outer view maps reference → live camera (UI thread, every frame);
-  // inner view maps rendered → reference (React, changes only together with the SVG it wraps).
+  // screen = C + T + k (p - C): the drawing (made for camera d) moved to the live camera c on the UI
+  // thread. Identity whenever the map is still (c = d).
   const outer = useAnimatedStyle(() => ({
     transform: [
-      { translateX: (refX.value - cx.value) * cs.value },
-      { translateY: (cy.value - refY.value) * cs.value },
-      { scale: cs.value / refS.value },
+      { translateX: (dX.value - cx.value) * cs.value },
+      { translateY: (cy.value - dY.value) * cs.value },
+      { scale: cs.value / dS.value },
     ],
   }));
-  const inner =
-    rendered && ref
-      ? {
-          transform: [
-            { translateX: (rendered.x - ref.x) * ref.s },
-            { translateY: (ref.y - rendered.y) * ref.s },
-            { scale: ref.s / rendered.s },
-          ],
-        }
-      : null;
-  // What `outer` equals once the camera rests at `rendered` (see the note on VenueMap).
-  const outerRest =
-    rendered && ref
-      ? {
-          transform: [
-            { translateX: (ref.x - rendered.x) * rendered.s },
-            { translateY: (rendered.y - ref.y) * rendered.s },
-            { scale: rendered.s / ref.s },
-          ],
-        }
-      : null;
 
   const labels = useMemo<PlacedLabel[]>(
     () =>
@@ -564,7 +544,20 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [hasRendered, commit, cs, cx, cy, vw, vh, limits]);
-  const cam = useMemo(() => ({ cx, cy, cs, vw, vh }), [cx, cy, cs, vw, vh]);
+  const cam = useMemo(
+    () => ({ cx, cy, cs, vw, vh, dX, dY, dS }),
+    [cx, cy, cs, vw, vh, dX, dY, dS],
+  );
+  const probe = useMemo(
+    () => ({
+      x: (scene.bounds.minX + scene.bounds.maxX) / 2,
+      y: (scene.bounds.minY + scene.bounds.maxY) / 2,
+    }),
+    [scene],
+  );
+  const geoProbe = useRef<View>(null);
+  const overlayProbe = useRef<View>(null);
+  useMapSelfCheck(rootRef, geoProbe, overlayProbe, probe, rendered, size, cam);
   const rest = useMemo<Rest | null>(
     () =>
       rendered && size.w
@@ -585,19 +578,16 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         {rendered && size.w > 0 && (
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, outer, outerRest]}
+            style={[StyleSheet.absoluteFill, outer, styles.still]}
           >
             <View
-              style={[
-                {
-                  position: 'absolute',
-                  left: -MARGIN,
-                  top: -MARGIN,
-                  width: size.w + 2 * MARGIN,
-                  height: size.h + 2 * MARGIN,
-                },
-                inner,
-              ]}
+              style={{
+                position: 'absolute',
+                left: -MARGIN,
+                top: -MARGIN,
+                width: size.w + 2 * MARGIN,
+                height: size.h + 2 * MARGIN,
+              }}
             >
               <Geometry
                 scene={scene}
@@ -608,10 +598,29 @@ export const VenueMap = memo(function VenueMap(props: Props) {
                 route={props.route}
                 walked={props.walked ?? 0}
               />
+              <View
+                ref={geoProbe}
+                collapsable={false}
+                style={[
+                  styles.probe,
+                  {
+                    left:
+                      MARGIN + size.w / 2 + (probe.x - rendered.x) * rendered.s,
+                    top:
+                      MARGIN + size.h / 2 - (probe.y - rendered.y) * rendered.s,
+                  },
+                ]}
+              />
             </View>
           </Animated.View>
         )}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <ProbePoint
+            at={probe}
+            cam={cam}
+            rest={rest}
+            probeRef={overlayProbe}
+          />
           {labels.map((l) => (
             <MapLabel
               key={`${l.id}:${l.iconOnly ? 0 : l.lines.length}`}
@@ -673,7 +682,92 @@ type Cam = {
   cs: SharedValue<number>;
   vw: SharedValue<number>;
   vh: SharedValue<number>;
+  /** Camera of the mounted drawing (see VenueMap). */
+  dX: SharedValue<number>;
+  dY: SharedValue<number>;
+  dS: SharedValue<number>;
 };
+
+/**
+ * On-phone check that the floor plan and the overlays agree: a second or two after the map comes
+ * to rest, measures where a probe point drawn in the floor plan and the same point in the overlay
+ * layer actually are on screen (transforms included) and reports any disagreement to the TURN
+ * server, with one "ok" per session so a passing phone is visible too.
+ */
+function useMapSelfCheck(
+  root: React.RefObject<View | null>,
+  geo: React.RefObject<View | null>,
+  overlay: React.RefObject<View | null>,
+  probe: P,
+  rendered: Camera | null,
+  size: { w: number; h: number },
+  cam: Cam,
+) {
+  const reported = useRef({ ok: false, bad: 0 });
+  useEffect(() => {
+    if (!rendered || !size.w || Platform.OS === 'web') return;
+    const timers = [1500, 4000].map((ms) =>
+      setTimeout(() => {
+        const live = { x: cam.cx.value, y: cam.cy.value, s: cam.cs.value };
+        // Only judge a map at rest on the drawn camera.
+        if (
+          Math.abs(live.x - rendered.x) * live.s > 0.5 ||
+          Math.abs(live.y - rendered.y) * live.s > 0.5 ||
+          Math.abs(live.s / rendered.s - 1) > 0.002
+        )
+          return;
+        const measure = (r: React.RefObject<View | null>) =>
+          new Promise<{ x: number; y: number } | null>((resolve) => {
+            if (!r.current) return resolve(null);
+            r.current.measureInWindow((x, y) => resolve({ x, y }));
+          });
+        void Promise.all([measure(root), measure(geo), measure(overlay)]).then(
+          ([r, g, o]) => {
+            if (!r || !g || !o) return;
+            const ex = r.x + size.w / 2 + (probe.x - live.x) * live.s;
+            const ey = r.y + size.h / 2 - (probe.y - live.y) * live.s;
+            const off = (q: { x: number; y: number }) =>
+              Math.hypot(q.x - ex, q.y - ey);
+            const og = off(g),
+              oo = off(o);
+            const detail = `plan off ${og.toFixed(1)} px, overlays off ${oo.toFixed(1)} px, plan-overlay ${Math.hypot(g.x - o.x, g.y - o.y).toFixed(1)} px at ${live.s.toFixed(1)} px/m`;
+            if (og > 3 || oo > 3) {
+              if (reported.current.bad >= 5) return;
+              reported.current.bad++;
+              reportError(
+                new Error(`map-check MISMATCH: ${detail}`),
+                'map-check',
+              );
+            } else if (!reported.current.ok) {
+              reported.current.ok = true;
+              reportError(new Error(`map-check ok: ${detail}`), 'map-check');
+            }
+          },
+        );
+      }, ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [rendered, size.w, size.h, probe, cam, root, geo, overlay]);
+}
+
+function ProbePoint({
+  at,
+  cam,
+  rest,
+  probeRef,
+}: {
+  at: P;
+  cam: Cam;
+  rest: Rest | null;
+  probeRef: React.RefObject<View | null>;
+}) {
+  const [pos, atRest] = useScreenPoint(cam, at.x, at.y, rest);
+  return (
+    <Animated.View style={[styles.anchor, pos, atRest]}>
+      <View ref={probeRef} collapsable={false} style={styles.probe} />
+    </Animated.View>
+  );
+}
 
 // ---- Vector geometry (rendered camera, pixel coordinates) -----------------------------------
 const Geometry = memo(function Geometry({
@@ -833,25 +927,35 @@ function useDrawProgress(route: P[] | null) {
 }
 
 // ---- Overlays positioned on the UI thread -----------------------------------------------------
+/**
+ * A map point: React places it for the drawn camera (`rest`); the UI thread adds the live camera's
+ * difference, zero whenever the map is still (see VenueMap).
+ */
 function useScreenPoint(cam: Cam, x: number, y: number, rest: Rest | null) {
   const pos = useAnimatedStyle(() => ({
     transform: [
-      { translateX: cam.vw.value / 2 + (x - cam.cx.value) * cam.cs.value },
-      { translateY: cam.vh.value / 2 - (y - cam.cy.value) * cam.cs.value },
+      {
+        translateX:
+          (x - cam.cx.value) * cam.cs.value - (x - cam.dX.value) * cam.dS.value,
+      },
+      {
+        translateY:
+          (y - cam.dY.value) * cam.dS.value - (y - cam.cy.value) * cam.cs.value,
+      },
     ],
   }));
   return [pos, restPoint(rest, x, y)] as const;
 }
-/** Screen position of map point (x, y) with the camera at rest (plain style, see VenueMap). */
+const NO_OFFSET = [{ translateX: 0 }, { translateY: 0 }];
+/** Where React draws map point (x, y): for the drawn camera, with no offset (see VenueMap). */
 function restPoint(rest: Rest | null, x: number, y: number) {
   return rest
     ? {
-        transform: [
-          { translateX: rest.w / 2 + (x - rest.x) * rest.s },
-          { translateY: rest.h / 2 - (y - rest.y) * rest.s },
-        ],
+        left: rest.w / 2 + (x - rest.x) * rest.s,
+        top: rest.h / 2 - (y - rest.y) * rest.s,
+        transform: NO_OFFSET,
       }
-    : null;
+    : { left: -10000, top: -10000, transform: NO_OFFSET };
 }
 
 const LABEL_W = 150;
@@ -1185,13 +1289,23 @@ function UserDot({
       false,
     );
   }, [pulse]);
+  const bx = useSharedValue(user.x);
+  const by = useSharedValue(user.y);
+  useLayoutEffect(() => {
+    bx.value = user.x;
+    by.value = user.y;
+  }, [user.x, user.y, bx, by]);
   const pos = useAnimatedStyle(() => ({
     transform: [
       {
-        translateX: cam.vw.value / 2 + (ux.value - cam.cx.value) * cam.cs.value,
+        translateX:
+          (ux.value - cam.cx.value) * cam.cs.value -
+          (bx.value - cam.dX.value) * cam.dS.value,
       },
       {
-        translateY: cam.vh.value / 2 - (uy.value - cam.cy.value) * cam.cs.value,
+        translateY:
+          (by.value - cam.dY.value) * cam.dS.value -
+          (uy.value - cam.cy.value) * cam.cs.value,
       },
     ],
   }));
@@ -1312,16 +1426,24 @@ function LiveUserDot({
       false,
     );
   }, [pulse]);
+  const bx = useSharedValue(snap.x);
+  const by = useSharedValue(snap.y);
+  useLayoutEffect(() => {
+    bx.value = snap.x;
+    by.value = snap.y;
+  }, [snap.x, snap.y, bx, by]);
   const pos = useAnimatedStyle(() => ({
     opacity: v.visible.value,
     transform: [
       {
         translateX:
-          cam.vw.value / 2 + (v.x.value - cam.cx.value) * cam.cs.value,
+          (v.x.value - cam.cx.value) * cam.cs.value -
+          (bx.value - cam.dX.value) * cam.dS.value,
       },
       {
         translateY:
-          cam.vh.value / 2 - (v.y.value - cam.cy.value) * cam.cs.value,
+          (by.value - cam.dY.value) * cam.dS.value -
+          (v.y.value - cam.cy.value) * cam.cs.value,
       },
     ],
   }));
@@ -1340,8 +1462,10 @@ function LiveUserDot({
   const core = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(v.live.value, [0, 1], ['#8A93A3', color]),
   }));
-  const point = restPoint(rest, snap.x, snap.y);
-  const posRest = point ? { ...point, opacity: snap.visible ? 1 : 0 } : null;
+  const posRest = {
+    ...restPoint(rest, snap.x, snap.y),
+    opacity: snap.visible ? 1 : 0,
+  };
   const haloRest = rest ? haloBox(snap.sigma * rest.s) : null;
   const beamRest = {
     opacity: snap.headingOn ? 1 : 0,
@@ -1425,6 +1549,8 @@ const beamAngle = (heading: number) => `${90 - (heading * 180) / Math.PI}deg`;
 const styles = StyleSheet.create({
   anchor: { position: 'absolute', left: 0, top: 0, width: 0, height: 0 },
   landed: { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] },
+  still: { transform: [{ translateX: 0 }, { translateY: 0 }, { scale: 1 }] },
+  probe: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   label: {
     position: 'absolute',
     left: -LABEL_W / 2,

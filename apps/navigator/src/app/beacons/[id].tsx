@@ -13,6 +13,7 @@ import Svg, { Polyline } from 'react-native-svg';
 import { applyPlaceOverrides, buildScene, type P } from '@turn/map-scene';
 import { beaconTagKind } from '@turn/positioning-core';
 import { bleRichStream, roomNameAt } from '@turn/positioning-runtime';
+import { BeaconSurveyPanel } from '../../components/beacon-survey-panel';
 import { Icon } from '../../components/icon';
 import { Badge, Button, Chip, IconButton, T, Tap } from '../../components/ui';
 import { useVenue, type VenueBundle } from '../../lib/api';
@@ -74,6 +75,14 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
   const [sel, setSel] = useState<Selection | null>(null);
   const [placing, setPlacing] = useState<LayoutBeacon | null>(null);
   const [overview, setOverview] = useState(false);
+  const [testing, setTesting] = useState(false);
+  // The test runs on one floor at a time: the floor with most placed beacons.
+  const surveyFloor = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const b of layout.beacons)
+      count.set(b.floorId, (count.get(b.floorId) ?? 0) + 1);
+    return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  }, [layout.beacons]);
 
   const deviceFor = (b: LayoutBeacon) =>
     nearby.devices.find((d) => d.tag === b.tag || d.alt.includes(b.tag)) ??
@@ -150,6 +159,65 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
           setSel({ device: deviceFor(b)?.key ?? null, tag: b.tag });
         }}
       />
+    );
+
+  if (testing)
+    return (
+      <View style={{ flex: 1, backgroundColor: c.background }}>
+        <View
+          style={{
+            paddingTop: insets.top + 8,
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <IconButton
+            icon="back"
+            label="Back"
+            tone="sunken"
+            size={38}
+            onPress={() => setTesting(false)}
+          />
+          <View style={{ flex: 1 }}>
+            <T v="title">Beacon test</T>
+            <T v="caption" color={c.textMuted} lines={1}>
+              {bundle.summary.name}
+            </T>
+          </View>
+          <Listening active={nearby.listening} off={nearby.error !== null} />
+        </View>
+        <ScrollView
+          contentContainerStyle={{
+            padding: 16,
+            paddingBottom: insets.bottom + 40,
+          }}
+        >
+          <BeaconSurveyPanel
+            venueId={bundle.summary.id}
+            shared={bundle.summary.private}
+            beacons={layout.beacons.filter((b) => b.floorId === surveyFloor)}
+            listening={nearby.listening}
+            snapshot={nearby.snapshot}
+            onClose={() => setTesting(false)}
+            onApply={(fit) => {
+              const at = new Date().toISOString();
+              for (const b of layout.beacons) {
+                const ref = fit.references[b.tag];
+                if (ref === undefined) continue;
+                layout.upsert({
+                  ...stripSource(b),
+                  referenceRssi: Math.round(ref * 10) / 10,
+                  exponent: fit.exponent,
+                  calibratedAt: at,
+                });
+              }
+            }}
+          />
+        </ScrollView>
+      </View>
     );
 
   return (
@@ -237,6 +305,31 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
           </View>
           <Icon name="forward" size={18} color={c.textMuted} />
         </Tap>
+        {layout.beacons.length >= 2 && (
+          <Tap
+            onPress={() => setTesting(true)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              padding: 14,
+              borderRadius: 16,
+              backgroundColor: c.surface,
+            }}
+          >
+            <Badge icon="check" color={c.success} size={34} />
+            <View style={{ flex: 1 }}>
+              <T v="callout" weight="600">
+                Test beacons
+              </T>
+              <T v="caption" color={c.textMuted}>
+                Stand under each beacon for 10 s: checks each is the strongest
+                at its spot and calibrates from what this phone hears
+              </T>
+            </View>
+            <Icon name="forward" size={18} color={c.textMuted} />
+          </Tap>
+        )}
         <Section title={`In this venue (${layout.beacons.length})`}>
           {layout.beacons.length === 0 ? (
             <T v="caption" color={c.textMuted} style={{ padding: 16 }}>

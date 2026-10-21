@@ -1,9 +1,4 @@
-import {
-  DEFAULT_PROXIMITY_CONFIG,
-  ProximityDetector,
-  type BeaconPlacement,
-  type ProximityEvent,
-} from './ble-proximity';
+import { type BeaconPlacement, type ProximityEvent } from './ble-proximity';
 import {
   ParticleFusion,
   type FusionBeacon,
@@ -26,6 +21,19 @@ export type AssistConfig = {
   radioIntervalSeconds: number;
   /** ...and only after this much walking since the last radio update (no drifting while standing). */
   minMoveForRadioMetres: number;
+  /**
+   * Nearest beacon ("zone"): the strongest beacon, heard at least `zoneNearDb` within its 1 m level
+   * and `zoneMarginDb` above the runner-up for `zoneHoldSeconds`, pulls the estimate towards it
+   * (σ `zoneSigmaMetres`, each wall in between weighs `zoneWallFactor`), on entry and every
+   * `zoneRepeatSeconds` while it stays the nearest, standing or walking. Works with one reading a
+   * second (iPhone ranging), needs two beacons heard.
+   */
+  zoneNearDb: number;
+  zoneMarginDb: number;
+  zoneHoldSeconds: number;
+  zoneSigmaMetres: number;
+  zoneWallFactor: number;
+  zoneRepeatSeconds: number;
   /** Radio updates allowed right after a cold start without walking, to settle the first fix. */
   settleRadioUpdates: number;
   proximitySigmaMetres: number;
@@ -51,6 +59,12 @@ export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
   minPackets: 3,
   radioIntervalSeconds: 3,
   minMoveForRadioMetres: 1,
+  zoneNearDb: 12,
+  zoneMarginDb: 3,
+  zoneHoldSeconds: 2,
+  zoneSigmaMetres: 2.2,
+  zoneWallFactor: 0.35,
+  zoneRepeatSeconds: 4,
   settleRadioUpdates: 3,
   proximitySigmaMetres: 2.5,
   proximityMinBeacons: 2,
@@ -74,13 +88,15 @@ export function pooledReferences(
   shrink: number,
   poolMin: number,
 ): BeaconPlacement[] {
+  // A beacon with its own fitted exponent was calibrated by an on-site survey fit: trusted as is.
   const refs = placements
+    .filter((b) => b.exponent === undefined)
     .map((b) => b.referenceRssi)
     .filter((r): r is number => r !== undefined);
   if (refs.length < poolMin || shrink <= 0) return placements;
   const m = median(refs);
   return placements.map((b) =>
-    b.referenceRssi === undefined
+    b.referenceRssi === undefined || b.exponent !== undefined
       ? b
       : {
           ...b,
@@ -109,7 +125,9 @@ export class AssistFusion {
   readonly fusion: ParticleFusion;
   readonly config: AssistConfig;
   private readonly placements: BeaconPlacement[];
-  private readonly detector: ProximityDetector | null;
+  /** The beacon now judged nearest, and a challenger waiting out the hold. */
+  private zone: { tag: string; applied: number } | null = null;
+  private challenger: { tag: string; since: number } | null = null;
   private readonly recent = new Map<string, { at: number; rssi: number }[]>();
   private lastRaw: { x: number; y: number } | null = null;
   private positioned = false;
@@ -148,9 +166,6 @@ export class AssistFusion {
       ...this.config.fusion,
       seed,
     });
-    this.detector = this.placements.length
-      ? new ProximityDetector(this.placements, DEFAULT_PROXIMITY_CONFIG)
-      : null;
   }
 
   get beaconCount() {
@@ -169,7 +184,6 @@ export class AssistFusion {
     list.push({ at, rssi });
     if (list.length > 400) list.splice(0, list.length - 400);
     this.recent.set(tag, list);
-    this.detector?.push({ t: at, tag, rssi });
   }
   readings(at: number) {
     const out: { tag: string; rssi: number }[] = [];
@@ -313,24 +327,76 @@ export class AssistFusion {
       if (this.settleLeft > 0) this.settleLeft--;
       this.lastUsed = r.length;
     }
-    let proximity: AssistProximity | null = null;
-    const event = this.detector?.evaluate(at) ?? null;
-    if (
-      event &&
-      this.positioned &&
-      r.length >= this.config.proximityMinBeacons &&
-      event.marginDb !== null
-    ) {
-      const b = this.placements.find((p) => p.tag === event.tag)!;
-      const before = this.fusion.estimate();
-      this.fusion.updatePosition(b.x, b.y, this.config.proximitySigmaMetres);
-      proximity = {
-        ...event,
-        before: { x: before.x, y: before.y },
-        beacon: { floorId: b.floorId, x: b.x, y: b.y },
-      };
-    }
-    if (radioApplied || proximity) this.publish('beacons');
+    const proximity = this.positioned ? this.nearest(at, r) : null;
+    if (radioApplied || proximity || this.zoneMoved) this.publish('beacons');
+    this.zoneMoved = false;
     return { radioApplied, proximity };
+  }
+
+  private zoneMoved = false;
+  /** The nearest-beacon zone (see config): an event on entering a beacon's zone, quiet repeats. */
+  private nearest(
+    at: number,
+    r: { tag: string; rssi: number }[],
+  ): AssistProximity | null {
+    const c = this.config;
+    const sorted = [...r].sort((a, b) => b.rssi - a.rssi);
+    const best = sorted[0];
+    const runner = sorted[1] ?? null;
+    const placement = best && this.placements.find((p) => p.tag === best.tag);
+    const margin = best && runner ? best.rssi - runner.rssi : null;
+    const clear =
+      best &&
+      placement &&
+      runner !== null &&
+      sorted.length >= c.proximityMinBeacons &&
+      best.rssi >= placement.referenceRssi! - c.zoneNearDb &&
+      margin! >= c.zoneMarginDb;
+    if (!clear) {
+      this.challenger = null;
+      // Nobody clearly nearest for a while: leave the zone.
+      if (this.zone && at - this.zone.applied > 3 * c.zoneRepeatSeconds)
+        this.zone = null;
+      return null;
+    }
+    if (this.zone?.tag === best.tag) {
+      this.challenger = null;
+      if (at - this.zone.applied >= c.zoneRepeatSeconds) {
+        this.zone.applied = at;
+        this.fusion.updateNear(
+          placement.x,
+          placement.y,
+          c.zoneSigmaMetres * 1.3,
+          c.zoneWallFactor,
+        );
+        this.zoneMoved = true;
+      }
+      return null;
+    }
+    if (this.challenger?.tag !== best.tag)
+      this.challenger = { tag: best.tag, since: at };
+    if (at - this.challenger.since < c.zoneHoldSeconds) return null;
+    this.challenger = null;
+    this.zone = { tag: best.tag, applied: at };
+    const before = this.fusion.estimate();
+    this.fusion.updateNear(
+      placement.x,
+      placement.y,
+      c.zoneSigmaMetres,
+      c.zoneWallFactor,
+    );
+    const list = this.recent.get(best.tag) ?? [];
+    return {
+      t: at,
+      tag: best.tag,
+      anchorId: placement.anchorId ?? placement.tag,
+      smoothedRssi: best.rssi,
+      referenceRssi: placement.referenceRssi!,
+      marginDb: margin,
+      runnerUp: runner?.tag ?? null,
+      samplesInWindow: list.filter((s) => s.at >= at - c.windowSeconds).length,
+      before: { x: before.x, y: before.y },
+      beacon: { floorId: placement.floorId, x: placement.x, y: placement.y },
+    };
   }
 }

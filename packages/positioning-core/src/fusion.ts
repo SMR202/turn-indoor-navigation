@@ -439,6 +439,34 @@ export class ParticleFusion {
     return true;
   }
 
+  /**
+   * Nearest-beacon evidence: the walker is close to (x, y) and, since its signal clearly beats
+   * every other beacon's, probably on the same side of the walls (the same room). Each wall between
+   * a hypothesis and the beacon multiplies its weight by `wallFactor`. A cloud that cannot explain
+   * it at all restarts around the beacon, in its room, keeping heading and stride.
+   */
+  updateNear(x: number, y: number, sigma: number, wallFactor = 0.35) {
+    const logw = new Float64Array(this.n);
+    const lf = Math.log(wallFactor);
+    const b = { x, y };
+    let best = -Infinity;
+    for (let i = 0; i < this.n; i++) {
+      const px = this.x[i]!,
+        py = this.y[i]!;
+      const d2 = (px - x) ** 2 + (py - y) ** 2;
+      let walls = 0;
+      for (const w of this.map.walls)
+        if (segmentsIntersect(b, { x: px, y: py }, w.from, w.to)) walls++;
+      logw[i] = -d2 / (2 * sigma * sigma) + walls * lf;
+      best = Math.max(best, logw[i]!);
+    }
+    if (best < -8) {
+      this.relocate(x, y, sigma * 0.6);
+      return;
+    }
+    this.applyLogWeights(logw);
+  }
+
   /** Gaussian position fix (proximity event, fingerprint match, tap, QR). */
   updatePosition(x: number, y: number, sigma: number) {
     const logw = new Float64Array(this.n);

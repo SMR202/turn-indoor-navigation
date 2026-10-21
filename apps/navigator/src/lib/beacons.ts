@@ -275,11 +275,33 @@ export function useNearbyBeacons(active: boolean, discover: boolean) {
       setListening(false);
     };
   }, [active, discover]);
+  /** Median RSSI and packet count of every device heard since `since` (performance.now() ms). */
+  const snapshot = useCallback((since: number) => {
+    const out: {
+      key: string;
+      tag: string;
+      alt: string[];
+      median: number;
+      count: number;
+    }[] = [];
+    for (const t of tracks.current.values()) {
+      const v = t.raw.filter((r) => r.at >= since).map((r) => r.rssi);
+      if (v.length)
+        out.push({
+          key: t.key,
+          tag: t.tag,
+          alt: t.alt,
+          median: median(v),
+          count: v.length,
+        });
+    }
+    return out;
+  }, []);
   /** Median RSSI of one device from `since` (performance.now() ms) until now. */
   const collect = useCallback((deviceKey: string, since: number) => {
     const t = tracks.current.get(deviceKey);
     const v = t?.raw.filter((r) => r.at >= since).map((r) => r.rssi) ?? [];
     return { median: v.length ? median(v) : null, count: v.length };
   }, []);
-  return { devices, error, notices, listening, collect };
+  return { devices, error, notices, listening, collect, snapshot };
 }
