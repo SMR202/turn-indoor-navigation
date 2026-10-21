@@ -1611,7 +1611,7 @@ function Experience({
             : null
         }
         user={user}
-        liveDot={liveDot.values}
+        liveDot={liveDot}
         liveVisible={showLive}
         command={command}
         follow={(navigating || live.running) && follow}

@@ -33,6 +33,13 @@ export type AssistConfig = {
   proximityMinBeacons: number;
   /** Reported uncertainty never claims better than this. */
   displaySigmaFloorMetres: number;
+  /**
+   * Hand calibrations of identical beacons scatter by several dB (a hand or body in the way, not
+   * quite 1 m). With at least `calibrationPoolMin` calibrated beacons, each 1 m reference is pulled
+   * this fraction of the way to the venue median, a hierarchical prior over one beacon model.
+   */
+  calibrationShrink: number;
+  calibrationPoolMin: number;
   defaultExponent: number;
   /** Route prior while navigating: Gaussian width (metres, 0 = off) and least weight kept far away. */
   routePriorSigmaMetres: number;
@@ -48,11 +55,39 @@ export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
   proximitySigmaMetres: 2.5,
   proximityMinBeacons: 2,
   displaySigmaFloorMetres: 1.5,
+  calibrationShrink: 0.5,
+  calibrationPoolMin: 4,
   defaultExponent: 2.3,
   routePriorSigmaMetres: 2.5,
   routePriorFloor: 0.15,
-  fusion: { rssiSigmaDb: 9, rssiTemper: 0.6, rssiGateSigmas: 2.5 },
+  fusion: {
+    rssiSigmaDb: 9,
+    rssiTemper: 0.6,
+    rssiGateSigmas: 2.5,
+    rssiOffsetSigmaDb: 6,
+  },
 };
+
+/** 1 m references pulled towards the median of the venue's calibrated beacons (see config). */
+export function pooledReferences(
+  placements: BeaconPlacement[],
+  shrink: number,
+  poolMin: number,
+): BeaconPlacement[] {
+  const refs = placements
+    .map((b) => b.referenceRssi)
+    .filter((r): r is number => r !== undefined);
+  if (refs.length < poolMin || shrink <= 0) return placements;
+  const m = median(refs);
+  return placements.map((b) =>
+    b.referenceRssi === undefined
+      ? b
+      : {
+          ...b,
+          referenceRssi: b.referenceRssi + (m - b.referenceRssi) * shrink,
+        },
+  );
+}
 export type AssistEstimate = FusionEstimate & {
   beaconsUsed: number;
   source: 'beacons' | 'fix' | 'walking';
@@ -95,8 +130,12 @@ export class AssistFusion {
       ...config,
       fusion: { ...DEFAULT_ASSIST_CONFIG.fusion, ...config.fusion },
     };
-    this.placements = placements.filter(
-      (b) => b.floorId === map.floorId && b.referenceRssi !== undefined,
+    this.placements = pooledReferences(
+      placements.filter(
+        (b) => b.floorId === map.floorId && b.referenceRssi !== undefined,
+      ),
+      this.config.calibrationShrink,
+      this.config.calibrationPoolMin,
     );
     const beacons: FusionBeacon[] = this.placements.map((b) => ({
       tag: b.tag,

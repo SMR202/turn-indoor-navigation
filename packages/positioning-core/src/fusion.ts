@@ -51,6 +51,13 @@ export type FusionConfig = {
   rssiGateSigmas: number;
   /** Ignore readings weaker than this (dBm): too near the noise floor to carry range information. */
   minRssi: number;
+  /**
+   * Prior spread (dB) of an offset shared by every reading of one update: this phone's antenna gain
+   * against the calibrating phone's, a hand or body over the phone. Each hypothesis is scored with
+   * its best such offset (Gaussian prior, marginalised), so the shape of the readings across
+   * beacons decides the position rather than their absolute level. Infinity = off.
+   */
+  rssiOffsetSigmaDb: number;
   /** Resample when the effective sample size drops below this fraction of N. */
   essFraction: number;
   /** Let a step blocked by a wall continue at a small angle along it (people follow walls). */
@@ -68,6 +75,7 @@ export const DEFAULT_FUSION_CONFIG: FusionConfig = {
   rssiTemper: 1,
   rssiGateSigmas: Infinity,
   minRssi: -92,
+  rssiOffsetSigmaDb: Infinity,
   essFraction: 0.5,
   wallSlide: true,
 };
@@ -379,6 +387,7 @@ export class ParticleFusion {
       minRssi,
       rssiTemper,
       rssiGateSigmas,
+      rssiOffsetSigmaDb: offsetSigma,
     } = this.config;
     const used = readings.filter(
       (r) =>
@@ -386,14 +395,27 @@ export class ParticleFusion {
     );
     if (used.length === 0) return false;
     const logw = new Float64Array(this.n);
+    const residuals = new Float64Array(used.length);
+    // Shared offset c ~ N(0, offsetSigma²): its best value given the residuals is their sum over
+    // (n + sigma²/offsetSigma²), a shrunk mean; one reading alone keeps most of its range information.
+    const shrink = Number.isFinite(offsetSigma)
+      ? (sigma * sigma) / (offsetSigma * offsetSigma)
+      : null;
     let best = -Infinity;
     for (let i = 0; i < this.n; i++) {
-      let ll = 0;
-      for (const r of used) {
+      let sum = 0;
+      for (let j = 0; j < used.length; j++) {
+        const r = used[j]!;
         const b = this.beacons.get(r.tag)!;
         const d = Math.max(0.5, Math.hypot(this.x[i]! - b.x, this.y[i]! - b.y));
         const predicted = b.refRssi - 10 * b.exponent * Math.log10(d);
-        const residual = r.rssi - predicted;
+        residuals[j] = r.rssi - predicted;
+        sum += residuals[j]!;
+      }
+      const c = shrink === null ? 0 : sum / (used.length + shrink);
+      let ll = shrink === null ? 0 : -(c * c) / (2 * offsetSigma * offsetSigma);
+      for (let j = 0; j < used.length; j++) {
+        const residual = residuals[j]! - c;
         ll +=
           (-(df + 1) / 2) *
           Math.log(1 + (residual * residual) / (df * sigma * sigma));

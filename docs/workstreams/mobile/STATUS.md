@@ -1,6 +1,14 @@
 # Mobile workstream
 
-Updated: 2026-10-19.
+Updated: 2026-10-21.
+
+## Visitor app: map layers locked together on phones, direction learned from a marked heading — 2026-10-21
+
+FIXED (user report with phone screenshots: floor plan drawn at the first whole-floor view while labels, beacon markers and the blue dot sat at the zoomed camera, so they appeared to move on zoom): on phones a React redraw re-sends each animated view's plain props (Reanimated passes the style computed at the view's first render), which can replace the UI-thread position until the next animation frame. At rest nothing animates, so each layer could snap back to an old camera. Every animated map layer now also carries its resting position as a plain style after the animated one (`rest` in `VenueMap`): the floor-plan transform, labels, pins, beacon markers, the route start and both dots (the live dot gets its resting position, accuracy, heading and state from `LiveDot.watch`). Following the live dot, the camera now stops writing once it has caught up and redraws once at the exact camera. The browser was never affected, which is why earlier browser checks passed.
+
+IMPLEMENTED: marking a direction with **Set my location** teaches this phone the venue's compass offset as soon as the sensors settle, so later starts and auto-locate show the direction without asking; walking refines it whenever the filter has pinned the heading (spread ≤ 0.25 rad after 8 m).
+
+Validation: root check passes (222 tests). Native confirmation: see the next action in the handoff.
 
 ## Visitor app: map placement fixes, shared beacon setup, locate me — 2026-10-21
 

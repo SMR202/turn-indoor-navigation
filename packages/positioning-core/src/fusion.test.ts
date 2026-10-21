@@ -151,6 +151,37 @@ describe('particle fusion (synthetic mechanics, not venue accuracy)', () => {
       new ParticleFusion(map, beacons).initFromRssi([{ tag: 'X', rssi: -50 }]),
     ).toBe(false);
   });
+  it('is not pulled by an offset shared by every reading (another phone, a hand over it)', () => {
+    const four: FusionBeacon[] = [
+      ...beacons,
+      { tag: 'B4', x: 18, y: 9, refRssi: -59, exponent: 2.2 },
+    ];
+    const error = (offsetSigma: number) => {
+      let sum = 0;
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const r = lcg(seed);
+        const truth = { x: 3 + r() * 14, y: 2 + r() * 6 };
+        const f = new ParticleFusion(map, four, {
+          seed,
+          particles: 800,
+          rssiOffsetSigmaDb: offsetSigma,
+        });
+        // Every beacon reads 10 dB low: the phone hears all of them that much weaker.
+        const readings = four.map((b) => ({
+          tag: b.tag,
+          rssi:
+            predictRssi(b, Math.hypot(truth.x - b.x, truth.y - b.y)) -
+            10 +
+            gauss(r) * 2,
+        }));
+        f.initFromRssi(readings);
+        const e = f.estimate();
+        sum += Math.hypot(e.x - truth.x, e.y - truth.y);
+      }
+      return sum / 6;
+    };
+    expect(error(6)).toBeLessThan(error(Infinity));
+  });
   it('restarts around a position fix that contradicts the whole cloud', () => {
     const f = new ParticleFusion(map, beacons, { seed: 5 });
     f.reset(2, 2, 0.5);

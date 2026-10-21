@@ -86,6 +86,17 @@ export function useLiveSession(
     setFloorId(null);
   }, []);
 
+  /** Blends a measured north offset into this venue's (circular mean, weight 0–1). */
+  const learnNorth = useCallback(
+    (offset: number, weight: number) => {
+      const prev = load<number | null>(northKey, null);
+      const next =
+        prev === null ? offset : wrap(prev + weight * wrap(offset - prev));
+      save(northKey, next);
+      setNorth(next);
+    },
+    [northKey],
+  );
   const start = useCallback(
     async (from: P, onFloor: string, how: LiveFloorStart = {}) => {
       ref.current?.stop();
@@ -96,10 +107,20 @@ export function useLiveSession(
       });
       ref.current = live;
       setFloorId(onFloor);
+      // A marked direction is the surest heading there is: learn the compass offset from it as
+      // soon as the sensors settle, so the next start (and auto-locate) knows the direction.
+      let learnFromMark = how.facing === 'chosen';
       lastFix.current = { p: from, floorId: onFloor };
       live.subscribe((s) => {
         if (ref.current !== live) return;
         if (s.fix) lastFix.current = { p: s.fix, floorId: onFloor };
+        if (learnFromMark && s.phase === 'tracking') {
+          const h = live.heading();
+          if (h?.northOffset != null) {
+            learnFromMark = false;
+            learnNorth(h.northOffset, 0.7);
+          }
+        }
         for (const l of fixListeners.current) l(s);
         const next = statusOf(s);
         setState((prev) => (sameStatus(prev, next) ? prev : next));
@@ -122,10 +143,10 @@ export function useLiveSession(
         // The controller already published a stopped state with the reason.
       }
     },
-    [pkg, northKey],
+    [pkg, northKey, learnNorth],
   );
 
-  // Learn the venue's north offset once the filter is sure of the heading after real walking.
+  // While walking, refine it whenever walls, doors and beacons have pinned the heading down.
   const running =
     state !== null && state.phase !== 'idle' && state.phase !== 'stopped';
   useEffect(() => {
@@ -135,20 +156,14 @@ export function useLiveSession(
       if (
         !h ||
         h.northOffset === null ||
-        h.spreadRad > 0.2 ||
-        h.walkedMetres < 12
+        h.spreadRad > 0.25 ||
+        h.walkedMetres < 8
       )
         return;
-      const prev = load<number | null>(northKey, null);
-      const next =
-        prev === null
-          ? h.northOffset
-          : wrap(prev + 0.2 * wrap(h.northOffset - prev));
-      save(northKey, next);
-      setNorth(next);
+      learnNorth(h.northOffset, 0.15);
     }, 3000);
     return () => clearInterval(timer);
-  }, [running, northKey]);
+  }, [running, learnNorth]);
 
   // Sensors stop in the background: resume from the last position when the app is back.
   useEffect(() => {

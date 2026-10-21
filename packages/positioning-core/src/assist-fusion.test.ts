@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AssistFusion } from './assist-fusion';
+import { AssistFusion, pooledReferences } from './assist-fusion';
 import { predictRssi, type FusionMap } from './fusion';
 import type { BeaconPlacement } from './ble-proximity';
 
@@ -104,4 +104,23 @@ describe('AssistFusion policy', () => {
       0.5,
     );
   });
+});
+
+it('pulls scattered hand calibrations of one beacon model towards their median', () => {
+  const at = (ref: number, i: number): BeaconPlacement => ({
+    tag: 'B' + i,
+    floorId: 'f',
+    x: i,
+    y: 0,
+    referenceRssi: ref,
+  });
+  const pooled = pooledReferences([-58, -62, -67, -79].map(at), 0.5, 4);
+  // Median -64.5: each reference moves half way towards it.
+  expect(pooled.map((b) => b.referenceRssi)).toEqual([
+    -61.25, -63.25, -65.75, -71.75,
+  ]);
+  // Too few calibrated beacons to know the model's typical value: unchanged.
+  expect(
+    pooledReferences([-58, -79].map(at), 0.5, 4).map((b) => b.referenceRssi),
+  ).toEqual([-58, -79]);
 });

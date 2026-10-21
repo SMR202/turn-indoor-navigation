@@ -1,6 +1,16 @@
 # Positioning workstream
 
-Updated: 2026-10-20.
+Updated: 2026-10-21.
+
+## Offset-robust beacon likelihood and pooled calibrations — 2026-10-21
+
+FACT (home layout shared by the phones): the nine identical April beacons were hand-calibrated at -58 to -79 dBm at 1 m, a 21 dB spread; one beacon model normally varies by a few dB, so several calibrations are probably off (Beacons 9, 2 and 7 read -79/-76/-75).
+
+IMPLEMENTED (`AssistFusion`, live and Locate me): (1) each radio update scores every particle with its best offset shared by all readings (Gaussian prior 6 dB, marginalised), so a phone that hears every beacon weaker than the calibrating phone, or a hand over the phone, no longer shifts the position; (2) with four or more calibrated beacons each 1 m reference is pulled half way to the venue median (`pooledReferences`), a hierarchical prior over one beacon model, also feeding the proximity detector. ParticleFusion's own default stays off (`rssiOffsetSigmaDb: Infinity`), so replays of other paths are unchanged.
+
+EXPERIMENT RESULT (synthetic, mechanics only): with every reading 10 dB low, RSSI-only localisation error is lower with the offset term than without (`fusion.test.ts`). No venue accuracy is established.
+
+Next: recalibrate Beacons 2, 7 and 9 (phone 1 m away, nothing in between, same height); landmark-labelled home walks to measure the error.
 
 ## iBeacon, shared beacon stream, unknown-heading starts — 2026-10-20
 

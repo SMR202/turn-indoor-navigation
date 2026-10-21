@@ -42,11 +42,13 @@ import {
   type ScenePlace,
 } from '@turn/map-scene';
 import { Icon } from '../components/icon';
-import type { LiveDotValues } from '../lib/live-dot';
+import type { DotSnapshot, LiveDot } from '../lib/live-dot';
 import { catColor, F } from '../theme';
 
 /** Camera: map point (x, y) in metres at the screen centre, `s` screen pixels per metre. */
 type Camera = { x: number; y: number; s: number };
+/** The camera the map last came to rest at, with the view size: where React draws everything. */
+type Rest = Camera & { w: number; h: number };
 export type MapUser = {
   x: number;
   y: number;
@@ -90,7 +92,7 @@ type Props = {
    * The live blue dot, animated on the UI thread (pass the same object on every render). With
    * `follow` the camera glides after it every frame.
    */
-  liveDot?: LiveDotValues;
+  liveDot?: LiveDot;
   liveVisible?: boolean;
 };
 
@@ -101,6 +103,11 @@ const EASE = Easing.bezier(...motion.easing.standard);
  * Indoor map renderer. Geometry is crisp vector SVG re-rendered when the camera settles; between
  * settles pan and zoom run on the UI thread as a composited transform, so gestures stay at frame rate.
  * Labels, pins and the blue dot are native views positioned from the same shared camera.
+ *
+ * Every animated layer also carries its resting position as a plain style (`rest`), placed after
+ * the animated one. On phones a React redraw re-sends a view's plain props, which can replace the
+ * UI-thread values until the next animation frame; at rest nothing animates, so without these the
+ * floor plan, labels and dot could each snap back to an old camera and drift apart.
  */
 export const VenueMap = memo(function VenueMap(props: Props) {
   const { scene, insets } = props;
@@ -314,8 +321,10 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   };
   // Live follow: the camera eases after the animated dot every frame (UI thread), re-rendering the
   // vector geometry only when it drifts past the drawn margin.
-  const dot = props.liveDot;
+  const dotDriver = props.liveDot;
+  const dot = dotDriver?.values;
   const followLive = useSharedValue(false);
+  const stillFrames = useSharedValue(0);
   const followDy = useSharedValue(0);
   useEffect(() => {
     const on = Boolean(props.follow && dot && props.liveVisible && size.w);
@@ -346,9 +355,25 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     const k = 1 - Math.exp(-dt / 0.28);
     const tx = dot.x.value;
     const ty = dot.y.value + followDy.value / cs.value;
-    cx.value += (tx - cx.value) * k;
-    cy.value += (ty - cy.value) * k;
-    maybeCommit();
+    const mx = (tx - cx.value) * k;
+    const my = (ty - cy.value) * k;
+    // Under a hundredth of a pixel the camera has caught up: stop writing so nothing redraws.
+    if ((Math.abs(mx) + Math.abs(my)) * cs.value > 0.01) {
+      cx.value += mx;
+      cy.value += my;
+      stillFrames.value = 0;
+      maybeCommit();
+      return;
+    }
+    // Resting after a glide: redraw once at the exact camera.
+    stillFrames.value += 1;
+    const off =
+      (Math.abs(cx.value - rendX.value) + Math.abs(cy.value - rendY.value)) *
+      cs.value;
+    if (stillFrames.value === 12 && off > 0.5 && !pending.value) {
+      pending.value = true;
+      scheduleOnRN(commit, cx.value, cy.value, cs.value);
+    }
   });
 
   const notify = props.onGesture;
@@ -482,6 +507,17 @@ export const VenueMap = memo(function VenueMap(props: Props) {
           ],
         }
       : null;
+  // What `outer` equals once the camera rests at `rendered` (see the note on VenueMap).
+  const outerRest =
+    rendered && ref
+      ? {
+          transform: [
+            { translateX: (ref.x - rendered.x) * rendered.s },
+            { translateY: (rendered.y - ref.y) * rendered.s },
+            { scale: rendered.s / ref.s },
+          ],
+        }
+      : null;
 
   const labels = useMemo<PlacedLabel[]>(
     () =>
@@ -528,7 +564,14 @@ export const VenueMap = memo(function VenueMap(props: Props) {
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [hasRendered, commit, cs, cx, cy, vw, vh, limits]);
-  const cam = { cx, cy, cs, vw, vh };
+  const cam = useMemo(() => ({ cx, cy, cs, vw, vh }), [cx, cy, cs, vw, vh]);
+  const rest = useMemo<Rest | null>(
+    () =>
+      rendered && size.w
+        ? { x: rendered.x, y: rendered.y, s: rendered.s, w: size.w, h: size.h }
+        : null,
+    [rendered, size.w, size.h],
+  );
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -542,7 +585,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         {rendered && size.w > 0 && (
           <Animated.View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, outer]}
+            style={[StyleSheet.absoluteFill, outer, outerRest]}
           >
             <View
               style={[
@@ -574,27 +617,35 @@ export const VenueMap = memo(function VenueMap(props: Props) {
               key={`${l.id}:${l.iconOnly ? 0 : l.lines.length}`}
               label={l}
               cam={cam}
+              rest={rest}
               pal={pal}
               hidden={props.selectedPlace?.roomId === l.id}
             />
           ))}
           {props.markers?.map((m) => (
-            <MapPill key={m.key} marker={m} cam={cam} pal={pal} />
+            <MapPill key={m.key} marker={m} cam={cam} rest={rest} pal={pal} />
           ))}
           {props.routeStart && (
-            <StartMarker at={props.routeStart} cam={cam} color={pal.route} />
+            <StartMarker
+              at={props.routeStart}
+              cam={cam}
+              rest={rest}
+              color={pal.route}
+            />
           )}
           {props.selectedPlace && (
             <Pin
               key={props.selectedPlace.id}
               place={props.selectedPlace}
               cam={cam}
+              rest={rest}
             />
           )}
-          {dot && props.liveVisible && (
+          {dotDriver && props.liveVisible && (
             <LiveUserDot
-              v={dot}
+              driver={dotDriver}
               cam={cam}
+              rest={rest}
               color={pal.dot}
               halo={pal.dotHalo}
               ring={pal.dotRing}
@@ -604,6 +655,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
             <UserDot
               user={props.user}
               cam={cam}
+              rest={rest}
               color={pal.dot}
               halo={pal.dotHalo}
               ring={pal.dotRing}
@@ -781,31 +833,48 @@ function useDrawProgress(route: P[] | null) {
 }
 
 // ---- Overlays positioned on the UI thread -----------------------------------------------------
-function useScreenPoint(cam: Cam, x: number, y: number) {
-  return useAnimatedStyle(() => ({
+function useScreenPoint(cam: Cam, x: number, y: number, rest: Rest | null) {
+  const pos = useAnimatedStyle(() => ({
     transform: [
       { translateX: cam.vw.value / 2 + (x - cam.cx.value) * cam.cs.value },
       { translateY: cam.vh.value / 2 - (y - cam.cy.value) * cam.cs.value },
     ],
   }));
+  return [pos, restPoint(rest, x, y)] as const;
+}
+/** Screen position of map point (x, y) with the camera at rest (plain style, see VenueMap). */
+function restPoint(rest: Rest | null, x: number, y: number) {
+  return rest
+    ? {
+        transform: [
+          { translateX: rest.w / 2 + (x - rest.x) * rest.s },
+          { translateY: rest.h / 2 - (y - rest.y) * rest.s },
+        ],
+      }
+    : null;
 }
 
 const LABEL_W = 150;
 const MapLabel = memo(function MapLabel({
   label,
   cam,
+  rest,
   pal,
   hidden,
 }: {
   label: PlacedLabel;
   cam: Cam;
+  rest: Rest | null;
   pal: Scene['palette'];
   hidden: boolean;
 }) {
-  const pos = useScreenPoint(cam, label.x, label.y);
+  const [pos, atRest] = useScreenPoint(cam, label.x, label.y, rest);
   const icon = label.icon;
   return (
-    <Animated.View entering={FadeIn.duration(200)} style={[styles.anchor, pos]}>
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      style={[styles.anchor, pos, atRest]}
+    >
       <View
         style={[
           styles.label,
@@ -882,11 +951,23 @@ function iconFor(category: string) {
   return map[category] ?? 'pin';
 }
 
-function Pin({ place, cam }: { place: ScenePlace; cam: Cam }) {
-  const pos = useScreenPoint(cam, place.x, place.y);
+function Pin({
+  place,
+  cam,
+  rest,
+}: {
+  place: ScenePlace;
+  cam: Cam;
+  rest: Rest | null;
+}) {
+  const [pos, atRest] = useScreenPoint(cam, place.x, place.y, rest);
   const drop = useSharedValue(0);
+  // Once dropped, React also holds the landed pose (see VenueMap).
+  const [landed, setLanded] = useState(false);
   useEffect(() => {
-    drop.value = withSpring(1, motion.spring.pop);
+    drop.value = withSpring(1, motion.spring.pop, (done) => {
+      if (done) scheduleOnRN(setLanded, true);
+    });
   }, [drop]);
   const a = useAnimatedStyle(() => ({
     opacity: Math.min(1, drop.value * 2),
@@ -897,7 +978,7 @@ function Pin({ place, cam }: { place: ScenePlace; cam: Cam }) {
   }));
   const color = catColor(place.category);
   return (
-    <Animated.View style={[styles.anchor, pos]}>
+    <Animated.View style={[styles.anchor, pos, atRest]}>
       <Animated.View
         style={[
           {
@@ -909,6 +990,7 @@ function Pin({ place, cam }: { place: ScenePlace; cam: Cam }) {
             alignItems: 'center',
           },
           a,
+          landed && styles.landed,
         ]}
       >
         <Svg width={40} height={50} viewBox="0 0 40 50">
@@ -950,16 +1032,21 @@ function Pin({ place, cam }: { place: ScenePlace; cam: Cam }) {
 function MapPill({
   marker,
   cam,
+  rest,
   pal,
 }: {
   marker: { x: number; y: number; text: string; icon: string };
   cam: Cam;
+  rest: Rest | null;
   pal: Scene['palette'];
 }) {
-  const pos = useScreenPoint(cam, marker.x, marker.y);
+  const [pos, atRest] = useScreenPoint(cam, marker.x, marker.y, rest);
   // The label floats above the spot; a stem and a dot mark the exact point.
   return (
-    <Animated.View entering={FadeIn.duration(240)} style={[styles.anchor, pos]}>
+    <Animated.View
+      entering={FadeIn.duration(240)}
+      style={[styles.anchor, pos, atRest]}
+    >
       <View
         style={{
           position: 'absolute',
@@ -1021,10 +1108,23 @@ function MapPill({
   );
 }
 
-function StartMarker({ at, cam, color }: { at: P; cam: Cam; color: string }) {
-  const pos = useScreenPoint(cam, at.x, at.y);
+function StartMarker({
+  at,
+  cam,
+  rest,
+  color,
+}: {
+  at: P;
+  cam: Cam;
+  rest: Rest | null;
+  color: string;
+}) {
+  const [pos, atRest] = useScreenPoint(cam, at.x, at.y, rest);
   return (
-    <Animated.View entering={FadeIn.duration(200)} style={[styles.anchor, pos]}>
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      style={[styles.anchor, pos, atRest]}
+    >
       <View
         style={{
           position: 'absolute',
@@ -1045,12 +1145,14 @@ function StartMarker({ at, cam, color }: { at: P; cam: Cam; color: string }) {
 function UserDot({
   user,
   cam,
+  rest,
   color,
   halo,
   ring,
 }: {
   user: MapUser;
   cam: Cam;
+  rest: Rest | null;
   color: string;
   halo: string;
   ring: string;
@@ -1104,8 +1206,14 @@ function UserDot({
   const beam = useAnimatedStyle(() => ({
     transform: [{ rotate: `${90 - (head.value * 180) / Math.PI}deg` }],
   }));
+  const posRest = restPoint(rest, user.x, user.y);
+  const haloRest = rest ? haloBox(user.sigma * rest.s) : null;
+  const beamRest =
+    user.heading != null
+      ? { transform: [{ rotate: beamAngle(user.heading) }] }
+      : null;
   return (
-    <Animated.View style={[styles.anchor, pos]}>
+    <Animated.View style={[styles.anchor, pos, posRest]}>
       <Animated.View
         style={[
           {
@@ -1115,6 +1223,7 @@ function UserDot({
             borderColor: `${color}33`,
           },
           haloStyle,
+          haloRest,
         ]}
       />
       {user.heading != null && (
@@ -1128,6 +1237,7 @@ function UserDot({
               height: 64,
             },
             beam,
+            beamRest,
           ]}
         >
           <Svg width={64} height={64} viewBox="0 0 64 64">
@@ -1173,18 +1283,24 @@ function UserDot({
 
 /** The live dot: position, heading and accuracy straight from UI-thread values. */
 function LiveUserDot({
-  v,
+  driver,
   cam,
+  rest,
   color,
   halo,
   ring,
 }: {
-  v: LiveDotValues;
+  driver: LiveDot;
   cam: Cam;
+  rest: Rest | null;
   color: string;
   halo: string;
   ring: string;
 }) {
+  const v = driver.values;
+  // Where the dot rests, a few times a second at most: React's copy (see VenueMap).
+  const [snap, setSnap] = useState<DotSnapshot>(() => driver.snapshot());
+  useEffect(() => driver.watch(setSnap), [driver]);
   const pulse = useSharedValue(0);
   useEffect(() => {
     pulse.value = withRepeat(
@@ -1224,10 +1340,18 @@ function LiveUserDot({
   const core = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(v.live.value, [0, 1], ['#8A93A3', color]),
   }));
+  const point = restPoint(rest, snap.x, snap.y);
+  const posRest = point ? { ...point, opacity: snap.visible ? 1 : 0 } : null;
+  const haloRest = rest ? haloBox(snap.sigma * rest.s) : null;
+  const beamRest = {
+    opacity: snap.headingOn ? 1 : 0,
+    transform: [{ rotate: beamAngle(snap.heading) }],
+  };
+  const coreRest = { backgroundColor: snap.live ? color : '#8A93A3' };
   return (
     <Animated.View
       testID="live-dot"
-      style={[styles.anchor, pos]}
+      style={[styles.anchor, pos, posRest]}
       pointerEvents="none"
     >
       <Animated.View
@@ -1239,12 +1363,14 @@ function LiveUserDot({
             borderColor: `${color}33`,
           },
           haloStyle,
+          haloRest,
         ]}
       />
       <Animated.View
         style={[
           { position: 'absolute', left: -36, top: -36, width: 72, height: 72 },
           beam,
+          beamRest,
         ]}
       >
         <Svg width={72} height={72} viewBox="0 0 64 64">
@@ -1283,14 +1409,22 @@ function LiveUserDot({
             boxShadow: '0 1px 4px rgba(11,18,32,0.35)',
           },
           core,
+          coreRest,
         ]}
       />
     </Animated.View>
   );
 }
 
+const haloBox = (radius: number) => {
+  const r = Math.max(16, radius);
+  return { width: 2 * r, height: 2 * r, borderRadius: r, left: -r, top: -r };
+};
+const beamAngle = (heading: number) => `${90 - (heading * 180) / Math.PI}deg`;
+
 const styles = StyleSheet.create({
   anchor: { position: 'absolute', left: 0, top: 0, width: 0, height: 0 },
+  landed: { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] },
   label: {
     position: 'absolute',
     left: -LABEL_W / 2,

@@ -68,6 +68,9 @@ export type LiveHeading = {
   northOffset: number | null;
   /** Metres walked in this session, so callers only trust the offset after real walking. */
   walkedMetres: number;
+  /** Where the start heading came from, and whether the settle cue has been given. */
+  facing: NonNullable<LiveStart['facing']>;
+  settled: boolean;
 };
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export type LiveOptions = {
@@ -321,6 +324,8 @@ export class LivePositioning {
       spreadRad: e.headingBiasSpread,
       northOffset: this.lastYaw === null ? null : wrap(venue - this.lastYaw),
       walkedMetres: this.state.steps * (this.options.stepLengthMetres ?? 0.62),
+      facing: this.facing ?? 'route',
+      settled: this.state.phase === 'tracking',
     };
   }
 

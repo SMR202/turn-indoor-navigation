@@ -29,6 +29,20 @@ export type LiveDotValues = {
 };
 
 /**
+ * Where the dot rests, as plain numbers: the map also hands these to React so a redraw on the
+ * phone can never put the dot back somewhere it was earlier.
+ */
+export type DotSnapshot = {
+  x: number;
+  y: number;
+  sigma: number;
+  heading: number;
+  headingOn: boolean;
+  live: boolean;
+  visible: boolean;
+};
+
+/**
  * Drives the live blue dot. The display pose (route snapping, moves through doors, standing hold)
  * is stepped ten times a second on the JS thread; each step hands the UI thread a 120 ms linear
  * animation to the next point, so the dot glides continuously at frame rate. Screens get a coarse
@@ -53,6 +67,10 @@ export class LiveDot {
   private headingKnown = false;
   private listeners = new Set<(p: P | null) => void>();
   private emitted: P | null = null;
+  private sigma = 2;
+  private tracking = false;
+  private watchers = new Set<(s: DotSnapshot) => void>();
+  private watched: DotSnapshot | null = null;
 
   setMap(map: DisplayMap | null) {
     this.display.setMap(map);
@@ -65,10 +83,13 @@ export class LiveDot {
     const walked = steps !== this.lastSteps;
     this.lastSteps = steps;
     this.display.update(p, performance.now() / 1000, walked, fix);
+    this.sigma = p.sigma;
     this.values.sigma.value = withTiming(p.sigma, { duration: 600 });
   }
   setTracking(tracking: boolean) {
+    this.tracking = tracking;
     this.values.live.value = withTiming(tracking ? 1 : 0, { duration: 300 });
+    this.notify(true);
   }
   /** Starts animating; `heading` is read every tick (venue rad or null while unknown). */
   run(heading: () => number | null) {
@@ -84,6 +105,41 @@ export class LiveDot {
     this.emitted = null;
     this.display.reset();
     for (const l of this.listeners) l(null);
+    this.notify(true);
+  }
+  snapshot(): DotSnapshot {
+    return {
+      x: this.shown?.x ?? 0,
+      y: this.shown?.y ?? 0,
+      sigma: this.sigma,
+      heading: this.unwrapped,
+      headingOn: this.headingKnown,
+      live: this.tracking,
+      visible: this.shown !== null,
+    };
+  }
+  /** Resting state for the map (a few times a second at most, only on visible change). */
+  watch = (listener: (s: DotSnapshot) => void) => {
+    this.watchers.add(listener);
+    listener(this.snapshot());
+    return () => {
+      this.watchers.delete(listener);
+    };
+  };
+  private notify(force: boolean) {
+    const n = this.snapshot();
+    const o = this.watched;
+    const changed =
+      !o ||
+      n.visible !== o.visible ||
+      n.live !== o.live ||
+      n.headingOn !== o.headingOn ||
+      Math.hypot(n.x - o.x, n.y - o.y) >= 0.03 ||
+      Math.abs(n.sigma - o.sigma) >= 0.1 ||
+      Math.abs(n.heading - o.heading) >= 0.05;
+    if (!changed || (!force && this.ticks % 2 !== 0)) return;
+    this.watched = n;
+    for (const w of this.watchers) w(n);
   }
   current() {
     return this.shown;
@@ -128,6 +184,7 @@ export class LiveDot {
         duration: 400,
       });
     }
+    this.notify(!this.watched?.visible && this.shown !== null);
     // Screens hear about real moves only, so a standing walker causes no re-renders.
     const s = this.shown;
     const e = this.emitted;
