@@ -10,7 +10,9 @@ IMPLEMENTED (`AssistFusion`, replaces the proximity detector in live and replay)
 
 EXPERIMENT RESULT (synthetic, mechanics only): a walker standing beside a beacon in the next room with a wrong start is moved into that room within 12 s at one reading per beacon per second; a walker in a doorway between rooms does not move. The survey fit recovers a known exponent within 0.3 and 1 m levels within 2.5 dB. No venue accuracy is established.
 
-Next: run **Test beacons** at home on both phones and read the posted surveys.
+EXPERIMENT RESULT (home survey, iPhone 15 Pro, 2026-10-21; 9 April Brother iBeacons, 37 readings): every beacon is the strongest at its own spot, by 9 to 30 dB (median 21); no swapped placements. Under a beacon (about 0.8 m) the phone reads -49 to -66 dBm. One log-distance model fits with exponent 2.6 and 5.9 dB RMS misfit; fitted 1 m levels span -68 to -59 dBm, against -79 to -58 by hand (hand values up to 12 dB too weak). Counting walls does not improve the fit: almost every reading between rooms crosses exactly one wall. Conclusion: nearest-beacon zones suit this house; the weakest margins are Beacon 9 (+9 dB, Beacon 8 reaches the dining room from 7 m) and Beacon 2 (+11 dB).
+
+Next: apply the measured calibration (Use measured calibration), then landmark-labelled walks to measure positioning error.
 
 ## Offset-robust beacon likelihood and pooled calibrations — 2026-10-21
 

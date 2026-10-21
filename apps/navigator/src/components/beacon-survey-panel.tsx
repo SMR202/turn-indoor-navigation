@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, View } from 'react-native';
 import { postJson } from '../lib/api';
 import type { LayoutBeacon } from '../lib/beacon-layout';
@@ -98,23 +98,28 @@ export function BeaconSurveyPanel({
   const results = list.map(spotResult);
   const passed = results.filter((r) => r.pass).length;
 
-  // Every finished spot goes to the TURN server, so the setup can be analysed on the computer.
+  // Every finished spot goes to the TURN server, so the setup can be analysed on the computer:
+  // once per new or repeated recording (the screen re-renders twice a second with new lists).
+  const latest = useRef({ beacons, list, fit });
+  latest.current = { beacons, list, fit };
+  const recorded = list.map((s) => `${s.tag}@${s.at}`).join(',');
   useEffect(() => {
-    if (!shared || list.length === 0) return;
+    const { beacons: bs, list: spotsNow, fit: fitNow } = latest.current;
+    if (!shared || spotsNow.length === 0) return;
     postJson(`/public/venues/${encodeURIComponent(venueId)}/beacon-survey`, {
       platform: `${Platform.OS} ${String(Platform.Version)}`.slice(0, 40),
-      beacons: beacons.map((b) => ({
+      beacons: bs.map((b) => ({
         tag: b.tag,
         x: b.x,
         y: b.y,
         ...(b.label ? { label: b.label } : {}),
       })),
-      spots: list,
-      fit,
+      spots: spotsNow,
+      fit: fitNow,
     })
       .then(() => setSent('sent'))
       .catch(() => setSent('failed'));
-  }, [list, fit, shared, venueId, beacons]);
+  }, [recorded, shared, venueId]);
 
   const name = (tag: string | null) =>
     beacons.find((b) => b.tag === tag)?.label ?? tag ?? '—';
