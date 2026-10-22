@@ -231,6 +231,10 @@ export class AssistedTracker {
     });
   }
 
+  /** The radio readings the filter would use now (median RSSI per beacon). */
+  readings() {
+    return this.assist.readings(this.clock());
+  }
   health(): BeaconHealth[] {
     return this.assist.health(this.clock());
   }

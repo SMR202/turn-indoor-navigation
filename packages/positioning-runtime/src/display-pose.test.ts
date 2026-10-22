@@ -141,3 +141,23 @@ it('jumps instead of drawing a walk when no walkable connection exists', () => {
   d.update({ x: 13, y: 8 }, 0.5, true);
   expect(d.current()).toEqual({ x: 13, y: 8 });
 });
+
+it('waits for a second estimate before showing a jump no step explains', () => {
+  const d = new DisplayPose();
+  d.update({ x: 1, y: 1 }, 0, true);
+  d.update({ x: 7, y: 1 }, 1, false); // one radio update says 6 m away
+  for (let i = 0; i < 20; i++) d.step(0.1);
+  expect(d.current()!.x).toBeLessThan(1.5);
+  d.update({ x: 7.3, y: 1.2 }, 3, false); // a second one agrees
+  for (let i = 0; i < 60; i++) d.step(0.1);
+  expect(d.current()!.x).toBeGreaterThan(6.5);
+});
+
+it('lets the accuracy circle, not the standing dot, absorb uncertain estimates', () => {
+  const d = new DisplayPose();
+  d.update({ x: 3, y: 3 }, 0, true);
+  for (let s = 4; s < 30; s++)
+    d.update({ x: 3 + (s % 2 ? 2 : -2), y: 3, sigma: 4 }, s, false);
+  for (let i = 0; i < 30; i++) d.step(0.1);
+  expect(Math.hypot(d.current()!.x - 3, d.current()!.y - 3)).toBeLessThan(0.3);
+});

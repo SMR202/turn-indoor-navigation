@@ -2,6 +2,10 @@
 
 Updated: 2026-10-21.
 
+## "Not here?" location sheet, rough-location chip — 2026-10-22
+
+IMPLEMENTED: tapping the live dot, or the **Location rough · ±N m · Fix** chip shown while tracking worse than about 2.5 m, opens a "Your location" sheet (`components/where-am-i.tsx`): TURN's room and accuracy, the likeliest rooms (one tap moves you there, room-sized), every room, **Find me again** (then a light "Is this right?" toast; no answer counts as yes after 9 s), or **Point on map**. Answers are posted to the TURN server for private LAN venues. The chip watches the dot itself, so the venue screen does not re-render with every move. Not yet seen on a phone: the sheet needs a running live session, which the browser cannot provide.
+
 ## Remote control of the test phones; iPhone map checked live — 2026-10-21
 
 IMPLEMENTED: `npm run phone -- <ios|android> <start|shot|tap|swipe|pinch|home|launch|status>` ([phone remote](../../PHONE_REMOTE.md)). iPhone: go-ios 1.3.2 (userspace tunnel, iOS 17+ developer image) and Appium's unsigned WebDriverAgent 16.15.3 sideloaded with unique bundle ids; Android: adb. Tools stay in `work/tools`, screenshots in `work/phone-shots` (both ignored).

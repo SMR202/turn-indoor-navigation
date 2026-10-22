@@ -22,15 +22,20 @@ export type AssistConfig = {
   /** ...and only after this much walking since the last radio update (no drifting while standing). */
   minMoveForRadioMetres: number;
   /**
-   * Nearest beacon ("zone"): the strongest beacon, heard at least `zoneNearDb` within its 1 m level
-   * and `zoneMarginDb` above the runner-up for `zoneHoldSeconds`, pulls the estimate towards it
-   * (σ `zoneSigmaMetres`, each wall in between weighs `zoneWallFactor`), on entry and every
-   * `zoneRepeatSeconds` while it stays the nearest, standing or walking. Works with one reading a
-   * second (iPhone ranging), needs two beacons heard.
+   * Nearest beacon ("zone"). Beacons are ranked by how far above its own 1 m level each is heard
+   * (a distance, not loudness: a quiet beacon close by beats a loud one through a wall). The leader,
+   * within `zoneNearDb` of its 1 m level and `zoneMarginDb` ahead of the runner-up for
+   * `zoneHoldSeconds`, pulls the estimate into its room (σ `zoneSigmaMetres` around it, each wall in
+   * between weighs `zoneWallFactor`), on entry and every `zoneRepeatSeconds` while it leads,
+   * standing or walking. Leaving one beacon's zone for another's is sticky: the newcomer must lead
+   * the current one by `zoneSwitchDb` for `zoneSwitchHoldSeconds`. Works with one reading a second
+   * (iPhone ranging); needs two beacons heard.
    */
   zoneNearDb: number;
   zoneMarginDb: number;
   zoneHoldSeconds: number;
+  zoneSwitchDb: number;
+  zoneSwitchHoldSeconds: number;
   zoneSigmaMetres: number;
   zoneWallFactor: number;
   zoneRepeatSeconds: number;
@@ -60,9 +65,11 @@ export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
   radioIntervalSeconds: 3,
   minMoveForRadioMetres: 1,
   zoneNearDb: 12,
-  zoneMarginDb: 3,
+  zoneMarginDb: 4,
   zoneHoldSeconds: 2,
-  zoneSigmaMetres: 2.2,
+  zoneSwitchDb: 6,
+  zoneSwitchHoldSeconds: 4,
+  zoneSigmaMetres: 3,
   zoneWallFactor: 0.35,
   zoneRepeatSeconds: 4,
   settleRadioUpdates: 3,
@@ -340,23 +347,39 @@ export class AssistFusion {
     r: { tag: string; rssi: number }[],
   ): AssistProximity | null {
     const c = this.config;
-    const sorted = [...r].sort((a, b) => b.rssi - a.rssi);
-    const best = sorted[0];
-    const runner = sorted[1] ?? null;
-    const placement = best && this.placements.find((p) => p.tag === best.tag);
-    const margin = best && runner ? best.rssi - runner.rssi : null;
+    // Closeness: dB above (or below) each beacon's own 1 m level.
+    const ranked = r
+      .map((x) => {
+        const p = this.placements.find((b) => b.tag === x.tag);
+        return p ? { ...x, p, score: x.rssi - p.referenceRssi! } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    const runner = ranked[1] ?? null;
+    const placement = best?.p;
+    const margin = best && runner ? best.score - runner.score : null;
     const clear =
       best &&
       placement &&
       runner !== null &&
-      sorted.length >= c.proximityMinBeacons &&
-      best.rssi >= placement.referenceRssi! - c.zoneNearDb &&
+      ranked.length >= c.proximityMinBeacons &&
+      best.score >= -c.zoneNearDb &&
       margin! >= c.zoneMarginDb;
     if (!clear) {
       this.challenger = null;
       // Nobody clearly nearest for a while: leave the zone.
       if (this.zone && at - this.zone.applied > 3 * c.zoneRepeatSeconds)
         this.zone = null;
+      return null;
+    }
+    // Sticky zones: another beacon takes over only with a clear, lasting lead over the current one.
+    const current = this.zone
+      ? ranked.find((x) => x.tag === this.zone!.tag)
+      : undefined;
+    const switching = this.zone !== null && this.zone.tag !== best.tag;
+    if (switching && current && best.score - current.score < c.zoneSwitchDb) {
+      this.challenger = null;
       return null;
     }
     if (this.zone?.tag === best.tag) {
@@ -375,7 +398,8 @@ export class AssistFusion {
     }
     if (this.challenger?.tag !== best.tag)
       this.challenger = { tag: best.tag, since: at };
-    if (at - this.challenger.since < c.zoneHoldSeconds) return null;
+    const hold = switching ? c.zoneSwitchHoldSeconds : c.zoneHoldSeconds;
+    if (at - this.challenger.since < hold) return null;
     this.challenger = null;
     this.zone = { tag: best.tag, applied: at };
     const before = this.fusion.estimate();

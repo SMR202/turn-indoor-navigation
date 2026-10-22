@@ -43,6 +43,9 @@ export function openDb(path = ':memory:') {
     CREATE TABLE IF NOT EXISTS beacon_layouts (
       venue_id TEXT PRIMARY KEY, layout TEXT NOT NULL, updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS location_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, record TEXT NOT NULL, at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS eval_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, summary TEXT NOT NULL, at TEXT NOT NULL
     );

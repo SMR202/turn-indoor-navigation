@@ -22,3 +22,6 @@ apps/mobile/android/
 apps/mobile/ios/
 apps/mobile/modules/*/android/build/
 apps/mobile/modules/*/android/.gradle/
+
+# go-ios pairing identity (a private key), created in its working directory
+selfIdentity.plist

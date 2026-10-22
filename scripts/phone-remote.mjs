@@ -28,6 +28,9 @@ const IOS =
   process.env.IOS_BIN ?? resolve(root, 'work/tools/go-ios/bin/ios.exe');
 // Sideloadly appends the signing team to bundle ids (com.turn.navigation.dev.UZPRC7UX69), so
 // installed apps are found by prefix.
+// go-ios keeps its iOS 17+ pairing identity (selfIdentity.plist, a key) in its working directory:
+// run it next to the binary, in the ignored tools folder, never in the repository root.
+const IOS_CWD = dirname(IOS);
 const WDA_PREFIX = process.env.WDA_BUNDLE ?? 'com.smr202.turnwda.xctrunner';
 // WebDriverAgent listens on the iPhone's Wi-Fi address too: `ios start` saves it, so commands work
 // over the cable's port forward or, unplugged, straight over Wi-Fi (IPHONE_WDA overrides).
@@ -71,12 +74,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- iPhone (go-ios + WebDriverAgent) ------------------------------------------------------
 function ios(...a) {
-  const r = spawnSync(IOS, a, { encoding: 'utf8' });
+  const r = spawnSync(IOS, a, { encoding: 'utf8', cwd: IOS_CWD });
   return (r.stdout ?? '') + (r.stderr ?? '');
 }
 /** Installed iPhone app whose bundle id is `prefix` or `prefix.<team>`. */
 function iosApp(prefix) {
-  const r = spawnSync(IOS, ['apps'], { encoding: 'utf8' });
+  const r = spawnSync(IOS, ['apps'], { encoding: 'utf8', cwd: IOS_CWD });
   try {
     const j = JSON.parse((r.stdout ?? '').trim().split('\n').pop() ?? '[]');
     const ids = (Array.isArray(j) ? j : (j.apps ?? [])).map(
@@ -93,7 +96,11 @@ function iosApp(prefix) {
 function iosDetached(name, ...a) {
   mkdirSync(logs, { recursive: true });
   const out = openSync(resolve(logs, `${name}.log`), 'a');
-  spawn(IOS, a, { detached: true, stdio: ['ignore', out, out] }).unref();
+  spawn(IOS, a, {
+    cwd: IOS_CWD,
+    detached: true,
+    stdio: ['ignore', out, out],
+  }).unref();
 }
 async function wda(path, body) {
   const res = await fetch(WDA + path, {
@@ -190,7 +197,10 @@ const iosCommands = {
     if (!existsSync(IOS)) throw new Error(`go-ios not found at ${IOS}.`);
     // iOS 17+: a userspace tunnel (USB or Wi-Fi) that the other commands use through go-ios's agent.
     const tunnels = () => {
-      const out = spawnSync(IOS, ['tunnel', 'ls'], { encoding: 'utf8' }).stdout;
+      const out = spawnSync(IOS, ['tunnel', 'ls'], {
+        encoding: 'utf8',
+        cwd: IOS_CWD,
+      }).stdout;
       try {
         return JSON.parse(out.trim().split('\n').pop() ?? '[]').length;
       } catch {

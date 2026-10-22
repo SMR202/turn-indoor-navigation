@@ -436,6 +436,41 @@ describe('beacon test surveys', () => {
   });
 });
 
+describe('location feedback', () => {
+  it('keeps "not here" answers for private LAN venues as labelled examples', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const answer = {
+      platform: 'ios 26.5',
+      kind: 'room',
+      floorId: 'ground',
+      room: 'Lounge',
+      point: { x: 4, y: 12 },
+      before: { x: 8, y: 20, sigma: 3.2, room: 'Passage' },
+      readings: [{ tag: 'IB00010001', rssi: -63 }],
+    };
+    const path = '/public/venues/turn-demo-centre/location-feedback';
+    expect((await app.request(path, json(answer))).status).toBe(403);
+    const db = openDb(':memory:');
+    seed(db);
+    db.prepare(
+      "UPDATE venues SET visibility = 'private-lan' WHERE id = 'turn-demo-centre'",
+    ).run();
+    const lan = createApp(db, { includePrivateLan: true });
+    expect((await lan.request(path, json(answer))).status).toBe(200);
+    const got = (await (await lan.request(path)).json()) as (typeof answer & {
+      at: string;
+    })[];
+    expect(got).toHaveLength(1);
+    expect(got[0]!.room).toBe('Lounge');
+    expect(got[0]!.before!.room).toBe('Passage');
+    expect(got[0]!.at).toBeTruthy();
+    expect(
+      (await lan.request(path, json({ ...answer, kind: 'guess' }))).status,
+    ).not.toBe(200);
+    warn.mockRestore();
+  });
+});
+
 describe('client error reports', () => {
   it('keeps the latest phone errors for signed-in staff, size-limited', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

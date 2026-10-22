@@ -32,6 +32,22 @@ Set every beacon the same way: same transmit power, same interval, its own Major
 - **Advertising interval: 100–200 ms.** iPhones report each beacon about once a second, but they average the packets received in that second; faster advertising makes each reading steadier, and Android gets more readings.
 - **Measured power** (the 1 m value in the beacon's packet): leave it; TURN calibrates.
 - Replace old coin cells: a beacon that reads far below the others at 1 m usually has a low battery or a lower power setting.
+- **Broadcast Eddystone-UID as well as iBeacon** when the beacon can do both at once. FACT: iPhones only deliver iBeacon through Core Location, about one averaged reading per beacon per second; Eddystone frames arrive through Core Bluetooth, one reading per packet while the app is open (TURN's iPhone module already reads them). At 100 ms that is several times more evidence per second. Keep iBeacon on for background detection.
+
+### Buying beacons (PROPOSED)
+
+Candidates the owner shortlisted, from Minew's product pages (vendor figures, not measured here):
+
+|                | [Minew E5 Location Beacon](https://www.minew.com/product/e5-location-beacon/) | [Minew E7 Plus](https://www.minew.com/product/e7-plus-beacon/) |
+| -------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Formats        | iBeacon and Eddystone at the same time                                        | iBeacon and Eddystone                                          |
+| Transmit power | adjustable up to +4 dBm (default 0 dBm)                                       | not stated on the page                                         |
+| Battery        | replaceable 2400 mAh lithium                                                  | replaceable coin cell, 1000 mAh, about 2 years                 |
+| Build          | nRF52, 39 g                                                                   | 20 g, IP67 waterproof                                          |
+
+PROPOSED: the **E5** for indoor venues (twice the battery for 100 ms and +4 dBm, both formats at once); the E7 Plus where water or dust matters. Before buying in bulk, check the datasheet for the advertising-interval range and buy two to run **Test beacons** with.
+
+How many: at least **one per room** people need to tell apart, mounted mid-room or mid-wall about 2 m high (not on metal, not behind furniture), and in corridors and open areas one every 6–10 m so two or three are heard everywhere. Room-level positioning needs each beacon to be the strongest in its own room (the beacon test checks this); finer positions need more beacons heard at once.
 
 For **private LAN venues** (a home or test site) the setup is shared through the TURN server: every edit is uploaded, and phones fetch changes when the venue opens and every 15 s. A phone that set up beacons before sharing existed uploads them on its first sync, united with what other phones already shared. Calibrations are shared too, although phones hear the same beacon a few dB apart. Public venues keep phone edits on that phone; their shared layout is set up in TURN Studio.
 
@@ -45,6 +61,8 @@ For **private LAN venues** (a home or test site) the setup is shared through the
 
 With two or more beacons set up, the visitor app **finds you automatically** when the venue opens and the blue dot follows you while browsing, previewing routes and navigating. Without beacons, start it with **Set my location** (map pin) or a TURN code. Marking your direction once with **Set my location** teaches that phone how the venue's map is turned against its compass (walking refines it), so later starts know which way you face.
 
-**Nearest beacon**: when one beacon is clearly the strongest (heard within 12 dB of its 1 m level and 3 dB above every other beacon for 2 s), the position is pulled to it and into its room (each wall in between counts against a position), on arrival and every 4 s while it stays the strongest, standing or walking.
+**How the beacons are used** (not trilateration): a particle filter keeps a few hundred guesses of where you are. Steps move them, walls stop them, and every few seconds each guess is scored by how well it explains the signal of every beacon heard, one or many, using each beacon's measured 1 m level. On top, the **nearest beacon** rule: beacons are ranked by how far above their own 1 m level they are heard (a distance, not loudness, so a quiet beacon close by beats a loud one through a wall); the leader, within 12 dB of its 1 m level and 4 dB ahead of the next for 2 s, pulls the guesses into its room, on arrival and every 4 s while it leads. Changing room needs a 6 dB lead held for 4 s, so a reflection or an opening door does not hop you between rooms.
+
+**The blue dot** moves with your steps. A jump no step explains is shown only when a second estimate agrees; while you stand still, small corrections and uncertainty widen the accuracy circle instead of moving the dot. **Not here?** Tap the dot (or the _Location rough_ chip): pick your room from the likeliest few, **Find me again**, or point on the map. On private LAN venues each answer, with the beacon readings at that moment, is kept on the TURN server as a labelled example (`/public/venues/:id/location-feedback`).
 
 Check the result with walks that use landmark marks ([evaluation](EVALUATION.md)) before claiming any accuracy. Native parsers: `TurnBleModule.kt` and `TurnBleModule.swift` under `apps/mobile/modules/turn-motion`; format reference and tests: [`beacon-ids.ts`](../packages/positioning-core/src/beacon-ids.ts).

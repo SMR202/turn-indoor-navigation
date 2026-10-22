@@ -1110,6 +1110,62 @@ export function createApp(
     return c.json(surveys.get(param(c, 'id')) ?? []);
   });
 
+  // "Not here?" answers from phones (private LAN venues): where the walker really was (a room or a
+  // point) with the beacon readings at that moment and what TURN had believed. Labelled examples
+  // for calibrating the venue; no person, session or path is recorded.
+  const feedbackSchema = z.object({
+    platform: z.string().max(40),
+    kind: z.enum(['room', 'point', 'relocate', 'confirmed']),
+    floorId: z.string().max(80),
+    room: z.string().max(80).nullable(),
+    point: z
+      .object({ x: z.number().finite(), y: z.number().finite() })
+      .nullable(),
+    before: z
+      .object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+        sigma: z.number().finite(),
+        room: z.string().max(80).nullable(),
+      })
+      .nullable(),
+    readings: z
+      .array(
+        z.object({
+          tag: z.string().max(12),
+          rssi: z.number().min(-130).max(10),
+        }),
+      )
+      .max(64),
+  });
+  app.post('/public/venues/:id/location-feedback', async (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    if (v.visibility !== 'private-lan')
+      return c.json({ error: 'Kept for private LAN venues only.' }, 403);
+    const f = feedbackSchema.parse(await c.req.json());
+    run(
+      'INSERT INTO location_feedback (venue_id, record, at) VALUES (?, ?, ?)',
+      param(c, 'id'),
+      JSON.stringify(f),
+      now(),
+    );
+    console.warn(
+      `[location-feedback] ${param(c, 'id')} ${f.platform} ${f.kind}: ${f.room ?? (f.point ? `${f.point.x.toFixed(1)},${f.point.y.toFixed(1)}` : '-')} (TURN had ${f.before?.room ?? '-'}), ${f.readings.length} beacons`,
+    );
+    return c.json({ ok: true });
+  });
+  app.get('/public/venues/:id/location-feedback', (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v) || v.visibility !== 'private-lan')
+      return c.json({ error: 'Not found' }, 404);
+    const rows = all<{ record: string; at: string }>(
+      'SELECT record, at FROM location_feedback WHERE venue_id = ? ORDER BY id DESC LIMIT 200',
+      param(c, 'id'),
+    );
+    return c.json(rows.map((r) => ({ at: r.at, ...JSON.parse(r.record) })));
+  });
+
   // Errors from TURN apps on test phones, so a problem can be read without a cable. The last 50
   // stay in memory and are printed to the server log; they carry no position or venue data.
   const clientErrors: Record<string, string>[] = [];

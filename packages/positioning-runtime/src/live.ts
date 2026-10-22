@@ -7,7 +7,13 @@ import {
   type BleTraceRecord,
 } from '@turn/positioning-core';
 import type { VenuePackage } from '@turn/venue-model';
-import { buildFusionMap, nearestAnchor, type P } from './assist-helpers';
+import {
+  buildFusionMap,
+  nearestAnchor,
+  roomBelief,
+  type P,
+  type RoomBelief,
+} from './assist-helpers';
 import {
   AssistedTracker,
   type BeaconHealth,
@@ -329,14 +335,29 @@ export class LivePositioning {
     };
   }
 
+  /** Rooms the walker is probably in, most likely first (empty before the filter has a position). */
+  roomBelief(): RoomBelief[] {
+    const fusion = this.tracker?.assist.fusion;
+    if (!fusion || !this.tracker?.positioned) return [];
+    return roomBelief(
+      this.options.venue,
+      this.options.floorId,
+      fusion.weightedPoints(),
+    );
+  }
+  /** Median RSSI per beacon the filter is using now. */
+  readings(): { tag: string; rssi: number }[] {
+    return this.tracker?.readings() ?? [];
+  }
+
   /** Beacons in the layout and when this phone last heard them (empty without a beacon stream). */
   beaconHealth(): BeaconHealth[] {
     return this.tracker?.health() ?? [];
   }
 
   /** A trusted correction: the user scanned a marker or confirmed where they are. */
-  correct(p: P) {
-    this.tracker?.relocate(p.x, p.y, 1.2);
+  correct(p: P, sigma = 1.2) {
+    this.tracker?.relocate(p.x, p.y, sigma);
   }
   /** The route now being followed on this floor (after a re-route or a new leg); null clears it. */
   setRoute(route: P[] | null) {

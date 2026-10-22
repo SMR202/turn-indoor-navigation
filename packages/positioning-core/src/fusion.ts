@@ -442,8 +442,9 @@ export class ParticleFusion {
   /**
    * Nearest-beacon evidence: the walker is close to (x, y) and, since its signal clearly beats
    * every other beacon's, probably on the same side of the walls (the same room). Each wall between
-   * a hypothesis and the beacon multiplies its weight by `wallFactor`. A cloud that cannot explain
-   * it at all restarts around the beacon, in its room, keeping heading and stride.
+   * a hypothesis and the beacon multiplies its weight by `wallFactor`. When no hypothesis is within
+   * about two sigmas of the beacon on its side of the walls, the cloud restarts spread over the
+   * beacon's room (not on the beacon itself), keeping heading and stride.
    */
   updateNear(x: number, y: number, sigma: number, wallFactor = 0.35) {
     const logw = new Float64Array(this.n);
@@ -460,8 +461,8 @@ export class ParticleFusion {
       logw[i] = -d2 / (2 * sigma * sigma) + walls * lf;
       best = Math.max(best, logw[i]!);
     }
-    if (best < -8) {
-      this.relocate(x, y, sigma * 0.6);
+    if (best < -2.2) {
+      this.relocate(x, y, sigma);
       return;
     }
     this.applyLogWeights(logw);
@@ -600,6 +601,16 @@ export class ParticleFusion {
     };
   }
   /** Number of resampling events so far (diagnostic). */
+  /** Every hypothesis with its normalised weight (copies; for summaries such as room belief). */
+  weightedPoints(): { x: number; y: number; w: number }[] {
+    let total = 0;
+    for (let i = 0; i < this.n; i++) total += this.w[i]!;
+    const out: { x: number; y: number; w: number }[] = [];
+    for (let i = 0; i < this.n; i++)
+      out.push({ x: this.x[i]!, y: this.y[i]!, w: this.w[i]! / (total || 1) });
+    return out;
+  }
+
   get resamples() {
     return this.resampled;
   }

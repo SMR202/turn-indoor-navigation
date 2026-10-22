@@ -233,7 +233,14 @@ export function useLiveSession(
     return () => clearInterval(timer);
   }, [running, pkg.venueId]);
 
-  const correct = useCallback((p: P) => ref.current?.correct(p), []);
+  const correct = useCallback(
+    (p: P, sigma?: number) => ref.current?.correct(p, sigma),
+    [],
+  );
+  /** Rooms the walker is probably in, most likely first. */
+  const roomBelief = useCallback(() => ref.current?.roomBelief() ?? [], []);
+  /** Median RSSI per beacon the filter is using now. */
+  const readings = useCallback(() => ref.current?.readings() ?? [], []);
   /** Every filter update (each step or fix), outside React; returns the unsubscribe function. */
   const onFix = useCallback((listener: (s: LiveState) => void) => {
     fixListeners.current.add(listener);
@@ -268,6 +275,8 @@ export function useLiveSession(
     start,
     stop,
     correct,
+    roomBelief,
+    readings,
     onFix,
     setRoute,
     heading,

@@ -2,6 +2,16 @@
 
 Updated: 2026-10-21.
 
+## Distance-ranked sticky zones, calm dot, "Not here?" corrections — 2026-10-22
+
+FACT (user report): sometimes standing closest to one beacon placed the dot at another; the dot "moves all over the place". Causes in the code: the zone ranked beacons by raw loudness (the home beacons' 1 m levels span -68 to -59 dBm, so a loud beacon through a wall could outrank a quiet one nearby), switched rooms on a 3 dB lead for 2 s, and pulled hypotheses onto the beacon point (σ 2.2 m); the display followed every radio and zone update.
+
+IMPLEMENTED: zones rank by dB above each beacon's 1 m level; enter on a 4 dB lead for 2 s, switch only on a 6 dB lead over the current zone for 4 s; the pull is room-sized (σ 3 m, walls weighted) and a cloud that cannot explain the beacon restarts spread over its room (`ParticleFusion.updateNear`). `DisplayPose`: an unexplained move over 2 m waits for a second estimate within 2 m and 8 s; the standing dead band grows with uncertainty (0.6 σ). `roomBelief` sums hypotheses per room; the visitor app's **Not here?** sheet offers the likeliest rooms, Find me again, or a point on the map, and posts each answer with the current readings to `/public/venues/:id/location-feedback` (private LAN venues, stored in `location_feedback`).
+
+EXPERIMENT RESULT (synthetic, mechanics only): a quiet beacon 2 m away now beats a beacon heard 5 dB louder through a wall; a 4 s, 40 dB flicker of another room's beacon no longer moves the walker; one unexplained 6 m jump is not drawn until a second estimate agrees. No venue accuracy is established.
+
+Next: home walk with the iPhone on the production server: note per room whether the dot settles in the right room and how often **Not here?** is needed; the stored answers become the first labelled set for a room classifier.
+
 ## Nearest-beacon zone, beacon test survey — 2026-10-21
 
 FACT (user report): standing next to a beacon in the rear bedroom, with that beacon clearly strongest, the dot stayed in the lounge, passage or entrance. Causes in the code: radio was applied only after 1 m of walking; the proximity detector needed 3 readings in 2 s (iPhone ranging gives 1 per second, so it never fired on iPhone) and a 6 dB lead, and fired once per approach.

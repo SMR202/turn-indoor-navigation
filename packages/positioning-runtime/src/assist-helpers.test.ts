@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { sampleVenue } from '@turn/venue-model';
+import { demoCentre, sampleVenue } from '@turn/venue-model';
 import {
   buildFusionMap,
   etaMinutes,
@@ -7,6 +7,8 @@ import {
   nearestAnchor,
   nearestRoutableNode,
   remainingRoute,
+  roomBelief,
+  roomCentre,
   roomNameAt,
 } from './assist-helpers';
 
@@ -59,4 +61,23 @@ it('reports a room name only inside a room and a sensible ETA', () => {
   expect(roomNameAt(sampleVenue, floorId, { x: -50, y: -50 })).toBeNull();
   expect(etaMinutes(10)).toBe(1);
   expect(etaMinutes(200)).toBe(3);
+});
+
+it('summarises the filter hypotheses as rooms, likeliest first', () => {
+  const floor = demoCentre.floors[0]!;
+  const rooms = floor.rooms.filter((r) => r.kind !== 'fixture' && r.name);
+  const [a, b] = [rooms[0]!, rooms[1]!];
+  const ca = roomCentre(a.polygon).centre;
+  const cb = roomCentre(b.polygon).centre;
+  // 70 % of the weight in room a, 30 % in room b.
+  const points = [
+    ...Array.from({ length: 7 }, () => ({ ...ca, w: 0.1 })),
+    ...Array.from({ length: 3 }, () => ({ ...cb, w: 0.1 })),
+  ];
+  const belief = roomBelief(demoCentre, floor.id, points);
+  expect(belief.map((r) => r.roomId)).toEqual([a.id, b.id]);
+  expect(belief[0]!.probability).toBeCloseTo(0.7, 5);
+  expect(roomNameAt(demoCentre, floor.id, belief[0]!.centre)).toBe(a.name);
+  expect(belief[0]!.radius).toBeGreaterThan(0.5);
+  expect(roomBelief(demoCentre, 'no-such-floor', points)).toEqual([]);
 });

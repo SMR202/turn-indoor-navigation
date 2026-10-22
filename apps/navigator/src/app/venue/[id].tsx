@@ -37,12 +37,19 @@ import {
 import {
   buildFusionMap,
   nearestRoutableNode,
+  roomCentre,
   roomNameAt,
 } from '@turn/positioning-runtime';
 import { calculateRoute } from '@turn/routing';
 import type { VenuePackage } from '@turn/venue-model';
 import { Icon } from '../../components/icon';
 import { Sheet } from '../../components/sheet';
+import {
+  ConfirmLocationToast,
+  RoughLocationChip,
+  WhereAmISheet,
+  type RoomChoice,
+} from '../../components/where-am-i';
 import {
   Badge,
   Button,
@@ -53,7 +60,7 @@ import {
   Tap,
 } from '../../components/ui';
 import { track } from '../../lib/analytics';
-import { useVenue, type VenueBundle } from '../../lib/api';
+import { postJson, useVenue, type VenueBundle } from '../../lib/api';
 import {
   arrivalClock,
   formatDistance,
@@ -553,13 +560,14 @@ function Experience({
     return () => clearTimeout(t);
   }, [locateNote]);
   const findMe = useCallback(
-    (silent = false) => {
+    (silent = false, done?: (found: boolean) => void) => {
       if (!live.canLocate) return;
       setLocating('busy');
       void live.locate(5000).then((r) => {
         setLocating(null);
         if (!r.fix || !live.availableOn(r.fix.floorId).available) {
           if (!silent) setLocateNote(r.fix ? null : r.reason);
+          done?.(false);
           return;
         }
         setLocateNote(null);
@@ -569,6 +577,7 @@ function Experience({
         void live.start({ x: r.fix.x, y: r.fix.y }, r.fix.floorId, {
           sigma: Math.max(1.5, r.fix.sigma),
         });
+        done?.(true);
       });
     },
     [live.canLocate, live.locate, live.availableOn, live.start],
@@ -586,6 +595,61 @@ function Experience({
       findMe(true);
     }
   }, [live.canLocate, live.running, anchorId, start, findMe]);
+  // ---- "Not here?": the walker puts TURN right; every answer is a labelled example ----------
+  type Before = { x: number; y: number; sigma: number; room: string | null };
+  const [where, setWhere] = useState<{
+    belief: RoomChoice[];
+    before: Before | null;
+  } | null>(null);
+  const [confirmFix, setConfirmFix] = useState<{
+    label: string;
+    before: Before | null;
+  } | null>(null);
+  const floorRooms = useMemo<RoomChoice[]>(() => {
+    const f = pkg.floors.find((x) => x.id === (liveFloor ?? floorId));
+    return (f?.rooms ?? [])
+      .filter((r) => r.kind !== 'fixture' && r.name)
+      .map((r) => ({ roomId: r.id, name: r.name, ...roomCentre(r.polygon) }));
+  }, [pkg, liveFloor, floorId]);
+  const sendFeedback = useCallback(
+    (
+      kind: 'room' | 'point' | 'relocate' | 'confirmed',
+      room: string | null,
+      point: P | null,
+      before: Before | null,
+    ) => {
+      if (!bundle.summary.private || !liveFloor) return;
+      void postJson(
+        `/public/venues/${encodeURIComponent(venueId)}/location-feedback`,
+        {
+          platform: `${Platform.OS} ${String(Platform.Version)}`.slice(0, 40),
+          kind,
+          floorId: liveFloor,
+          room,
+          point,
+          before,
+          readings: live.readings().slice(0, 64),
+        },
+      ).catch(() => undefined);
+    },
+    [bundle.summary.private, liveFloor, venueId, live.readings],
+  );
+  const openWhere = useCallback(() => {
+    const belief = live.roomBelief();
+    const shown = liveDot.current();
+    setWhere({
+      belief,
+      before: shown
+        ? {
+            x: shown.x,
+            y: shown.y,
+            sigma: liveDot.snapshot().sigma,
+            room: belief[0]?.name ?? null,
+          }
+        : null,
+    });
+  }, [live.roomBelief, liveDot]);
+
   const showLive =
     !pick &&
     ((dotDriver === 'live' &&
@@ -821,6 +885,13 @@ function Experience({
     setFloorId(pick.floorId);
     setPick(null);
     setUseLiveStart(true);
+    if (live.running)
+      sendFeedback(
+        'point',
+        roomNameAt(pkg, pick.floorId, pick.point),
+        pick.point,
+        null,
+      );
     if (Platform.OS !== 'web' && live.availableOn(pick.floorId).available) {
       setFollow(true);
       if (heading !== null || !live.running || liveFloor !== pick.floorId)
@@ -1613,6 +1684,7 @@ function Experience({
         user={user}
         liveDot={liveDot}
         liveVisible={showLive}
+        onDotTap={live.running && !pick ? openWhere : undefined}
         command={command}
         follow={(navigating || live.running) && follow}
         onSelect={select}
@@ -2090,6 +2162,18 @@ function Experience({
               </T>
             </Animated.View>
           )}
+          {live.running &&
+            livePhase === 'tracking' &&
+            showLive &&
+            !navigating &&
+            locating !== 'busy' &&
+            locateNote === null && (
+              <RoughLocationChip
+                dot={liveDot}
+                onPress={openWhere}
+                maxWidth={W - 48}
+              />
+            )}
         </View>
       ) : null}
 
@@ -2340,6 +2424,57 @@ function Experience({
                 ? placeSheet
                 : routeSheet}
         </Sheet>
+      )}
+      {confirmFix && !where && (
+        <ConfirmLocationToast
+          label={confirmFix.label}
+          bottom={sheetVisible + 16}
+          onYes={() => {
+            sendFeedback(
+              'confirmed',
+              live.roomBelief()[0]?.name ?? null,
+              liveDot.current(),
+              confirmFix.before,
+            );
+            setConfirmFix(null);
+          }}
+          onNo={() => {
+            setConfirmFix(null);
+            openWhere();
+          }}
+        />
+      )}
+      {where && (
+        <WhereAmISheet
+          belief={where.belief}
+          rooms={floorRooms}
+          sigma={where.before?.sigma ?? null}
+          canLocate={live.canLocate}
+          onClose={() => setWhere(null)}
+          onRoom={(r) => {
+            const before = where.before;
+            setWhere(null);
+            if (!liveFloor) return;
+            const sigma = Math.max(1, r.radius * 0.7);
+            live.correct(r.centre, sigma);
+            setFloorId(liveFloor);
+            setFollow(true);
+            sendFeedback('room', r.name, r.centre, before);
+          }}
+          onFindAgain={() => {
+            const before = where.before;
+            setWhere(null);
+            findMe(false, (found) => {
+              if (!found) return;
+              sendFeedback('relocate', null, null, before);
+              setConfirmFix({ label: 'Found you again', before });
+            });
+          }}
+          onPointOnMap={() => {
+            setWhere(null);
+            beginPick();
+          }}
+        />
       )}
     </View>
   );

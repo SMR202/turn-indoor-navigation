@@ -164,10 +164,12 @@ describe('nearest beacon zone (synthetic mechanics, not venue accuracy)', () => 
     p: { x: number; y: number },
     from: number,
     seconds: number,
+    set = beacons,
+    extraDb: (tag: string) => number = () => 0,
   ) {
     for (let s = 0; s < seconds; s++) {
       const t = from + s;
-      for (const b of beacons) {
+      for (const b of set) {
         const walls = rooms.walls.filter((w) => {
           const d = (
             u: { x: number; y: number },
@@ -184,11 +186,12 @@ describe('nearest beacon zone (synthetic mechanics, not venue accuracy)', () => 
           t,
           b.tag,
           predictRssi(
-            { refRssi: -62, exponent: 2.3 },
+            { refRssi: b.referenceRssi!, exponent: 2.3 },
             Math.hypot(p.x - b.x, p.y - b.y),
           ) -
             6 * walls +
-            noise,
+            noise +
+            extraDb(b.tag),
         );
       }
       a.tick(t);
@@ -202,7 +205,28 @@ describe('nearest beacon zone (synthetic mechanics, not venue accuracy)', () => 
     standAt(a, { x: 16.4, y: 3.4 }, 0, 12);
     const e = a.estimate()!;
     expect(e.x).toBeGreaterThan(10.2); // the right room
-    expect(Math.hypot(e.x - 17, e.y - 3)).toBeLessThan(2.5);
+    expect(Math.hypot(e.x - 17, e.y - 3)).toBeLessThan(4);
+  });
+  it('ranks beacons by distance, not loudness: a quiet beacon nearby beats a loud one through a wall', () => {
+    const mixed: BeaconPlacement[] = [
+      { tag: 'A1', floorId: 'f', x: 3, y: 8, referenceRssi: -70 },
+      { tag: 'B1', floorId: 'f', x: 12, y: 8, referenceRssi: -46 },
+    ];
+    const a = new AssistFusion(rooms, mixed, live, 4);
+    a.setPosition(15, 5, 1); // wrong room
+    // 2 m from the quiet A1; the loud B1 is heard about 5 dB louder through the wall.
+    standAt(a, { x: 5, y: 8 }, 0, 12, mixed);
+    expect(a.estimate()!.x).toBeLessThan(9.8);
+  });
+  it('does not hop rooms when another beacon briefly reads strong', () => {
+    const a = new AssistFusion(rooms, beacons, live, 4);
+    a.setPosition(4, 6, 1);
+    const spot = { x: 3.6, y: 7.4 }; // beside A1
+    standAt(a, spot, 0, 8);
+    // 4 s in which B2, in the other room, reads 40 dB stronger (a reflection, a door opening).
+    standAt(a, spot, 8, 4, beacons, (tag) => (tag === 'B2' ? 40 : 0));
+    standAt(a, spot, 12, 4);
+    expect(a.estimate()!.x).toBeLessThan(9.8);
   });
   it('stays put between beacons when none is clearly nearest', () => {
     const a = new AssistFusion(rooms, beacons, live, 4);

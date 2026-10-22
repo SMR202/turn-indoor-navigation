@@ -95,6 +95,8 @@ type Props = {
    */
   onCenterChange?: (p: P) => void;
   onGesture?: () => void;
+  /** A tap on (or within a finger of) the live blue dot. */
+  onDotTap?: () => void;
   /** Small labelled pins, such as "To Level 1" where the route changes floor. */
   markers?: { key: string; x: number; y: number; text: string; icon: string }[];
   /**
@@ -453,10 +455,19 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   });
   const onSelect = props.onSelect;
   const onMapTap = props.onMapTap;
+  const onDotTap = props.onDotTap;
+  const liveVisible = props.liveVisible;
   const pick = useCallback(
     (mx: number, my: number, s: number) => {
       const m = { x: mx, y: my };
       if (onMapTap) return onMapTap(m, s);
+      const shown = liveVisible ? dotDriver?.current() : null;
+      if (
+        onDotTap &&
+        shown &&
+        Math.hypot(shown.x - m.x, shown.y - m.y) * s < 30
+      )
+        return onDotTap();
       const near = scene.places
         .map((p) => ({ p, d: Math.hypot(p.x - m.x, p.y - m.y) * s }))
         .filter((o) => o.d < 22)
@@ -467,7 +478,7 @@ export const VenueMap = memo(function VenueMap(props: Props) {
         .sort((a, b) => a.area - b.area)[0];
       onSelect(room?.placeId ?? null);
     },
-    [scene, onSelect, onMapTap],
+    [scene, onSelect, onMapTap, onDotTap, dotDriver, liveVisible],
   );
   // The camera lives on the UI thread: convert the tap there, where it is current, and only then
   // hand the map point to JavaScript. A finger that moves more than a few pixels is a pan.

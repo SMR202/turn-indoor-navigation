@@ -23,6 +23,16 @@ export type DisplayOptions = {
   routeBacktrack: number;
   /** A walking path longer than this is a relocalisation: show it as a jump, not a walk. */
   teleportMetres: number;
+  /** While standing, the dead band also grows with the estimate's uncertainty (× sigma). */
+  standSigmaFactor: number;
+  /**
+   * A move of more than this (metres) that no step explains is shown only once a second estimate
+   * agrees with it (within `confirmMetres`, within `confirmSeconds`): one noisy radio update cannot
+   * throw the dot across the room and back.
+   */
+  confirmJumpMetres: number;
+  confirmMetres: number;
+  confirmSeconds: number;
 };
 export const DEFAULT_DISPLAY: DisplayOptions = {
   snapMetres: 2,
@@ -32,6 +42,10 @@ export const DEFAULT_DISPLAY: DisplayOptions = {
   standDeadband: 0.6,
   routeBacktrack: 1.2,
   teleportMetres: 25,
+  standSigmaFactor: 0.6,
+  confirmJumpMetres: 2,
+  confirmMetres: 2,
+  confirmSeconds: 8,
 };
 
 /** Walls and walk graph of the floor being shown (the same shape as the fusion map). */
@@ -121,8 +135,18 @@ export class DisplayPose {
       ? buildWalkGraph(map.graph.nodes, map.graph.edges)
       : null;
   }
-  /** Feed a new filter estimate. `walked` is true when this update came from a step. */
-  update(est: P, now: number, walked: boolean, fix = false) {
+  /** A large unexplained move waiting for a second estimate to confirm it. */
+  private candidate: { p: P; at: number } | null = null;
+  /**
+   * Feed a new filter estimate (with its uncertainty `sigma` in metres, when known). `walked` is
+   * true when this update came from a step.
+   */
+  update(
+    est: P & { sigma?: number },
+    now: number,
+    walked: boolean,
+    fix = false,
+  ) {
     if (walked) this.lastWalkAt = now;
     let target = est;
     let targetS: number | null = null;
@@ -138,13 +162,28 @@ export class DisplayPose {
     }
     const standing = now - this.lastWalkAt > this.opts.standStillSeconds;
     if (this.shown && !fix) {
-      // Standing: only a larger, evidence-backed move is allowed through.
-      if (
-        standing &&
-        Math.hypot(target.x - this.shown.x, target.y - this.shown.y) <
-          this.opts.standDeadband
-      )
-        return;
+      const jump = Math.hypot(target.x - this.shown.x, target.y - this.shown.y);
+      // Standing: only a larger, evidence-backed move is allowed through; the less certain the
+      // estimate, the larger (the accuracy circle grows instead of the dot wandering).
+      const deadband = Math.max(
+        this.opts.standDeadband,
+        this.opts.standSigmaFactor * (est.sigma ?? 0),
+      );
+      if (standing && jump < deadband) return;
+      // A big move no step explains waits for a second, agreeing estimate.
+      if (!walked && jump > this.opts.confirmJumpMetres) {
+        const c = this.candidate;
+        const agrees =
+          c &&
+          now - c.at <= this.opts.confirmSeconds &&
+          Math.hypot(target.x - c.p.x, target.y - c.p.y) <=
+            this.opts.confirmMetres;
+        if (!agrees) {
+          this.candidate = { p: { ...target }, at: now };
+          return;
+        }
+      }
+      this.candidate = null;
       // Following the route: small backward wobbles are filter noise, not the walker turning back.
       if (
         targetS !== null &&
@@ -232,5 +271,6 @@ export class DisplayPose {
     this.routeS = null;
     this.pendingS = null;
     this.lastWalkAt = -Infinity;
+    this.candidate = null;
   }
 }

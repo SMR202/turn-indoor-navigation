@@ -126,6 +126,67 @@ export function roomNameAt(
   return room?.name ?? null;
 }
 
+export type RoomBelief = {
+  roomId: string;
+  name: string;
+  /** Share of the filter's hypotheses in this room (0–1). */
+  probability: number;
+  /** Area-weighted centre and a spread that covers most of the room (metres). */
+  centre: P;
+  radius: number;
+};
+
+/** Centroid and covering radius of a simple polygon. */
+export function roomCentre(polygon: P[]): { centre: P; radius: number } {
+  let a = 0,
+    cx = 0,
+    cy = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const p = polygon[j]!,
+      q = polygon[i]!;
+    const f = p.x * q.y - q.x * p.y;
+    a += f;
+    cx += (p.x + q.x) * f;
+    cy += (p.y + q.y) * f;
+  }
+  const centre =
+    Math.abs(a) < 1e-9
+      ? {
+          x: polygon.reduce((s, p) => s + p.x, 0) / polygon.length,
+          y: polygon.reduce((s, p) => s + p.y, 0) / polygon.length,
+        }
+      : { x: cx / (3 * a), y: cy / (3 * a) };
+  return { centre, radius: Math.sqrt(Math.abs(a) / 2 / Math.PI) };
+}
+
+/**
+ * Which rooms the walker is probably in: the filter's hypotheses summed per named room of the
+ * floor, most likely first. Hypotheses outside every room (doorways, gaps) are left out.
+ */
+export function roomBelief(
+  venue: VenuePackage,
+  floorId: string,
+  points: { x: number; y: number; w: number }[],
+): RoomBelief[] {
+  const floor = venue.floors.find((f) => f.id === floorId);
+  if (!floor) return [];
+  const rooms = floor.rooms.filter((r) => r.kind !== 'fixture' && r.name);
+  const mass = new Map<string, number>();
+  for (const p of points) {
+    const room = rooms.find((r) => inside(p, r.polygon));
+    if (room) mass.set(room.id, (mass.get(room.id) ?? 0) + p.w);
+  }
+  return rooms
+    .filter((r) => mass.has(r.id))
+    .map((r) => ({
+      roomId: r.id,
+      name: r.name,
+      probability: mass.get(r.id)!,
+      ...roomCentre(r.polygon),
+    }))
+    .sort((a, b) => b.probability - a.probability);
+}
+
 /** Route polyline from the closest point on the route to its end (what is left to walk). */
 export function remainingRoute(route: P[], position: P): P[] {
   if (route.length < 2) return route;
