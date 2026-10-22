@@ -41,7 +41,7 @@ FACT (home beacons, 2026-10-22): they shipped at **Tx Power 0 dBm** and **Advert
 1. AprilBeacon → **Bluetooth** tab. If the list is empty, ••• → Filter by RSSI → switch it off (it hides beacons weaker than -70 dBm).
 2. Stand near a beacon and tap the strongest **AprilBeacon_XXXX** (the last four characters of its address). Check **Minor** to know which beacon it is.
 3. **Tx Power** → **4dBm**. **Advertising Freq** → delete the number, type **1**. Change nothing else (Broadcast Type, UUID, Major, Minor, Measured Power, New Password).
-4. **Save** → type the beacon password (default ; some models ) → ok. The app returns to the list; reopen to check.
+4. **Save** → type the beacon password (default `AprilBrother`; some models `195660`) → ok. The app returns to the list; reopen to check.
 5. Then run **Test beacons** again for every beacon and **Use measured calibration**: each beacon's 1 m level rises by about 4 dB.
 
 At 100 ms and 4 dBm a coin cell lasts months rather than years; Freq 2 (200 ms) is the compromise.
