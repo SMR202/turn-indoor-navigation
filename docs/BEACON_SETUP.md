@@ -34,6 +34,18 @@ Set every beacon the same way: same transmit power, same interval, its own Major
 - Replace old coin cells: a beacon that reads far below the others at 1 m usually has a low battery or a lower power setting.
 - **Broadcast Eddystone-UID as well as iBeacon** when the beacon can do both at once. FACT: iPhones only deliver iBeacon through Core Location, about one averaged reading per beacon per second; Eddystone frames arrive through Core Bluetooth, one reading per packet while the app is open (TURN's iPhone module already reads them). At 100 ms that is several times more evidence per second. Keep iBeacon on for background detection.
 
+### April Brother beacons (AprilBeacon app, iPhone)
+
+FACT (home beacons, 2026-10-22): they shipped at **Tx Power 0 dBm** and **Advertising Freq 9** (×100 ms = 900 ms), iBeacon, and can broadcast iBeacon _or_ Eddystone (not both). Configured: **4 dBm** and **Freq 1** (100 ms), still iBeacon so TURN's beacon IDs stay the same. At 900 ms an iPhone reading averaged barely one packet; at 100 ms about ten.
+
+1. AprilBeacon → **Bluetooth** tab. If the list is empty, ••• → Filter by RSSI → switch it off (it hides beacons weaker than -70 dBm).
+2. Stand near a beacon and tap the strongest **AprilBeacon_XXXX** (the last four characters of its address). Check **Minor** to know which beacon it is.
+3. **Tx Power** → **4dBm**. **Advertising Freq** → delete the number, type **1**. Change nothing else (Broadcast Type, UUID, Major, Minor, Measured Power, New Password).
+4. **Save** → type the beacon password (default ; some models ) → ok. The app returns to the list; reopen to check.
+5. Then run **Test beacons** again for every beacon and **Use measured calibration**: each beacon's 1 m level rises by about 4 dB.
+
+At 100 ms and 4 dBm a coin cell lasts months rather than years; Freq 2 (200 ms) is the compromise.
+
 ### Buying beacons (PROPOSED)
 
 Candidates the owner shortlisted, from Minew's product pages (vendor figures, not measured here):

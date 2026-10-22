@@ -280,6 +280,15 @@ const iosCommands = {
       40,
     ),
   home: () => wda('/wda/homescreen', {}),
+  /** Types into the focused field; each "{bs}" is a backspace. Never used for passwords. */
+  async type(text) {
+    const sid = await iosSession();
+    const value = [];
+    for (const part of String(text ?? '').split(/(\{bs\})/))
+      if (part === '{bs}') value.push('\b');
+      else value.push(...part);
+    await wda(`/session/${sid}/wda/keys`, { value });
+  },
   async launch(bundle) {
     const sid = await iosSession();
     await wda(`/session/${sid}/wda/apps/launch`, {
