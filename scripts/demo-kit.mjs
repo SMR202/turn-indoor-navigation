@@ -106,9 +106,14 @@ writeFileSync(
 writeFileSync(
   join(kit, 'setup-laptop.ps1'),
   `# Installs or updates the TURN demo on this computer from this kit.
+# -Destination and -NoShortcut are for trying the setup somewhere else.
+param(
+  [string]$Destination = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'TURN Indoor Navigation'),
+  [switch]$NoShortcut
+)
 $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
-$dest = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'TURN Indoor Navigation'
+$dest = $Destination
 $branch = '${branch}'
 
 $v = $null
@@ -152,7 +157,9 @@ Push-Location $dest
 try { npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' } } finally { Pop-Location }
 
 $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'TURN demo.cmd'
-Set-Content -Encoding ASCII $shortcut "@echo off\`r\`ncd /d \`"$dest\`"\`r\`nnpm run demo\`r\`npause"
+if (-not $NoShortcut) {
+  Set-Content -Encoding ASCII $shortcut "@echo off\`r\`ncd /d \`"$dest\`"\`r\`nnpm run demo\`r\`npause"
+}
 Write-Host ''
 Write-Host "Done. Start the demo with 'TURN demo' on the desktop (or: cd '$dest'; npm run demo)." -ForegroundColor Green
 `,
