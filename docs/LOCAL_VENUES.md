@@ -14,6 +14,19 @@ Plan-derived packages use exact feet-to-metre conversion (0.3048), labelled room
 
 `venue:validate` checks schema, all anchor-to-POI routes, proper graph/wall intersections, and test-course/wall intersections. It does not prove clearance, handle every collinear/tangent contact, or validate as-built accuracy. Source-specific extraction/measurement reports belong with the private input in work/, not public fixtures.
 
+## Several private venues on one TURN server
+
+The TURN API serves every private venue of the computer it runs on, LAN-only: the home plan (`work/private/venue.json`) and every package in `work/private/venues/` (both Git-ignored). Add packages, for example a TURN-Mapper export with one package per floor, without replacing the home plan:
+
+```sh
+npm run venue:add -- /path/to/export        # finds floors/*/venue.package.json
+npm run venue:add -- /path/to/venue.package.json
+```
+
+Each package is validated (schema, wall crossings, every anchor-to-place route) and stored as `work/private/venues/<venueId>.json`; the scale notes of its provenance are printed. Restart the API to serve it. A changed map revision replaces that venue's published map in place, so its beacon layout, calibrations and tests are kept. Fix map problems in the source tool, not by editing the JSON. `venue:load` is different: it replaces the home plan and the map bundled into the test app.
+
+Running the demo from a laptop: [demo laptop](DEMO_LAPTOP.md).
+
 ## Phone flow
 
 1. Select a short test course. Place start/corner/end tape marks using the course instructions and an independent measuring tape; clear the path. Confirm setup in the app.

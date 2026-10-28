@@ -1,10 +1,10 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { openDb } from './db';
-import { seed, upgradeDemo } from './seed';
+import { seed, syncPrivateVenues, upgradeDemo } from './seed';
 
 // Local development server. Data lives in ignored work/api-data. The private home venue is served
 // to the LAN only when TURN_API_PRIVATE_LAN is not "0" (local phone testing, as its rights allow).
@@ -15,6 +15,18 @@ const db = openDb(resolve(dataDir, 'turn.db'));
 const seeded = seed(db, {
   privateVenuePath: resolve(root, 'work/private/venue.json'),
 });
+// Every private venue of this computer: the home plan and any added with `npm run venue:add`.
+const privateDir = resolve(root, 'work/private/venues');
+mkdirSync(privateDir, { recursive: true });
+const privateChanges = syncPrivateVenues(db, [
+  resolve(root, 'work/private/venue.json'),
+  ...readdirSync(privateDir)
+    .filter((f) => f.endsWith('.json'))
+    .sort()
+    .map((f) => resolve(privateDir, f)),
+]);
+if (privateChanges.length)
+  console.log(`Private venues: ${privateChanges.join(', ')}`);
 const upgraded = upgradeDemo(db);
 if (upgraded)
   console.log('Demo venue upgraded to the latest fictional demo map.');

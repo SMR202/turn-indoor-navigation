@@ -1,6 +1,12 @@
 # Mobile workstream
 
-Updated: 2026-10-21.
+Updated: 2026-10-28.
+
+## Demo from a laptop — 2026-10-28
+
+IMPLEMENTED: `npm run demo` starts the API and the production-mode phone server (8081) with the chosen network address, builds the iPhone and Android bundles before showing the Expo launch QR (`work/demo/expo-launch-qr.png`), prefers a Windows Mobile Hotspot address and starts offline without internet. `npm run demo:kit` packs code, private venues, a consistent database copy, printable location codes and a Windows setup into an ignored zip. [Demo laptop](../../DEMO_LAPTOP.md).
+
+Validation: `npm run demo` on this computer: 16 venues served, both bundles built (warm cache: 13 s and 3 s). The kit's setup script has not yet run on a second computer, and nothing about phones on a hotspot network has been tested.
 
 ## "Not here?" location sheet, rough-location chip — 2026-10-22
 

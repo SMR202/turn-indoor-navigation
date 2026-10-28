@@ -293,3 +293,87 @@ export function seed(db: Db, options: { privateVenuePath?: string } = {}) {
   }
   return true;
 }
+
+/**
+ * Private venues of this computer (the home plan, TURN-Mapper exports): every package file is
+ * served LAN-only. A new file adds its venue; a changed map revision replaces the published map in
+ * place, so beacon setups, surveys and feedback of that venue are kept. Broken files are skipped.
+ * Returns what changed, for the server log.
+ */
+export function syncPrivateVenues(db: Db, files: string[]) {
+  const t = now();
+  const run = (sql: string, ...a: (string | number | null)[]) =>
+    db.prepare(sql).run(...a);
+  const changes: string[] = [];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    let pkg;
+    try {
+      pkg = parseVenuePackage(JSON.parse(readFileSync(file, 'utf8')));
+    } catch {
+      changes.push(`skipped ${file} (not a valid venue package)`);
+      continue;
+    }
+    const venue = db
+      .prepare('SELECT id, visibility FROM venues WHERE id = ?')
+      .get(pkg.venueId) as { id: string; visibility: string } | undefined;
+    if (venue && venue.visibility !== 'private-lan') {
+      changes.push(`skipped ${pkg.venueId} (a shared venue has that id)`);
+      continue;
+    }
+    if (!venue) {
+      if (!db.prepare('SELECT id FROM orgs WHERE id = ?').get('org_private'))
+        run(
+          'INSERT INTO orgs VALUES (?, ?, ?, ?)',
+          'org_private',
+          'Private venues',
+          'pilot',
+          t,
+        );
+      run(
+        'INSERT INTO venues VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        pkg.venueId,
+        'org_private',
+        pkg.name,
+        'Private · LAN only',
+        'private-lan',
+        JSON.stringify({ places: {}, beacons: [], branding: {} }),
+        t,
+        t,
+      );
+      run(
+        "INSERT INTO versions (venue_id, number, status, package, content, notes, created_by, created_at, published_at) VALUES (?, 1, 'published', ?, '{}', 'Imported plan (private)', NULL, ?, ?)",
+        pkg.venueId,
+        JSON.stringify(pkg),
+        t,
+        t,
+      );
+      changes.push(`added ${pkg.venueId}`);
+      continue;
+    }
+    const published = db
+      .prepare(
+        "SELECT id, package FROM versions WHERE venue_id = ? AND status = 'published' ORDER BY number DESC LIMIT 1",
+      )
+      .get(pkg.venueId) as { id: number; package: string } | undefined;
+    const revision = published
+      ? (JSON.parse(published.package) as { revision?: string }).revision
+      : undefined;
+    if (published && revision !== pkg.revision) {
+      run(
+        'UPDATE versions SET package = ?, published_at = ? WHERE id = ?',
+        JSON.stringify(pkg),
+        t,
+        published.id,
+      );
+      run(
+        'UPDATE venues SET name = ?, updated_at = ? WHERE id = ?',
+        pkg.name,
+        t,
+        pkg.venueId,
+      );
+      changes.push(`updated ${pkg.venueId} to ${pkg.revision}`);
+    }
+  }
+  return changes;
+}
