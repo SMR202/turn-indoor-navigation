@@ -68,6 +68,15 @@ export type VenueContent = {
   places: Record<string, PlaceContent>;
   beacons: Beacon[];
   branding: { accent?: string };
+  /** Where the venue sits on Earth and which way is north (ADR-0014). */
+  georeference?: {
+    lat: number;
+    lon: number;
+    bearingDeg: number;
+    declinationDeg?: number;
+    source: 'studio' | 'setup-walk' | 'learned';
+    updatedAt: string;
+  };
 };
 export type VenueDetail = VenueSummary & { content: VenueContent };
 export type Validation = {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, ApiError } from '../api';
 import { useToast } from '../ui';
+import { OrientationCard } from './OrientationCard';
 import type { VenueCtx } from './Venue';
 
 const swatches = [
@@ -14,7 +15,17 @@ const swatches = [
 ];
 
 /** Venue name, address and brand colour (route, blue dot and pins in the visitor app). */
-export function SettingsTab({ venue, reload }: VenueCtx) {
+export function SettingsTab(ctx: VenueCtx) {
+  return (
+    <>
+      <VenueSettings {...ctx} />
+      <OrientationCard {...ctx} />
+    </>
+  );
+}
+
+/** Venue name, address and brand colour. */
+function VenueSettings({ venue, reload }: VenueCtx) {
   const toast = useToast();
   const [name, setName] = useState(venue.name);
   const [address, setAddress] = useState(venue.address);
