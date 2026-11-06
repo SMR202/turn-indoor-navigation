@@ -16,6 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { motion, type as typeScale } from '@turn/design';
 import { F, shadow, useTheme } from '../theme';
+import { haptic } from '../lib/feedback';
 import { Icon } from './icon';
 
 type Variant = keyof typeof typeScale;
@@ -246,7 +247,12 @@ export function Chip({
     <Tap
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      onPress={onPress}
+      // 36 pt tall: the slop makes the touch target 44 pt.
+      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+      onPress={() => {
+        if (!selected) haptic('tap');
+        onPress?.();
+      }}
       style={[
         {
           height: 36,

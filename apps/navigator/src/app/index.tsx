@@ -41,6 +41,10 @@ const pages = [
     body: 'TURN works out where you are from motion and nearby venue beacons, on the device. No account and no location history.',
   },
   {
+    title: 'Motion, compass and Bluetooth.',
+    body: 'Live guidance asks for these when you start it: motion counts your steps, the compass knows which way you face, Bluetooth hears the venue’s beacons. Say no and you can still follow the route step by step.',
+  },
+  {
     title: 'Start at a TURN code.',
     body: 'Scan a TURN code at the entrance or on a sign to open the venue map and start from exactly where you stand.',
   },
