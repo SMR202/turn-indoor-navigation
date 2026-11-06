@@ -127,12 +127,37 @@ export function buildScene(
         labelPosition: centroid(polygon),
         kind: 'circulation' as const,
       }));
+  // Destinations are often placed at a room's door, just outside its outline (TURN-Mapper puts
+  // them on the walk graph): match by the same name, then by being inside, then by being at the
+  // door, so tapping anywhere in a room opens its place.
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const claimed = new Set<string>();
+  const linkFor = (r: (typeof sourceRooms)[number]) => {
+    const free = places.filter((p) => !claimed.has(p.id));
+    const named = r.name.trim()
+      ? free.filter((p) => norm(p.name) === norm(r.name))
+      : [];
+    return (
+      named.find((p) => pointInPolygon(p, r.polygon)) ??
+      named.sort(
+        (a, b) => edgeDistance(a, r.polygon) - edgeDistance(b, r.polygon),
+      )[0] ??
+      free.find((p) => pointInPolygon(p, r.polygon)) ??
+      free.find(
+        (p) =>
+          (r.kind ?? 'room') === 'room' &&
+          !r.name.trim() &&
+          edgeDistance(p, r.polygon) < 0.8,
+      ) ??
+      null
+    );
+  };
   const rooms: SceneRoom[] = sourceRooms.map((r) => {
-    const place =
-      places.find((p) => pointInPolygon(p, r.polygon) && p.name === r.name) ??
-      places.find((p) => pointInPolygon(p, r.polygon)) ??
-      null;
-    if (place && !place.roomId) place.roomId = r.id;
+    const place = linkFor(r);
+    if (place) {
+      claimed.add(place.id);
+      if (!place.roomId) place.roomId = r.id;
+    }
     const kind = r.kind ?? 'room';
     const fill =
       kind === 'outdoor'
@@ -258,4 +283,22 @@ export function applyPlaceOverrides(
     };
   });
   return { ...scene, places, rooms };
+}
+
+/** Distance (metres) from a point to the nearest edge of a polygon. */
+export function edgeDistance(p: P, poly: P[]) {
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j]!;
+    const b = poly[i]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(
+      0,
+      Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2),
+    );
+    best = Math.min(best, Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy));
+  }
+  return best;
 }
