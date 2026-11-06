@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { lightMap } from '@turn/design';
 import { buildScene } from '@turn/map-scene';
 import { demoCentre } from '@turn/venue-model';
-import { planJourney, positionOnJourney } from './journey';
+import { planJourney, positionOnJourney, watchRoute } from './journey';
 
 const scenes = Object.fromEntries(
   demoCentre.floors.map((f) => [f.id, buildScene(demoCentre, f.id, lightMap)]),
@@ -64,5 +64,46 @@ describe('multi-floor journeys', () => {
     )!;
     expect(j.legs).toHaveLength(1);
     expect(j.steps.map((s) => s.kind)).toEqual(['depart', 'left', 'arrive']);
+  });
+});
+
+describe('watching a live walk', () => {
+  // A 20 m corridor east, then a left turn north for 10 m.
+  const leg = {
+    floorId: 'g',
+    points: [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 10 },
+    ],
+    offset: 0,
+    length: 30,
+  };
+  const steps = [
+    { kind: 'depart', along: 0 },
+    { kind: 'left', along: 20 },
+    { kind: 'arrive', along: 30 },
+  ] as Parameters<typeof watchRoute>[0]['steps'];
+  const watch = (x: number, y: number, walked: number, sigma = 1.5) =>
+    watchRoute({ leg, here: { x, y }, sigma, walked, steps });
+
+  it('stays on the route within the position uncertainty', () => {
+    const w = watch(10, 2, 9);
+    expect(w).toMatchObject({ offLine: false, behind: false });
+    expect(w.along).toBeCloseTo(10);
+  });
+  it('is off the line further away, and more tolerant when unsure', () => {
+    expect(watch(10, 6, 10).offLine).toBe(true);
+    expect(watch(10, 6, 10, 4).offLine).toBe(false);
+  });
+  it('knows the walker carried straight on past the turn', () => {
+    const w = watch(27, 0, 19.5);
+    expect(w.offLine).toBe(true);
+    expect(w.missedTurn).toBe(true);
+    expect(watch(10, 8, 10).missedTurn).toBe(false);
+  });
+  it('notices walking back towards the start', () => {
+    expect(watch(12, 0, 19).behind).toBe(true);
+    expect(watch(17, 0, 19).behind).toBe(false);
   });
 });

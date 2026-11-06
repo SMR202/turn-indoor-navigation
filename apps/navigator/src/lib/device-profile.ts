@@ -22,7 +22,8 @@ const platform = Platform.OS === 'ios' ? 'ios' : 'android';
 export const deviceModel: string =
   Device?.modelId ??
   Device?.modelName ??
-  ((Platform.constants as { Model?: string }).Model || 'unknown');
+  // Platform.constants is missing on the web.
+  ((Platform.constants as { Model?: string } | undefined)?.Model || 'unknown');
 
 const OWN_KEY = 'device-learned';
 

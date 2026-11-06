@@ -30,7 +30,6 @@ import {
   buildScene,
   NEUTRAL_GEOREFERENCE,
   pointInPolygon,
-  projectOnPolyline,
   type P,
   type Scene,
   type ScenePlace,
@@ -69,7 +68,7 @@ import {
   WALK_SPEED,
   type Step,
 } from '../../lib/directions';
-import { planJourney, positionOnJourney } from '../../lib/journey';
+import { planJourney, positionOnJourney, watchRoute } from '../../lib/journey';
 import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
 import { useVenueOrientation } from '../../lib/orientation';
@@ -504,17 +503,36 @@ function Experience({
     );
   }, [dotDriver, at?.x, at?.y, walked, liveDot]);
   const liveSigma = live.state?.sigma ?? null;
+  // Shown at once (HCI: feedback before the reroute): off the line, or walking away from it.
+  const [routeAlert, setRouteAlert] = useState<'off' | 'back' | null>(null);
+  const backSaid = useRef(false);
+  useEffect(() => {
+    if (!navLive) setRouteAlert(null);
+  }, [navLive]);
   useEffect(() => {
     if (!navLive || !here || !route) return;
     const leg = route.legs[liveLeg]!;
     if (leg.floorId !== liveFloor) return;
-    const pr = projectOnPolyline(leg.points, here);
-    if (pr.distance > Math.max(4, 2 * (liveSigma ?? 2))) {
+    const w = watchRoute({
+      leg,
+      here,
+      sigma: liveSigma,
+      walked,
+      steps: route.steps,
+    });
+    if (w.offLine) {
       offRouteSince.current ??= Date.now();
-      if (Date.now() - offRouteSince.current > 6000) {
+      const off = Date.now() - offRouteSince.current;
+      if (off > 1500) setRouteAlert('off');
+      if (off > 6000) {
         // Off the route for a while: route again from where the walker is.
         offRouteSince.current = null;
-        speak('You are off the route. Here is a new one.');
+        setRouteAlert(null);
+        speak(
+          w.missedTurn
+            ? 'You passed your turn. Here is a new route.'
+            : 'You are off the route. Here is a new one.',
+        );
         haptic('warning');
         const node = nearestRoutableNode(pkg, leg.floorId, here);
         setNavStart({
@@ -530,12 +548,15 @@ function Experience({
       return;
     }
     offRouteSince.current = null;
+    setRouteAlert(w.behind ? 'back' : null);
+    if (w.behind && !backSaid.current) {
+      backSaid.current = true;
+      speak('Turn around. Your destination is the other way.');
+      haptic('warning');
+    } else if (!w.behind) backSaid.current = false;
     // Stay on this floor's leg until the walker confirms the floor change.
-    setWalked((w) =>
-      Math.max(
-        w,
-        Math.min(leg.offset + pr.along, leg.offset + leg.length - 0.01),
-      ),
+    setWalked((x) =>
+      Math.max(x, Math.min(w.along, leg.offset + leg.length - 0.01)),
     );
   }, [navLive, here, route, liveLeg, liveSigma, pkg, liveFloor]);
   const nextLeg = route?.legs[liveLeg + 1] ?? null;
@@ -2028,6 +2049,37 @@ function Experience({
                 color="#FFFFFF"
                 stroke={2.4}
               />
+            </Animated.View>
+          )}
+          {routeAlert && (
+            <Animated.View
+              entering={FadeInDown.duration(220)}
+              accessibilityLiveRegion="polite"
+              style={[
+                {
+                  alignSelf: 'flex-start',
+                  backgroundColor: c.warning,
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                },
+                shadow('floating', dark),
+              ]}
+            >
+              <Icon
+                name={routeAlert === 'back' ? stepIcon('u-turn') : 'navigate'}
+                size={16}
+                color="#FFFFFF"
+                stroke={2.4}
+              />
+              <T v="caption" weight="600" color="#FFFFFF">
+                {routeAlert === 'back'
+                  ? 'Turn around: your destination is the other way'
+                  : 'Off the route: finding a new one…'}
+              </T>
             </Animated.View>
           )}
         </Animated.View>

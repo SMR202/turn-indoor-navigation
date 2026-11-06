@@ -1,5 +1,6 @@
 import {
   pointAlong,
+  projectOnPolyline,
   polylineLength,
   type P,
   type Scene,
@@ -149,4 +150,38 @@ export function positionOnJourney(
   const l = j.legs[leg]!;
   const p = pointAlong(l.points, w - l.offset);
   return { x: p.x, y: p.y, headingRad: p.headingRad, floorId: l.floorId, leg };
+}
+
+/**
+ * Where a live walker is relative to the leg being walked (metres): `offLine` when further from
+ * the line than the position is uncertain (at least 4 m); `behind` when on the line but well back
+ * from the furthest point reached (walking towards the start); `missedTurn` when a turn lies just
+ * around `walked`, so leaving the line there means carrying straight on past it.
+ */
+export function watchRoute(input: {
+  leg: Leg;
+  here: P;
+  /** Position uncertainty (metres, one standard deviation), when known. */
+  sigma: number | null;
+  /** Furthest distance reached along the whole route. */
+  walked: number;
+  steps: Step[];
+}) {
+  const { leg, here, walked } = input;
+  const pr = projectOnPolyline(leg.points, here);
+  const along = leg.offset + pr.along;
+  const tolerance = 2 * (input.sigma ?? 2);
+  const offLine = pr.distance > Math.max(4, tolerance);
+  return {
+    along,
+    distance: pr.distance,
+    offLine,
+    behind: !offLine && walked - along > Math.max(5, tolerance),
+    missedTurn: input.steps.some(
+      (s) =>
+        /left|right/.test(s.kind) &&
+        s.along > walked - 2 &&
+        s.along < walked + 4,
+    ),
+  };
 }
