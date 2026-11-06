@@ -15,7 +15,7 @@
       }
     },
     "android": {
-      "versionCode": 7,
+      "versionCode": 8,
       "package": "com.turn.navigation.dev",
       "permissions": [
         "android.permission.HIGH_SAMPLING_RATE_SENSORS",
@@ -56,7 +56,8 @@
         {
           "motionPermission": "Allow TURN to measure walking motion for indoor navigation."
         }
-      ]
+      ],
+      "@maplibre/maplibre-react-native"
     ]
   }
 }
