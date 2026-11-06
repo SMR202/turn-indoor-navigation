@@ -89,6 +89,39 @@ describe('multi-floor import', () => {
     ]);
   });
 
+  it('merges floors exported as separate venues, markers included', () => {
+    // TURN-Mapper exports each floor on its own, with its own venue ID on its QR markers.
+    const node = upper.nodes[0]!;
+    const separate = {
+      ...upper,
+      venueId: 'other-floor',
+      anchors: [
+        {
+          id: 'qr-1',
+          venueId: 'other-floor',
+          floorId: 'u',
+          kind: 'qr' as const,
+          position: { x: node.x, y: node.y },
+          label: 'Entrance',
+          nodeId: node.id,
+        },
+      ],
+    };
+    const a = mergeFloor(null, ground, {
+      floorId: 'ground',
+      label: 'Ground',
+      level: 0,
+    });
+    const b = mergeFloor(a.venue, separate, {
+      floorId: 'level-1',
+      label: 'Level 1',
+      level: 1,
+    });
+    expect(b.venue.anchors.map((x) => [x.venueId, x.floorId])).toEqual([
+      ['v', 'level-1'],
+    ]);
+  });
+
   it('replaces a floor in place and keeps the other floor and its links valid', () => {
     const a = mergeFloor(null, ground, {
       floorId: 'ground',

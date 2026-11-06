@@ -196,6 +196,8 @@ export function mergeFloor(
       anchors: floorPackage.anchors.map((a) => ({
         ...a,
         floorId: options.floorId,
+        // Floors exported on their own carry their own venue ID; markers join the merged venue.
+        venueId: base?.venueId ?? a.venueId,
       })),
     },
     `${options.floorId}.`,
