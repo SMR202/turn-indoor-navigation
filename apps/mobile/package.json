@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
+    "@maplibre/maplibre-react-native": "11.5.1",
     "@turn/contracts": "0.1.0",
     "@turn/pdr": "0.1.0",
     "@turn/positioning-core": "0.1.0",

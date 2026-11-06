@@ -44,6 +44,7 @@ const app = createApp(db, {
   lanHost: lanAddress,
   devAuth: process.env.TURN_DEV_AUTH !== 'off',
   includePrivateLan: process.env.TURN_API_PRIVATE_LAN !== '0',
+  mapAssetsDir: resolve(root, 'packages/map-scene/assets'),
 });
 const lan = lanAddress;
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, () => {

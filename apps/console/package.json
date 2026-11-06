@@ -15,6 +15,7 @@
     "@turn/map-scene": "0.1.0",
     "@turn/positioning-core": "0.1.0",
     "@turn/venue-model": "0.1.0",
+    "maplibre-gl": "6.16.0",
     "qrcode": "1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3"

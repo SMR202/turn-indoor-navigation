@@ -28,6 +28,7 @@ import { motion, placeCategories, type PlaceCategory } from '@turn/design';
 import {
   applyPlaceOverrides,
   buildScene,
+  NEUTRAL_GEOREFERENCE,
   pointInPolygon,
   projectOnPolyline,
   type P,
@@ -74,11 +75,11 @@ import { useLiveSession } from '../../lib/live';
 import { LiveDot } from '../../lib/live-dot';
 import { useStored } from '../../lib/storage';
 import {
-  VenueMap,
   type CameraCommand,
   type CameraRequest,
   type MapUser,
 } from '../../map/VenueMap';
+import { VenueMap3D } from '../../map/VenueMap3D';
 import { catColor, F, shadow, usePrefs, useTheme } from '../../theme';
 
 export default function VenueScreen() {
@@ -220,6 +221,10 @@ function Experience({
   const pkg = bundle.pkg;
   // A venue's brand colour (TURN Studio → Settings) tints the route and the visitor's dot.
   const accent = bundle.content.branding?.accent;
+  const georef = useMemo(
+    () => bundle.content.georeference ?? NEUTRAL_GEOREFERENCE,
+    [bundle.content.georeference],
+  );
   const palette = useMemo(
     () =>
       accent && /^#[0-9a-fA-F]{6}$/.test(accent)
@@ -1663,8 +1668,9 @@ function Experience({
   })();
   return (
     <View style={{ flex: 1, backgroundColor: map.land, overflow: 'hidden' }}>
-      <VenueMap
+      <VenueMap3D
         scene={scene}
+        georef={georef}
         insets={mapInsets}
         selectedPlace={
           destination && destination.floorId === floorId ? destination : null

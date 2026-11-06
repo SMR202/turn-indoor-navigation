@@ -22,7 +22,7 @@
     "phone:tests": "tsx scripts/phone-tests.mjs",
     "phone:android:install": "node scripts/serve-android-build.mjs",
     "diagnose": "tsx scripts/diagnose-runs.mjs",
-    "postinstall": "npm run venue:prepare",
+    "postinstall": "npm run venue:prepare && node scripts/sync-web-map-assets.mjs",
     "venue:prepare": "tsx scripts/prepare-venue.mjs",
     "venue:load": "tsx scripts/prepare-venue.mjs",
     "venue:add": "tsx scripts/venue-add.mjs",
@@ -46,12 +46,16 @@
     "navigator:web": "expo start apps/navigator --web --port 8082",
     "console": "npm run dev --workspace @turn/console",
     "build:console": "npm run build --workspace @turn/console",
-    "platform": "node scripts/platform.mjs"
+    "platform": "node scripts/platform.mjs",
+    "map:glyphs": "node scripts/build-map-glyphs.mjs",
+    "map:icons": "tsx scripts/build-map-icons.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "eslint": "10.11.0",
     "globals": "^16.5.0",
+    "opentype.js": "2.0.0",
+    "pbf": "5.1.2",
     "prettier": "^3.6.2",
     "qrcode": "1.5.4",
     "sharp": "0.34.4",

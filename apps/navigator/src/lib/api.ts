@@ -31,6 +31,15 @@ export type VenueContent = {
     calibratedAt?: string;
   }[];
   branding: { accent?: string };
+  /** Where the venue sits on Earth and which way is north (ADR-0014). */
+  georeference?: {
+    lat: number;
+    lon: number;
+    bearingDeg: number;
+    declinationDeg?: number;
+    source: string;
+    updatedAt: string;
+  };
 };
 export type VenueSummary = {
   id: string;

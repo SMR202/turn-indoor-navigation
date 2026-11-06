@@ -70,6 +70,7 @@ export class LiveDot {
   private sigma = 2;
   private tracking = false;
   private watchers = new Set<(s: DotSnapshot) => void>();
+  private tickers = new Set<(s: DotSnapshot) => void>();
   private watched: DotSnapshot | null = null;
 
   setMap(map: DisplayMap | null) {
@@ -105,6 +106,7 @@ export class LiveDot {
     this.emitted = null;
     this.display.reset();
     for (const l of this.listeners) l(null);
+    for (const t of this.tickers) t(this.snapshot());
     this.notify(true);
   }
   snapshot(): DotSnapshot {
@@ -141,6 +143,14 @@ export class LiveDot {
     this.watched = n;
     for (const w of this.watchers) w(n);
   }
+  /** Every display step (10 Hz), for maps that animate the dot themselves between steps. */
+  onStep = (listener: (s: DotSnapshot) => void) => {
+    this.tickers.add(listener);
+    listener(this.snapshot());
+    return () => {
+      this.tickers.delete(listener);
+    };
+  };
   current() {
     return this.shown;
   }
@@ -185,6 +195,10 @@ export class LiveDot {
       });
     }
     this.notify(!this.watched?.visible && this.shown !== null);
+    if (this.tickers.size) {
+      const snap = this.snapshot();
+      for (const t of this.tickers) t(snap);
+    }
     // Screens hear about real moves only, so a standing walker causes no re-renders.
     const s = this.shown;
     const e = this.emitted;

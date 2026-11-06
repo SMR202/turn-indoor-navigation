@@ -1,6 +1,8 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { z } from 'zod';
 import {
   importFloorGeoJson,
@@ -48,8 +50,22 @@ export const venueContentSchema = z.object({
         .optional(),
     })
     .default({}),
+  georeference: z
+    .object({
+      lat: z.number().min(-85).max(85),
+      lon: z.number().min(-180).max(180),
+      /** Compass bearing of the map's +y axis, degrees clockwise from true north. */
+      bearingDeg: z.number().min(0).max(360),
+      /** Magnetic declination at the venue (degrees, east positive), for phone compasses. */
+      declinationDeg: z.number().min(-30).max(30).optional(),
+      source: z.enum(['studio', 'setup-walk', 'learned']),
+      updatedAt: z.string().datetime(),
+    })
+    .optional(),
 });
 export type VenueContent = z.infer<typeof venueContentSchema>;
+export const georeferenceSchema =
+  venueContentSchema.shape.georeference.unwrap();
 
 const eventSchema = z.object({
   venueId: z.string().min(1).max(80),
@@ -156,6 +172,8 @@ export function createApp(
     devAuth?: boolean;
     includePrivateLan?: boolean;
     lanHost?: string;
+    /** Folder with the map's glyphs/ and icons/ (packages/map-scene/assets). */
+    mapAssetsDir?: string;
   } = {},
 ) {
   const app = new Hono<{ Variables: Vars }>();
@@ -486,6 +504,25 @@ export function createApp(
       v.id,
     );
     return c.json(summary(one('SELECT * FROM venues WHERE id = ?', v.id)!));
+  });
+
+  // Where the venue sits on Earth and which way is north (ADR-0014); null removes it.
+  app.put('/venues/:id/georeference', auth, async (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const body = georeferenceSchema
+      .omit({ updatedAt: true })
+      .nullable()
+      .parse(await c.req.json());
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    content.georeference = body ? { ...body, updatedAt: now() } : undefined;
+    run(
+      'UPDATE venues SET content = ?, updated_at = ? WHERE id = ?',
+      JSON.stringify(content),
+      now(),
+      v.id,
+    );
+    return c.json(content.georeference ?? null);
   });
 
   // ---------- drafts, content, import, publish ----------
@@ -1164,6 +1201,123 @@ export function createApp(
       param(c, 'id'),
     );
     return c.json(rows.map((r) => ({ at: r.at, ...JSON.parse(r.record) })));
+  });
+
+  // Orientation (ADR-0014): the venue's georeference and the map-to-compass offsets phones learned
+  // after their filter had fixed the heading, per platform (the two compasses use different zeros).
+  const orientationSchema = z.object({
+    platform: z.enum(['ios', 'android']),
+    /** Venue heading minus the phone's compass yaw (rad). */
+    northOffsetRad: z.number().min(-Math.PI).max(Math.PI),
+    /** Spread of the filter's heading when learned (rad); only confident values are kept. */
+    spreadRad: z.number().min(0).max(Math.PI),
+    walkedMetres: z.number().min(0).max(100000),
+  });
+  app.post('/public/venues/:id/orientation', async (c) => {
+    const v = layoutVenue(param(c, 'id'));
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    const o = orientationSchema.parse(await c.req.json());
+    if (o.spreadRad > 0.35 || o.walkedMetres < 8)
+      return c.json({ stored: false, reason: 'Not confident enough.' });
+    run(
+      'INSERT INTO orientation_observations (venue_id, platform, offset, spread, walked, at) VALUES (?, ?, ?, ?, ?, ?)',
+      param(c, 'id'),
+      o.platform,
+      o.northOffsetRad,
+      o.spreadRad,
+      o.walkedMetres,
+      now(),
+    );
+    return c.json({ stored: true });
+  });
+  app.get('/public/venues/:id/orientation', (c) => {
+    const id = param(c, 'id');
+    const v = layoutVenue(id);
+    if (!v || !visible(v)) return c.json({ error: 'Not found' }, 404);
+    // Private LAN venues use staff edits at once; public venues show what was published.
+    const row =
+      v.visibility === 'private-lan'
+        ? one<{ content: string }>(
+            'SELECT content FROM venues WHERE id = ?',
+            id,
+          )
+        : one<{ content: string }>(
+            "SELECT content FROM versions WHERE venue_id = ? AND status = 'published'",
+            id,
+          );
+    const content = venueContentSchema.safeParse(
+      row ? JSON.parse(row.content) : {},
+    );
+    const learned: Record<string, { northOffsetRad: number; samples: number }> =
+      {};
+    for (const platform of ['ios', 'android'] as const) {
+      const rows = all<{ offset: number; spread: number }>(
+        'SELECT offset, spread FROM orientation_observations WHERE venue_id = ? AND platform = ? ORDER BY id DESC LIMIT 40',
+        id,
+        platform,
+      );
+      if (!rows.length) continue;
+      // Circular mean, weighted by confidence.
+      let s = 0;
+      let k = 0;
+      for (const r of rows) {
+        const w = 1 / (0.05 + r.spread);
+        s += w * Math.sin(r.offset);
+        k += w * Math.cos(r.offset);
+      }
+      learned[platform] = {
+        northOffsetRad: Math.atan2(s, k),
+        samples: rows.length,
+      };
+    }
+    return c.json({
+      georeference: content.success
+        ? (content.data.georeference ?? null)
+        : null,
+      learned,
+    });
+  });
+
+  // Map labels and icons (ADR-0013), so maps need no outside font or sprite server.
+  const glyphStacks = new Set([
+    'Inter Regular',
+    'Inter SemiBold',
+    'Inter Bold',
+  ]);
+  app.get('/map/glyphs/:stack/:range', (c) => {
+    const stack = decodeURIComponent(param(c, 'stack')).split(',')[0]!.trim();
+    const range = param(c, 'range');
+    const headers = {
+      'Content-Type': 'application/x-protobuf',
+      'Cache-Control': 'public, max-age=86400',
+    };
+    if (!options.mapAssetsDir || !glyphStacks.has(stack))
+      return c.json({ error: 'Not found' }, 404);
+    if (!/^\d{1,5}-\d{1,5}\.pbf$/.test(range))
+      return c.json({ error: 'Not found' }, 404);
+    const file = join(options.mapAssetsDir, 'glyphs', stack, range);
+    // Ranges we do not ship are empty: MapLibre then draws nothing for those characters.
+    return c.body(
+      existsSync(file) ? new Uint8Array(readFileSync(file)) : new Uint8Array(0),
+      200,
+      headers,
+    );
+  });
+  app.get('/map/icons/:name', (c) => {
+    const name = param(c, 'name');
+    if (!options.mapAssetsDir || !/^[a-z0-9-]{1,40}\.png$/.test(name))
+      return c.json({ error: 'Not found' }, 404);
+    // Icons are drawn at twice their display size (name@2x.png).
+    const file = join(
+      options.mapAssetsDir,
+      'icons',
+      name.replace(/\.png$/, '@2x.png'),
+    );
+    if (!existsSync(file)) return c.json({ error: 'Not found' }, 404);
+    return c.body(new Uint8Array(readFileSync(file)), 200, {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+    });
   });
 
   // Errors from TURN apps on test phones, so a problem can be read without a cable. The last 50

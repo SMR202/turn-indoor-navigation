@@ -25,3 +25,9 @@ apps/mobile/modules/*/android/.gradle/
 
 # go-ios pairing identity (a private key), created in its working directory
 selfIdentity.plist
+
+# Copied at install by scripts/sync-web-map-assets.mjs
+apps/navigator/public/maplibre/
+apps/navigator/public/map/
+apps/console/public/maplibre/
+apps/console/public/map/

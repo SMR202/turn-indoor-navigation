@@ -46,6 +46,10 @@ export function openDb(path = ':memory:') {
     CREATE TABLE IF NOT EXISTS location_feedback (
       id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, record TEXT NOT NULL, at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS orientation_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, platform TEXT NOT NULL,
+      offset REAL NOT NULL, spread REAL NOT NULL, walked REAL NOT NULL, at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS eval_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, summary TEXT NOT NULL, at TEXT NOT NULL
     );
