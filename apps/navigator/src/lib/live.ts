@@ -8,11 +8,13 @@ import {
   startHeading,
   type LiveHeading,
   type LiveStart,
+  type DeviceProfile,
   type LiveState,
   type VenueOrientation,
 } from '@turn/positioning-runtime';
 import type { VenuePackage } from '@turn/venue-model';
 import { postJson } from './api';
+import { rememberLearned } from './device-profile';
 import { shareOrientation } from './orientation';
 import { load, save } from './storage';
 
@@ -68,6 +70,8 @@ export function useLiveSession(
   orientation: VenueOrientation | null = null,
   /** Learned offsets are shared with the venue server (venues served by it only). */
   shareLearned = false,
+  /** This phone's profile: stride, radio window and RSSI offset prior (ADR-0015). */
+  profile: DeviceProfile | null = null,
 ) {
   const ref = useRef<LivePositioning | null>(null);
   const [state, setState] = useState<LiveStatus | null>(null);
@@ -83,6 +87,9 @@ export function useLiveSession(
   placementsRef.current = placements;
   const orientationRef = useRef(orientation);
   orientationRef.current = orientation;
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const learnedAt = useRef(0);
   const sharedAt = useRef(0);
 
   const availableOn = useCallback(
@@ -114,6 +121,7 @@ export function useLiveSession(
         venue: pkg,
         floorId: onFloor,
         beacons: placementsRef.current.filter((b) => b.floorId === onFloor),
+        ...(profileRef.current ? { profile: profileRef.current } : {}),
       });
       ref.current = live;
       setFloorId(onFloor);
@@ -181,6 +189,14 @@ export function useLiveSession(
       )
         return;
       learnNorth(h.northOffset, 0.15);
+      // Stride and RSSI offset for this phone, at most once a minute (ADR-0015).
+      if (Date.now() - learnedAt.current > 60000) {
+        const l = ref.current?.learned();
+        if (l) {
+          learnedAt.current = Date.now();
+          rememberLearned(l, shareLearned);
+        }
+      }
       // Share it at most once a minute, so other phones start the right way round here.
       if (shareLearned && Date.now() - sharedAt.current > 60000) {
         sharedAt.current = Date.now();

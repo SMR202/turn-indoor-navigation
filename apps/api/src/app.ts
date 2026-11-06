@@ -1278,6 +1278,54 @@ export function createApp(
     });
   });
 
+  // Device profiles (ADR-0015): what phones of one model learned about themselves on confident
+  // walks (stride, RSSI offset). Anonymous: platform and model name only.
+  const deviceSchema = z.object({
+    platform: z.enum(['ios', 'android']),
+    model: z.string().min(1).max(60),
+    stepLengthMetres: z.number().min(0.3).max(1.2).optional(),
+    rssiOffsetDb: z.number().min(-20).max(20).optional(),
+  });
+  app.post('/public/device-profiles', async (c) => {
+    const d = deviceSchema.parse(await c.req.json());
+    if (d.stepLengthMetres === undefined && d.rssiOffsetDb === undefined)
+      return c.json({ stored: false });
+    run(
+      'INSERT INTO device_observations (platform, model, step, offset, at) VALUES (?, ?, ?, ?, ?)',
+      d.platform,
+      d.model,
+      d.stepLengthMetres ?? null,
+      d.rssiOffsetDb ?? null,
+      now(),
+    );
+    return c.json({ stored: true });
+  });
+  app.get('/public/device-profiles', (c) => {
+    const platform = c.req.query('platform') ?? '';
+    const model = c.req.query('model') ?? '';
+    const rows = all<{ step: number | null; offset: number | null }>(
+      'SELECT step, offset FROM device_observations WHERE platform = ? AND model = ? ORDER BY id DESC LIMIT 60',
+      platform,
+      model,
+    );
+    const median = (xs: number[]) => {
+      if (!xs.length) return undefined;
+      const s = [...xs].sort((a, b) => a - b);
+      return s[Math.floor(s.length / 2)];
+    };
+    const steps = rows.flatMap((r) => (r.step === null ? [] : [r.step]));
+    const offsets = rows.flatMap((r) => (r.offset === null ? [] : [r.offset]));
+    return c.json(
+      rows.length
+        ? {
+            stepLengthMetres: median(steps),
+            rssiOffsetDb: median(offsets),
+            samples: rows.length,
+          }
+        : null,
+    );
+  });
+
   // Map labels and icons (ADR-0013), so maps need no outside font or sprite server.
   const glyphStacks = new Set([
     'Inter Regular',

@@ -53,6 +53,16 @@ export const ICON_PATHS: Record<string, string[]> = {
 
 /** Interface glyphs on the same 24-unit, 2-stroke grid as the category icons. */
 export const UI_ICON_PATHS: Record<string, string[]> = {
+  volume: [
+    'M11 5 6 9H3v6h3l5 4V5Z',
+    'M15.5 8.5a5 5 0 0 1 0 7',
+    'M18.5 5.5a9 9 0 0 1 0 13',
+  ],
+  vibrate: [
+    'M8.5 4h7a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z',
+    'M4 9v6',
+    'M20 9v6',
+  ],
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z', 'M20 20l-4-4'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
   back: ['M15 5l-7 7 7 7'],

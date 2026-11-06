@@ -73,6 +73,8 @@ import { planJourney, positionOnJourney } from '../../lib/journey';
 import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
 import { useVenueOrientation } from '../../lib/orientation';
+import { useDeviceProfile } from '../../lib/device-profile';
+import { haptic, speak, useSpokenGuidance } from '../../lib/feedback';
 import { LiveDot } from '../../lib/live-dot';
 import { useStored } from '../../lib/storage';
 import {
@@ -306,12 +308,14 @@ function Experience({
     [beaconLayout.beacons],
   );
   const orientation = useVenueOrientation(venueId, bundle.source === 'live');
+  const profile = useDeviceProfile(bundle.source === 'live');
   const live = useLiveSession(
     pkg,
     venueId,
     placements,
     orientation,
     bundle.source === 'live',
+    profile,
   );
   const liveAvailability = live.availableOn(start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
@@ -464,6 +468,14 @@ function Experience({
       setWalked(route.steps[stepIndex]?.along ?? 0);
   }, [stepIndex, guidance, mode.kind, route]);
 
+  // Turns, floor changes and arrival, read out and felt (feature-detected; settings can mute).
+  useSpokenGuidance(
+    mode.kind === 'navigate',
+    route?.steps ?? null,
+    walked,
+    guidance === 'live' ? 3 : 1.5,
+  );
+
   // Live navigation: the route snaps the dot and gently pulls the filter; progress follows the dot.
   const offRouteSince = useRef<number | null>(null);
   const liveLeg = at?.leg ?? 0;
@@ -499,6 +511,8 @@ function Experience({
       if (Date.now() - offRouteSince.current > 6000) {
         // Off the route for a while: route again from where the walker is.
         offRouteSince.current = null;
+        speak('You are off the route. Here is a new one.');
+        haptic('warning');
         const node = nearestRoutableNode(pkg, leg.floorId, here);
         setNavStart({
           key: `live-${Date.now()}`,
@@ -558,6 +572,9 @@ function Experience({
       const t = setTimeout(() => {
         setMode({ kind: 'arrived', placeId: id });
         track({ venueId, type: 'arrived', placeId: id });
+        const name = placeById(id)?.name;
+        speak(name ? `You have arrived at ${name}.` : 'You have arrived.');
+        haptic('success');
       }, 400);
       return () => clearTimeout(t);
     }
@@ -768,6 +785,7 @@ function Experience({
         return;
       }
       input.current?.blur();
+      haptic('tap');
       if (p.floorId !== floorId) setFloorId(p.floorId);
       setMode({ kind: 'place', placeId: p.id });
       setSheetIndex(0);

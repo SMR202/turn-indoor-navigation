@@ -58,6 +58,11 @@ export type FusionConfig = {
    * beacons decides the position rather than their absolute level. Infinity = off.
    */
   rssiOffsetSigmaDb: number;
+  /**
+   * Expected value of that offset (dB) for this phone, from its device profile (ADR-0015): the
+   * prior is centred here instead of at zero.
+   */
+  rssiOffsetPriorDb: number;
   /** Resample when the effective sample size drops below this fraction of N. */
   essFraction: number;
   /** Let a step blocked by a wall continue at a small angle along it (people follow walls). */
@@ -76,6 +81,7 @@ export const DEFAULT_FUSION_CONFIG: FusionConfig = {
   rssiGateSigmas: Infinity,
   minRssi: -92,
   rssiOffsetSigmaDb: Infinity,
+  rssiOffsetPriorDb: 0,
   essFraction: 0.5,
   wallSlide: true,
 };
@@ -178,6 +184,8 @@ export class ParticleFusion {
   private y: Float64Array;
   private bias: Float64Array;
   private scale: Float64Array;
+  /** The shared RSSI offset that best explained the last radio update, and how many readings. */
+  lastOffset: { db: number; readings: number } | null = null;
   private w: Float64Array;
   private rand: () => number;
   private spare: number | null = null;
@@ -388,6 +396,7 @@ export class ParticleFusion {
       rssiTemper,
       rssiGateSigmas,
       rssiOffsetSigmaDb: offsetSigma,
+      rssiOffsetPriorDb: prior,
     } = this.config;
     const used = readings.filter(
       (r) =>
@@ -402,6 +411,7 @@ export class ParticleFusion {
       ? (sigma * sigma) / (offsetSigma * offsetSigma)
       : null;
     let best = -Infinity;
+    let bestOffset = 0;
     for (let i = 0; i < this.n; i++) {
       let sum = 0;
       for (let j = 0; j < used.length; j++) {
@@ -412,8 +422,12 @@ export class ParticleFusion {
         residuals[j] = r.rssi - predicted;
         sum += residuals[j]!;
       }
-      const c = shrink === null ? 0 : sum / (used.length + shrink);
-      let ll = shrink === null ? 0 : -(c * c) / (2 * offsetSigma * offsetSigma);
+      const c =
+        shrink === null ? 0 : (sum + shrink * prior) / (used.length + shrink);
+      let ll =
+        shrink === null
+          ? 0
+          : -((c - prior) * (c - prior)) / (2 * offsetSigma * offsetSigma);
       for (let j = 0; j < used.length; j++) {
         const residual = residuals[j]! - c;
         ll +=
@@ -421,8 +435,12 @@ export class ParticleFusion {
           Math.log(1 + (residual * residual) / (df * sigma * sigma));
       }
       logw[i] = ll;
-      if (ll > best) best = ll;
+      if (ll > best) {
+        best = ll;
+        bestOffset = c;
+      }
     }
+    this.lastOffset = { db: bestOffset, readings: used.length };
     // Innovation gate: when no hypothesis explains the readings (shadowed body, moved beacon),
     // the readings are the outlier, not the position.
     if (Number.isFinite(rssiGateSigmas)) {

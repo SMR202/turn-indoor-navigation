@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import type { ReactNode } from 'react';
 import { ScrollView, Switch, View } from 'react-native';
+import { hapticsAvailable, voiceAvailable } from '../lib/feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiBase } from '../lib/api';
 import { Icon } from '../components/icon';
@@ -86,6 +87,30 @@ export default function Settings() {
             detail="Avoid stairs and escalators where the venue marks a step-free path."
             value={prefs.stepFree}
             onChange={(v) => setPrefs({ stepFree: v })}
+          />
+          <Divider inset={56} />
+          <Row
+            icon="volume"
+            title="Spoken directions"
+            detail={
+              voiceAvailable
+                ? 'Turns, floor changes and arrival are read out while you navigate.'
+                : 'Needs the latest TURN app build on this phone.'
+            }
+            value={prefs.voice}
+            onChange={(v) => setPrefs({ voice: v })}
+          />
+          <Divider inset={56} />
+          <Row
+            icon="vibrate"
+            title="Vibration cues"
+            detail={
+              hapticsAvailable
+                ? 'A tap for turns, a buzz on arrival and when the route changes.'
+                : 'Needs the latest TURN app build on this phone.'
+            }
+            value={prefs.haptics}
+            onChange={(v) => setPrefs({ haptics: v })}
           />
         </Group>
         <Group title="Privacy">

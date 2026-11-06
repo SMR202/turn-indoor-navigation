@@ -58,10 +58,16 @@ export type Preferences = {
   stepFree: boolean;
   shareUsage: boolean;
   theme: 'system' | 'light' | 'dark';
+  /** Spoken turn-by-turn directions while navigating. */
+  voice: boolean;
+  /** Vibration on turns, arrival and when the route changes. */
+  haptics: boolean;
 };
 export const defaultPreferences: Preferences = {
   onboarded: false,
   stepFree: false,
   shareUsage: true,
   theme: 'system',
+  voice: true,
+  haptics: true,
 };

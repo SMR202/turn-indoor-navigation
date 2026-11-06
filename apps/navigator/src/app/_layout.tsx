@@ -12,7 +12,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '../components/error-boundary';
 import { Mark } from '../components/icon';
 import { installCrashReporting, reportError } from '../lib/crash';
-import { PrefsProvider, useTheme } from '../theme';
+import { setFeedbackPrefs } from '../lib/feedback';
+import { PrefsProvider, usePrefs, useTheme } from '../theme';
 
 installCrashReporting();
 
@@ -70,11 +71,22 @@ function Shell() {
   );
 }
 
+/** Keeps voice and vibration in step with the visitor's settings. */
+function FeedbackPrefs() {
+  const { prefs } = usePrefs();
+  useEffect(
+    () => setFeedbackPrefs({ voice: prefs.voice, haptics: prefs.haptics }),
+    [prefs.voice, prefs.haptics],
+  );
+  return null;
+}
+
 export default function Layout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <PrefsProvider>
+          <FeedbackPrefs />
           <ErrorBoundary>
             <Shell />
           </ErrorBoundary>

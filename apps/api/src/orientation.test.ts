@@ -116,3 +116,35 @@ it('serves map glyphs and icons from the asset folder only', async () => {
   expect((await app.request('/map/icons/cat-food.png')).status).toBe(200);
   expect((await app.request('/map/icons/..%2Fsecret.png')).status).toBe(404);
 });
+
+it('shares what phones of one model learned, as a median', async () => {
+  const app = lanApp();
+  for (const [step, offset] of [
+    [0.7, -3],
+    [0.64, -5],
+    [0.66, -4],
+  ] as const)
+    await app.request(
+      '/public/device-profiles',
+      json({
+        platform: 'android',
+        model: 'Pixel 4a (5G)',
+        stepLengthMetres: step,
+        rssiOffsetDb: offset,
+      }),
+    );
+  const got = (await (
+    await app.request(
+      '/public/device-profiles?platform=android&model=Pixel%204a%20(5G)',
+    )
+  ).json()) as {
+    stepLengthMetres: number;
+    rssiOffsetDb: number;
+    samples: number;
+  };
+  expect(got).toEqual({ stepLengthMetres: 0.66, rssiOffsetDb: -4, samples: 3 });
+  const none = await app.request(
+    '/public/device-profiles?platform=ios&model=iPhone16,1',
+  );
+  expect(await none.json()).toBeNull();
+});

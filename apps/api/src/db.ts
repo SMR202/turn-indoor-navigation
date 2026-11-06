@@ -50,6 +50,10 @@ export function openDb(path = ':memory:') {
       id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, platform TEXT NOT NULL,
       offset REAL NOT NULL, spread REAL NOT NULL, walked REAL NOT NULL, at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS device_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, platform TEXT NOT NULL, model TEXT NOT NULL,
+      step REAL, offset REAL, at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS eval_results (
       id INTEGER PRIMARY KEY AUTOINCREMENT, venue_id TEXT NOT NULL, summary TEXT NOT NULL, at TEXT NOT NULL
     );

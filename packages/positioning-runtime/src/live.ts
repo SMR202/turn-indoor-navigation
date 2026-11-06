@@ -20,6 +20,7 @@ import {
   type TrackerEstimate,
 } from './assisted-tracker';
 import { bleBuildAvailable } from './ble';
+import type { DeviceProfile } from './device-profile';
 import { waitForForeground } from './sensors/foreground';
 import { startMotionSource } from './sensors/motion-source';
 import { SettledStart } from './sensors/settled-start';
@@ -87,6 +88,8 @@ export type LiveOptions = {
   /** Venue beacon layout. Without a measured referenceRssi a beacon is ignored by the fusion. */
   beacons: BeaconPlacement[];
   stepLengthMetres?: number;
+  /** This phone's profile (ADR-0015): stride, radio window and RSSI offset prior. */
+  profile?: DeviceProfile;
   save?: (trace: BleTraceRecord) => void;
 };
 
@@ -135,6 +138,13 @@ export class LivePositioning {
   private facing: LiveStart['facing'] = 'route';
 
   constructor(private readonly options: LiveOptions) {}
+  private get stepLength() {
+    return (
+      this.options.stepLengthMetres ??
+      this.options.profile?.stepLengthMetres ??
+      0.62
+    );
+  }
 
   get beaconCount() {
     return (
@@ -198,7 +208,21 @@ export class LivePositioning {
       platform: Platform.OS === 'ios' ? 'ios' : 'android',
       save: this.options.save,
       // iPhones range iBeacons about once a second: a longer window, two packets are enough.
-      assist: { windowSeconds: 4, minPackets: 2 },
+      assist: {
+        windowSeconds: this.options.profile?.scan.windowSeconds ?? 4,
+        minPackets: this.options.profile?.scan.minPackets ?? 2,
+        ...(this.options.profile
+          ? {
+              fusion: {
+                rssiSigmaDb: 9,
+                rssiTemper: 0.6,
+                rssiGateSigmas: 2.5,
+                rssiOffsetSigmaDb: 6,
+                rssiOffsetPriorDb: this.options.profile.rssiOffsetDb,
+              },
+            }
+          : {}),
+      },
     });
     this.tracker = tracker;
     tracker.subscribe((e) => {
@@ -228,7 +252,7 @@ export class LivePositioning {
     const engine = new NavigationEngine(
       venue,
       sessionId,
-      this.options.stepLengthMetres ?? 0.62,
+      this.stepLength,
       GUARDED_PDR_REVISION,
       'resilient',
     );
@@ -331,9 +355,26 @@ export class LivePositioning {
       headingRad: known ? venue : null,
       spreadRad: e.headingBiasSpread,
       northOffset: this.lastYaw === null ? null : wrap(venue - this.lastYaw),
-      walkedMetres: this.state.steps * (this.options.stepLengthMetres ?? 0.62),
+      walkedMetres: this.state.steps * this.stepLength,
       facing: this.facing ?? 'route',
       settled: this.state.phase === 'tracking',
+    };
+  }
+
+  /**
+   * What this walk taught about the phone and walker (ADR-0015), only once the filter is sure:
+   * the stride (step length times the learned scale) and the RSSI offset against the beacons'
+   * calibration. Null while not confident.
+   */
+  learned(): { stepLengthMetres?: number; rssiOffsetDb?: number } | null {
+    const e = this.tracker?.assist.fusion.estimate();
+    if (!e || e.sigmaMetres > 2.5 || this.state.steps < 30) return null;
+    const offset = this.tracker?.assist.fusion.lastOffset;
+    return {
+      ...(e.headingBiasSpread < 0.3
+        ? { stepLengthMetres: this.stepLength * e.stepScale }
+        : {}),
+      ...(offset && offset.readings >= 3 ? { rssiOffsetDb: offset.db } : {}),
     };
   }
 
