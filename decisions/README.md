@@ -15,3 +15,6 @@ Use sequential ADR IDs. Accepted decisions remain in history; supersede rather t
 - [ADR-0010: evidence policy for assisted positioning](0010-assist-policy.md)
 - [ADR-0011: map constraints for the live blue dot](0011-map-constraints.md)
 - [ADR-0012: iBeacon support, phone-led beacon setup and an always-on live dot](0012-ibeacon-and-always-on-live.md)
+- [ADR-0013: MapLibre as TURN's map engine](0013-maplibre-map-engine.md)
+- [ADR-0014: venue georeference and orientation](0014-venue-georeference-and-orientation.md)
+- [ADR-0015: device profiles and self-calibration](0015-device-profiles.md)
