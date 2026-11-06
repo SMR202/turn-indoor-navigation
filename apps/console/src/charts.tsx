@@ -7,11 +7,22 @@ export function TrendChart({
   data,
   series,
   height = 240,
+  label,
 }: {
   data: ({ day: string } & Record<string, number | string>)[];
   series: Series[];
   height?: number;
+  /** X-axis labels; dates by default (the field is called day for activity charts). */
+  label?: (day: string, long: boolean) => string;
 }) {
+  const show =
+    label ??
+    ((day: string, long: boolean) =>
+      new Date(day).toLocaleDateString(undefined, {
+        ...(long ? { weekday: 'short' as const } : {}),
+        day: 'numeric',
+        month: 'short',
+      }));
   const width = 760;
   const pad = { l: 36, r: 12, t: 12, b: 26 };
   const [hover, setHover] = useState<number | null>(null);
@@ -88,10 +99,7 @@ export function TrendChart({
         {data.map((d, i) =>
           i % every === 0 ? (
             <text key={d.day} x={x(i)} y={height - 6} textAnchor="middle">
-              {new Date(d.day).toLocaleDateString(undefined, {
-                day: 'numeric',
-                month: 'short',
-              })}
+              {show(d.day, false)}
             </text>
           ) : null,
         )}
@@ -147,11 +155,7 @@ export function TrendChart({
           style={{ left: `${(x(hover) / width) * 100}%`, top: 8 }}
         >
           <div style={{ fontWeight: 600, marginBottom: 2 }}>
-            {new Date(data[hover]!.day).toLocaleDateString(undefined, {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'short',
-            })}
+            {show(data[hover]!.day, true)}
           </div>
           {series.map((s) => (
             <div key={s.key}>

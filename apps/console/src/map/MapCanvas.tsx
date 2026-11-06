@@ -26,6 +26,8 @@ type Props = {
   beacons?: MapBeacon[];
   onBeaconMove?: (tag: string, p: P) => void;
   coverage?: { x: number; y: number; heard: number }[];
+  /** Predicted position error per point (beacon simulator), drawn as a heat map. */
+  accuracy?: { x: number; y: number; errorMetres: number | null }[];
   coverageGrid?: number;
   anchors?: { id: string; label: string; x: number; y: number }[];
   route?: P[] | null;
@@ -36,6 +38,18 @@ type Props = {
   cursor?: string;
 };
 type Cam = { cx: number; cy: number; s: number };
+
+/** Predicted error: green within 2 m, amber to 4 m, orange to 7 m, red beyond or unheard. */
+const errorColor = (m: number | null) =>
+  m === null
+    ? '#B42318'
+    : m <= 2
+      ? '#1F8A5B'
+      : m <= 4
+        ? '#D9A441'
+        : m <= 7
+          ? '#E08A4F'
+          : '#C2412D';
 
 const heardColor = (n: number) =>
   n >= 4
@@ -227,6 +241,16 @@ export function MapCanvas(props: Props) {
                 style={{ transition: 'fill 200ms' }}
               />
             ))}
+          {props.accuracy?.map((p, i) => (
+            <circle
+              key={`a${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={1.1}
+              fill={errorColor(p.errorMetres)}
+              opacity={0.42}
+            />
+          ))}
           {props.coverage?.map((p, i) => (
             <rect
               key={i}
@@ -441,4 +465,4 @@ export function MapCanvas(props: Props) {
   );
 }
 
-export { heardColor };
+export { heardColor, errorColor };

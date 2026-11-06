@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   coverageMap,
   planBeacons,
+  plannerInputFor,
+  type AccuracyReport,
+  type PlannedSite,
   type PlannerInput,
 } from '@turn/positioning-core';
 import { api, useApi, type Beacon, type BeaconHealth } from '../api';
 import { heardColor, MapCanvas } from '../map/MapCanvas';
 import { href } from '../router';
 import { Empty, fmt, Icon, useToast } from '../ui';
+import { TargetPlanner } from './TargetPlanner';
 import type { VenueCtx } from './Venue';
 
 /** Path-loss presets: what the hardware is expected to transmit, measured at 1 m. */
@@ -39,23 +43,19 @@ export function BeaconsTab({
   const health = useApi<BeaconHealth[]>(`/venues/${venue.id}/beacons/health`);
   useEffect(() => setBeacons(venue.content.beacons), [venue.content.beacons]);
   const floor = pkg?.package.floors.find((f) => f.id === floorId);
+  // Candidate sites: every room's interior and the walk graph (corridors).
   const input = useMemo<PlannerInput | null>(
     () =>
       pkg && floor
-        ? {
-            rooms: floor.rooms.map((r) => ({
-              name: r.name,
-              polygon: r.polygon,
-              kind: r.kind,
-            })),
-            walls: floor.walls,
-            candidates: pkg.package.nodes
-              .filter((n) => n.floorId === floor.id)
-              .map((n) => ({ x: n.x, y: n.y, id: n.id })),
-            doors: floor.doors.map((d) => d.position),
-          }
+        ? plannerInputFor(
+            floor,
+            pkg.package.nodes.filter((n) => n.floorId === floor.id),
+          )
         : null,
     [pkg, floor],
+  );
+  const [accuracy, setAccuracy] = useState<AccuracyReport['points'] | null>(
+    null,
   );
   const options = { refRssi: hardware[kind].refRssi, gridMetres: 1 };
   const here = beacons.filter((b) => b.floorId === floor?.id);
@@ -118,7 +118,8 @@ export function BeaconsTab({
           height={620}
           placeMarkers={false}
           toolbar={floorPicker}
-          coverage={showCoverage ? coverage?.points : undefined}
+          coverage={showCoverage && !accuracy ? coverage?.points : undefined}
+          accuracy={accuracy ?? undefined}
           beacons={here.map((b) => ({
             ...b,
             tone: healthByTag.get(b.tag)?.lastSeen ? 'ok' : 'planned',
@@ -221,6 +222,33 @@ export function BeaconsTab({
         </div>
       </div>
       <div className="col" style={{ gap: 16 }}>
+        <TargetPlanner
+          input={input}
+          refRssi={hardware[kind].refRssi}
+          current={here}
+          onAccuracy={setAccuracy}
+          onApply={(sites: PlannedSite[]) => {
+            const taken = new Set(
+              beacons.filter((b) => b.floorId !== floor.id).map((b) => b.tag),
+            );
+            const tags = Array.from(
+              { length: 128 },
+              (_, i) => `B${i + 1}`,
+            ).filter((t) => !taken.has(t));
+            setBeacons((bs) => [
+              ...bs.filter((b) => b.floorId !== floor.id),
+              ...sites.map((s, i) => ({
+                tag: tags[i]!,
+                floorId: floor.id,
+                x: Number(s.x.toFixed(2)),
+                y: Number(s.y.toFixed(2)),
+              })),
+            ]);
+            toast(
+              `Placed ${sites.length} planned sites: drag to adjust, then save`,
+            );
+          }}
+        />
         <div className="card">
           <h2>Plan the layout</h2>
           <p className="subtle" style={{ marginTop: 4 }}>
