@@ -55,7 +55,18 @@ export type PlaceContent = {
   hidden?: boolean;
   name?: string;
   category?: string;
+  /** Moved on the map in Studio (floor metres). */
+  position?: { x: number; y: number };
 };
+export type CustomPlace = {
+  id: string;
+  floorId: string;
+  x: number;
+  y: number;
+  name: string;
+  category: string;
+};
+export type RoomEdit = { name?: string; restricted?: boolean };
 export type Beacon = {
   tag: string;
   floorId: string;
@@ -66,6 +77,8 @@ export type Beacon = {
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;
+  customPlaces: CustomPlace[];
+  rooms: Record<string, RoomEdit>;
   beacons: Beacon[];
   branding: { accent?: string };
   /** Where the venue sits on Earth and which way is north (ADR-0014). */

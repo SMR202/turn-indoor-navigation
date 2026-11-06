@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { lightMap } from '@turn/design';
-import { applyPlaceOverrides, buildScene, type Scene } from '@turn/map-scene';
+import {
+  applyPlaceOverrides,
+  applyVenueEdits,
+  buildScene,
+  type Scene,
+} from '@turn/map-scene';
 import {
   useApi,
   type Analytics,
@@ -45,20 +50,29 @@ export function VenuePage({
 }) {
   const venue = useApi<VenueDetail>(`/venues/${id}`);
   const pkg = useApi<PackageResponse>(`/venues/${id}/package`);
+  const content = venue.data?.content;
+  // The map as visitors will see it: the floor plan with Studio's map edits applied.
+  const edited = useMemo(
+    () =>
+      pkg.data && content
+        ? applyVenueEdits(pkg.data.package, content)
+        : (pkg.data?.package ?? null),
+    [pkg.data, content],
+  );
   const scenes = useMemo<Record<string, Scene>>(
     () =>
-      pkg.data
+      edited
         ? Object.fromEntries(
-            pkg.data.package.floors.map((f) => [
+            edited.floors.map((f) => [
               f.id,
               applyPlaceOverrides(
-                buildScene(pkg.data!.package, f.id, lightMap),
-                venue.data?.content.places ?? {},
+                buildScene(edited, f.id, lightMap),
+                content?.places ?? {},
               ),
             ]),
           )
         : {},
-    [pkg.data, venue.data?.content.places],
+    [edited, content?.places],
   );
   const floors = useMemo<Floor[]>(
     () =>

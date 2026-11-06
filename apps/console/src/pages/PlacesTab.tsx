@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
-import {
-  normaliseCategory,
-  placeCategories,
-  type PlaceCategory,
-} from '@turn/design';
+import { placeCategories, type PlaceCategory } from '@turn/design';
 import type { ScenePlace } from '@turn/map-scene';
-import { api, type PlaceContent } from '../api';
 import { href } from '../router';
-import { CatBadge, Drawer, Empty, Icon, useToast } from '../ui';
+import { CatBadge, Empty, Icon } from '../ui';
+import { MapEditor } from './MapEditor';
+import { PlaceEditor } from './PlaceEditor';
 import type { VenueCtx } from './Venue';
 
-export function PlacesTab({ venue, scene, scenes, floors, reload }: VenueCtx) {
+export function PlacesTab(ctx: VenueCtx) {
+  const { venue, scene, scenes, floors, reload } = ctx;
+  const [view, setView] = useState<'list' | 'map'>('list');
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<PlaceCategory | 'all'>('all');
   const [editing, setEditing] = useState<ScenePlace | null>(null);
@@ -41,6 +40,54 @@ export function PlacesTab({ venue, scene, scenes, floors, reload }: VenueCtx) {
         </Empty>
       </div>
     );
+  const views = (
+    <div className="segmented" role="tablist" aria-label="View">
+      <button
+        className={view === 'list' ? 'on' : ''}
+        onClick={() => setView('list')}
+        role="tab"
+        aria-selected={view === 'list'}
+      >
+        List
+      </button>
+      <button
+        className={view === 'map' ? 'on' : ''}
+        onClick={() => setView('map')}
+        role="tab"
+        aria-selected={view === 'map'}
+      >
+        Map
+      </button>
+    </div>
+  );
+  const editor = editing && (
+    <PlaceEditor
+      key={editing.id}
+      venueId={venue.id}
+      place={editing}
+      content={venue.content.places[editing.id] ?? {}}
+      onClose={() => setEditing(null)}
+      onSaved={() => {
+        setEditing(null);
+        reload();
+      }}
+    />
+  );
+  if (view === 'map')
+    return (
+      <>
+        <div className="spread" style={{ marginBottom: 14 }}>
+          <div className="banner info" style={{ margin: 0 }}>
+            <Icon name="info" size={16} /> Drag places to move them, add new
+            ones, rename rooms or make them staff only. Saved straight away;
+            visitors see it after the next publish.
+          </div>
+          {views}
+        </div>
+        <MapEditor {...ctx} onEditPlace={setEditing} />
+        {editor}
+      </>
+    );
   return (
     <>
       <div className="banner info">
@@ -48,6 +95,7 @@ export function PlacesTab({ venue, scene, scenes, floors, reload }: VenueCtx) {
         visitors with the next publish.
       </div>
       <div className="spread" style={{ marginBottom: 14 }}>
+        {views}
         <div className="row grow" style={{ maxWidth: 360 }}>
           <input
             className="input"
@@ -138,169 +186,7 @@ export function PlacesTab({ venue, scene, scenes, floors, reload }: VenueCtx) {
           </tbody>
         </table>
       </div>
-      {editing && (
-        <PlaceEditor
-          key={editing.id}
-          venueId={venue.id}
-          place={editing}
-          content={venue.content.places[editing.id] ?? {}}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            reload();
-          }}
-        />
-      )}
+      {editor}
     </>
-  );
-}
-
-function PlaceEditor({
-  venueId,
-  place,
-  content,
-  onClose,
-  onSaved,
-}: {
-  venueId: string;
-  place: ScenePlace;
-  content: PlaceContent;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const toast = useToast();
-  const [draft, setDraft] = useState<PlaceContent>(content);
-  const [tags, setTags] = useState((content.tags ?? []).join(', '));
-  const set = (p: Partial<PlaceContent>) => setDraft((d) => ({ ...d, ...p }));
-  const save = async () => {
-    await api(`/venues/${venueId}/places/${place.id}`, {
-      method: 'PATCH',
-      body: {
-        ...draft,
-        tags: tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .slice(0, 12),
-      },
-    });
-    toast(`${place.name} saved`);
-    onSaved();
-  };
-  return (
-    <Drawer
-      title={place.name}
-      subtitle={place.categoryLabel}
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" onClick={() => void save()}>
-            Save
-          </button>
-        </>
-      }
-    >
-      <div className="row">
-        <CatBadge category={place.category} size={44} />
-        <div className="subtle">
-          Category comes from the floor plan ({place.category}). Position:{' '}
-          {place.x.toFixed(1)}, {place.y.toFixed(1)} m.
-        </div>
-      </div>
-      <div className="grid g2" style={{ gap: 12 }}>
-        <div className="field">
-          <label>Display name</label>
-          <input
-            className="input"
-            value={draft.name ?? ''}
-            placeholder={place.name}
-            onChange={(e) => set({ name: e.target.value || undefined })}
-          />
-        </div>
-        <div className="field">
-          <label>Category</label>
-          <select
-            className="select"
-            value={draft.category ? normaliseCategory(draft.category) : ''}
-            onChange={(e) => set({ category: e.target.value || undefined })}
-          >
-            <option value="">From the floor plan</option>
-            {(Object.keys(placeCategories) as PlaceCategory[])
-              .filter((k) => k !== 'circulation')
-              .map((k) => (
-                <option key={k} value={k}>
-                  {placeCategories[k].label}
-                </option>
-              ))}
-          </select>
-        </div>
-      </div>
-      <div className="field">
-        <label>Description</label>
-        <textarea
-          className="textarea"
-          maxLength={600}
-          value={draft.description ?? ''}
-          onChange={(e) => set({ description: e.target.value || undefined })}
-          placeholder="What visitors find here"
-        />
-      </div>
-      <div className="grid g2" style={{ gap: 12 }}>
-        <div className="field">
-          <label>Opening hours</label>
-          <input
-            className="input"
-            value={draft.hours ?? ''}
-            onChange={(e) => set({ hours: e.target.value || undefined })}
-            placeholder="09:00–18:00"
-          />
-        </div>
-        <div className="field">
-          <label>Phone</label>
-          <input
-            className="input"
-            value={draft.phone ?? ''}
-            onChange={(e) => set({ phone: e.target.value || undefined })}
-          />
-        </div>
-      </div>
-      <div className="field">
-        <label>Website</label>
-        <input
-          className="input"
-          value={draft.url ?? ''}
-          onChange={(e) => set({ url: e.target.value || undefined })}
-          placeholder="https://"
-        />
-      </div>
-      <div className="field">
-        <label>Search tags</label>
-        <input
-          className="input"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="coffee, wifi, toilets"
-        />
-      </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.accessible)}
-          onChange={(e) => set({ accessible: e.target.checked })}
-        />
-        Step-free access
-      </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.hidden)}
-          onChange={(e) => set({ hidden: e.target.checked })}
-        />
-        Hide from visitors (still routable)
-      </label>
-    </Drawer>
   );
 }

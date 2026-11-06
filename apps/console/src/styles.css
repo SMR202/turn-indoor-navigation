@@ -784,6 +784,33 @@ input[type='range'] {
   z-index: 40;
   box-shadow: var(--shadow-floating);
   animation: toast 3.2s var(--ease) both;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.toast:has(.toast-action) {
+  animation-duration: 6s;
+}
+.toast-action {
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  padding: 4px 2px;
+  opacity: 0.9;
+}
+.toast-action:hover {
+  opacity: 1;
+}
+.map-pin {
+  cursor: grab;
+}
+.map-pin:active {
+  cursor: grabbing;
 }
 .banner {
   display: flex;

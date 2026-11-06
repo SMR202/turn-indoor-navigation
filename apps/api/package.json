@@ -10,6 +10,7 @@
   "dependencies": {
     "@hono/node-server": "2.1.5",
     "@turn/design": "0.1.0",
+    "@turn/map-scene": "0.1.0",
     "@turn/venue-model": "0.1.0",
     "hono": "4.13.13",
     "zod": "4.6.5"

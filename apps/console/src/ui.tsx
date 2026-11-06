@@ -262,24 +262,44 @@ function useEscape(fn: () => void) {
   }, [fn]);
 }
 
-const ToastCtx = createContext<(msg: string) => void>(() => {});
+type ToastAction = { label: string; run: () => void };
+const ToastCtx = createContext<(msg: string, action?: ToastAction) => void>(
+  () => {},
+);
+/** Short confirmations, with an optional action such as Undo (kept on screen a little longer). */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
+  const [toast, setToast] = useState<{
+    msg: string;
+    id: number;
+    action?: ToastAction;
+  } | null>(null);
   const show = useCallback(
-    (msg: string) => setToast({ msg, id: Date.now() }),
+    (msg: string, action?: ToastAction) =>
+      setToast({ msg, id: Date.now(), action }),
     [],
   );
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
+    const t = setTimeout(() => setToast(null), toast.action ? 6000 : 3200);
     return () => clearTimeout(t);
   }, [toast]);
   return (
     <ToastCtx.Provider value={show}>
       {children}
       {toast && (
-        <div className="toast" key={toast.id}>
+        <div className="toast" key={toast.id} role="status">
           {toast.msg}
+          {toast.action && (
+            <button
+              className="toast-action"
+              onClick={() => {
+                toast.action!.run();
+                setToast(null);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
     </ToastCtx.Provider>

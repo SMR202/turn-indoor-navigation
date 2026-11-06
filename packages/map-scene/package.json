@@ -10,5 +10,8 @@
     "@turn/venue-model": "0.1.0",
     "@maplibre/maplibre-gl-style-spec": "26.5.1",
     "@types/geojson": "7946.0.16"
+  },
+  "devDependencies": {
+    "@turn/routing": "0.1.0"
   }
 }

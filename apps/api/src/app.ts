@@ -12,6 +12,7 @@ import {
   type TurnFloorGeoJson,
   type VenuePackage,
 } from '@turn/venue-model';
+import { applyVenueEdits } from '@turn/map-scene';
 import type { Db } from './db';
 
 /** Venue content that lives beside the geometry: place details, beacon layout, branding. */
@@ -25,9 +26,27 @@ export const placeContentSchema = z.object({
   hidden: z.boolean().optional(),
   category: z.string().max(40).optional(),
   name: z.string().min(1).max(80).optional(),
+  /** Moved in Studio: where the place really is (floor metres). */
+  position: z.object({ x: z.number(), y: z.number() }).optional(),
+});
+export const roomEditSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  /** Staff only: routes never pass through it. */
+  restricted: z.boolean().optional(),
+});
+export const customPlaceSchema = z.object({
+  id: z.string().regex(/^custom-[a-z0-9-]{1,40}$/),
+  floorId: z.string(),
+  x: z.number(),
+  y: z.number(),
+  name: z.string().min(1).max(80),
+  category: z.string().max(40),
 });
 export const venueContentSchema = z.object({
   places: z.record(z.string(), placeContentSchema).default({}),
+  /** Places added in Studio (not in the floor plan). */
+  customPlaces: z.array(customPlaceSchema).max(300).default([]),
+  rooms: z.record(z.string(), roomEditSchema).default({}),
   beacons: z
     .array(
       z.object({
@@ -652,6 +671,49 @@ export function createApp(
     );
     return c.json(content.places[param(c, 'placeId')]);
   });
+  const saveContent = (id: string, content: VenueContent) =>
+    run(
+      'UPDATE venues SET content = ?, updated_at = ? WHERE id = ?',
+      JSON.stringify(content),
+      now(),
+      id,
+    );
+  app.put('/venues/:id/custom-places/:placeId', auth, async (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const place = customPlaceSchema.parse({
+      ...(await c.req.json()),
+      id: param(c, 'placeId'),
+    });
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    const others = content.customPlaces.filter((p) => p.id !== place.id);
+    if (others.length >= 300)
+      return c.json({ error: 'Too many added places' }, 422);
+    content.customPlaces = [...others, place];
+    saveContent(v.id, content);
+    return c.json(place);
+  });
+  app.delete('/venues/:id/custom-places/:placeId', auth, (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    const id = param(c, 'placeId');
+    content.customPlaces = content.customPlaces.filter((p) => p.id !== id);
+    delete content.places[id];
+    saveContent(v.id, content);
+    return c.json({ ok: true });
+  });
+  app.patch('/venues/:id/rooms/:roomId', auth, async (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const edit = roomEditSchema.parse(await c.req.json());
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    const id = param(c, 'roomId');
+    if (!edit.name && !edit.restricted) delete content.rooms[id];
+    else content.rooms[id] = edit;
+    saveContent(v.id, content);
+    return c.json(content.rooms[id] ?? {});
+  });
   app.put('/venues/:id/beacons', auth, async (c) => {
     const v = venueFor(c, param(c, 'id'));
     if (!v) return c.json({ error: 'Not found' }, 404);
@@ -741,6 +803,18 @@ export function createApp(
         { error: 'Fix validation errors before publishing.', validation },
         422,
       );
+    // Studio map edits (moved or added places, staff-only rooms) are checked on the edited map.
+    const edited = validatePackage(
+      applyVenueEdits(
+        JSON.parse(draft.package) as VenuePackage,
+        venueContentSchema.parse(JSON.parse(v.content)),
+      ),
+    );
+    validation.warnings.push(
+      ...edited.errors
+        .filter((e) => !validation.errors.includes(e))
+        .map((e) => `With Studio map edits: ${e}`),
+    );
     db.exec('BEGIN');
     try {
       run(

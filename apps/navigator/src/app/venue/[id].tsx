@@ -258,7 +258,10 @@ function Experience({
     () =>
       pkg.floors.flatMap((f) =>
         scenes[f.id]!.places.filter(
-          (p) => !bundle.content.places[p.id]?.hidden,
+          // Hidden places and places in staff-only rooms are not destinations.
+          (p) =>
+            !bundle.content.places[p.id]?.hidden &&
+            !(p.roomId && bundle.content.rooms?.[p.roomId]?.restricted),
         ).map((p) => ({ ...p, floorId: f.id, floorLabel: f.label })),
       ),
     [pkg, scenes, bundle],

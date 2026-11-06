@@ -20,11 +20,18 @@ type Props = {
   scene: Scene;
   height: number;
   selectedRoomId?: string | null;
+  /** Staff-only rooms, drawn striped. */
+  restrictedRoomIds?: string[];
   onRoomClick?: (roomId: string | null, point: P) => void;
   /** When set, a click on the map calls this instead of selecting rooms (placement tools). */
   onMapClick?: (p: P) => void;
   beacons?: MapBeacon[];
   onBeaconMove?: (tag: string, p: P) => void;
+  /** Draggable place pins (Studio map editing). */
+  pins?: MapPin[];
+  onPinMove?: (id: string, p: P) => void;
+  onPinDrop?: (id: string, p: P) => void;
+  onPinClick?: (id: string) => void;
   coverage?: { x: number; y: number; heard: number }[];
   /** Predicted position error per point (beacon simulator), drawn as a heat map. */
   accuracy?: { x: number; y: number; errorMetres: number | null }[];
@@ -38,6 +45,16 @@ type Props = {
   cursor?: string;
 };
 type Cam = { cx: number; cy: number; s: number };
+export type MapPin = {
+  id: string;
+  x: number;
+  y: number;
+  color: string;
+  label: string;
+  selected?: boolean;
+  /** Drawn with a ring: moved or added in Studio. */
+  edited?: boolean;
+};
 
 /** Predicted error: green within 2 m, amber to 4 m, orange to 7 m, red beyond or unheard. */
 const errorColor = (m: number | null) =>
@@ -76,6 +93,7 @@ export function MapCanvas(props: Props) {
     cam: Cam;
     moved: boolean;
     beacon?: string;
+    pin?: string;
   } | null>(null);
 
   const fit = useMemo(() => {
@@ -153,9 +171,16 @@ export function MapCanvas(props: Props) {
   );
   const ext = scene.extrusionMetres;
 
-  const onDown = (e: React.PointerEvent, beacon?: string) => {
+  const onDown = (e: React.PointerEvent, beacon?: string, pin?: string) => {
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    drag.current = { x: e.clientX, y: e.clientY, cam: c, moved: false, beacon };
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      cam: c,
+      moved: false,
+      beacon,
+      pin,
+    };
     e.stopPropagation();
   };
   const onMove = (e: React.PointerEvent) => {
@@ -165,6 +190,11 @@ export function MapCanvas(props: Props) {
       dy = e.clientY - d.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
     if (!d.moved) return;
+    if (d.pin) {
+      const r = box.current!.getBoundingClientRect();
+      props.onPinMove?.(d.pin, toMap(e.clientX - r.left, e.clientY - r.top));
+      return;
+    }
     if (d.beacon && props.onBeaconMove) {
       const r = box.current!.getBoundingClientRect();
       props.onBeaconMove(
@@ -182,9 +212,15 @@ export function MapCanvas(props: Props) {
   const onUp = (e: React.PointerEvent) => {
     const d = drag.current;
     drag.current = null;
-    if (!d || d.moved || d.beacon) return;
+    if (!d) return;
     const r = box.current!.getBoundingClientRect();
     const p = toMap(e.clientX - r.left, e.clientY - r.top);
+    if (d.pin) {
+      if (d.moved) props.onPinDrop?.(d.pin, p);
+      else props.onPinClick?.(d.pin);
+      return;
+    }
+    if (d.moved || d.beacon) return;
     if (props.onMapClick) return props.onMapClick(p);
     const room = scene.rooms
       .filter((x) => pointInPolygon(p, x.polygon))
@@ -211,6 +247,17 @@ export function MapCanvas(props: Props) {
         onPointerMove={onMove}
         onPointerUp={onUp}
       >
+        <defs>
+          <pattern
+            id="turn-hatch"
+            patternUnits="userSpaceOnUse"
+            width={0.8}
+            height={0.8}
+            patternTransform="rotate(45)"
+          >
+            <rect width={0.32} height={0.8} fill="#C2412D" opacity={0.28} />
+          </pattern>
+        </defs>
         <g transform={matrix}>
           <path
             d={polys.footprint}
@@ -241,6 +288,13 @@ export function MapCanvas(props: Props) {
                 style={{ transition: 'fill 200ms' }}
               />
             ))}
+          {props.restrictedRoomIds?.length
+            ? polys.rooms
+                .filter((r) => props.restrictedRoomIds!.includes(r.id))
+                .map((r) => (
+                  <path key={`x${r.id}`} d={r.d} fill="url(#turn-hatch)" />
+                ))
+            : null}
           {props.accuracy?.map((p, i) => (
             <circle
               key={`a${i}`}
@@ -402,6 +456,46 @@ export function MapCanvas(props: Props) {
                   />
                 ))}
               </g>
+            </g>
+          );
+        })}
+        {props.pins?.map((pin) => {
+          const p = toScreen(pin);
+          return (
+            <g
+              key={pin.id}
+              transform={`translate(${p.x} ${p.y})`}
+              className="map-pin"
+              onPointerDown={(e) => onDown(e, undefined, pin.id)}
+              role="button"
+              aria-label={pin.label}
+            >
+              <circle r={18} fill="transparent" />
+              {(pin.selected || pin.edited) && (
+                <circle
+                  r={pin.selected ? 15 : 13}
+                  fill="none"
+                  stroke={pin.selected ? pal.route : pin.color}
+                  strokeWidth={pin.selected ? 3 : 1.5}
+                  strokeDasharray={pin.selected ? undefined : '3 2'}
+                />
+              )}
+              <circle r={9} fill={pin.color} stroke="#fff" strokeWidth={2.5} />
+              {pin.selected && (
+                <text
+                  y={-21}
+                  textAnchor="middle"
+                  fontSize={12}
+                  fontWeight={700}
+                  className="map-label"
+                  fill={pal.label}
+                  stroke="#fff"
+                  strokeWidth={3}
+                  paintOrder="stroke"
+                >
+                  {pin.label}
+                </text>
+              )}
             </g>
           );
         })}

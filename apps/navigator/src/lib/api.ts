@@ -6,6 +6,7 @@ import {
   parseVenuePackage,
   type VenuePackage,
 } from '@turn/venue-model';
+import { applyVenueEdits, type VenueEdits } from '@turn/map-scene';
 import { load, save } from './storage';
 
 export type PlaceContent = {
@@ -19,9 +20,14 @@ export type PlaceContent = {
   /** Owner edits in TURN Studio, applied over the floor plan. */
   name?: string;
   category?: string;
+  /** Moved in TURN Studio (floor metres). */
+  position?: { x: number; y: number };
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;
+  /** Studio map edits: places added and rooms renamed or made staff-only (applied to `pkg`). */
+  customPlaces?: VenueEdits['customPlaces'];
+  rooms?: VenueEdits['rooms'];
   beacons: {
     tag: string;
     floorId: string;
@@ -237,8 +243,8 @@ export function useVenue(id: string): VenueState {
             });
           return;
         }
-        const pkg = parseVenuePackage(body.package);
         const content = { ...emptyContent, ...body.content } as VenueContent;
+        const pkg = applyVenueEdits(parseVenuePackage(body.package), content);
         const summary: VenueSummary = catalog.find((v) => v.id === id) ?? {
           ...bundledDemo.summary,
           id,
@@ -282,7 +288,7 @@ function fromCache(id: string): VenueBundle | null {
   try {
     return {
       summary: cached.summary,
-      pkg: parseVenuePackage(cached.pkg),
+      pkg: applyVenueEdits(parseVenuePackage(cached.pkg), cached.content),
       content: cached.content,
       source: 'cached',
     };
