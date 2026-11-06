@@ -4,10 +4,7 @@
     {
       "name": "api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "api"
-      ],
+      "runtimeArgs": ["run", "api"],
       "port": 8090
     },
     {
@@ -26,12 +23,7 @@
     {
       "name": "console",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--workspace",
-        "@turn/console"
-      ],
+      "runtimeArgs": ["run", "dev", "--workspace", "@turn/console"],
       "port": 5173
     },
     {

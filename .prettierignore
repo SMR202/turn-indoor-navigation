@@ -8,6 +8,9 @@ apps/mobile/android
 apps/mobile/ios
 apps/mobile/modules/*/android/build
 apps/mobile/modules/*/android/.gradle
+# Map assets copied on install (scripts/sync-web-map-assets.mjs).
+apps/*/public/maplibre
+apps/*/public/map
 # Preserve formatting of historical evidence.
 research/ACCELERATION_AUDIT.md
 docs/CODEX_CLOUD_SETUP.md

@@ -13,6 +13,9 @@ export default ts.config(
       'apps/mobile/ios/**',
       'apps/mobile/modules/*/android/build/**',
       'apps/mobile/modules/*/android/.gradle/**',
+      // Copied from node_modules on install (scripts/sync-web-map-assets.mjs).
+      'apps/*/public/maplibre/**',
+      'apps/*/public/map/**',
     ],
   },
   js.configs.recommended,
