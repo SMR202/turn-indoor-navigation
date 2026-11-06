@@ -1,6 +1,18 @@
 # backend-admin workstream
 
-Last meaningful update: 2026-10-19 (multi-floor, beacon health, team)
+Last meaningful update: 2026-11-06 (TURN 1.0: georeference, map editing, beacon programme)
+
+## TURN 1.0 — 2026-11-06 ([Plan 004](../../../plans/active/004-turn-1.0.md))
+
+IMPLEMENTED:
+
+- **Georeference**: `PUT /venues/:id/georeference`; Studio Settings aligns the plan over street or satellite maps (MapLibre), with bearing and declination. Phones share learned compass offsets (`/public/venues/:id/orientation`, circular mean per platform) and device observations (`/public/device-profiles`, median per model).
+- **Map editing** (Places → Map): drag places (`places[id].position`), add places (`PUT/DELETE /venues/:id/custom-places/:id`), rename rooms and mark them staff only (`PATCH /venues/:id/rooms/:id`). Each change saves at once with **Undo**. `applyVenueEdits` (`@turn/map-scene`) applies them on load in Studio and the visitor app. Moved or added places get their own walk-graph node joined through a door, and routes skip staff-only rooms. Publish adds warnings when edits leave a place unreachable.
+- **Beacon programme**: the target planner runs in a worker (fewest beacons, curve, heat map); its sites are saved as `planned`; a printable **Install sheet** per floor. Map glyphs and icons are served offline (`/map/glyphs`, `/map/icons`).
+
+Validation: API tests for georeference, orientation, device profiles, map assets and map edits pass; in the browser (DOM checks, pane hidden): a drag saved the position and kept the place's details, Reset and Undo restored it, an added place appeared as a pin, a staff-only room was drawn striped, and the install sheet listed 20 planned sites. The demo venue was restored afterwards. The georeference editor has not been checked visually.
+
+Next: check Studio visually with the browser pane shown; beacon accuracy dashboard from verification walks once beacons are mounted.
 
 ## Objective
 

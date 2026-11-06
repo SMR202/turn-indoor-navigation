@@ -1,6 +1,14 @@
 # Positioning workstream
 
-Updated: 2026-10-21.
+Updated: 2026-11-06.
+
+## Orientation, device profiles, beacon simulator — 2026-11-06
+
+FACT (user report, FAST): walking right moved the dot left. Diagnosis: new venues had no map north, so live starts assumed the walker faced along the route. IMPLEMENTED: compass start with this phone's learned offset, else other phones' (same platform), else the venue bearing ([ADR-0014](../../../decisions/0014-venue-georeference-and-orientation.md)); a marked direction still wins. Device profiles set stride, scan cadence and an RSSI offset prior in the filter (`rssiOffsetPriorDb`), learned per phone and shared per model ([ADR-0015](../../../decisions/0015-device-profiles.md)).
+
+IMPLEMENTED: `beacon-simulator.ts`: log-distance path loss with wall loss, 5 dB noise, a 4 dB phone offset and negative information. `simulateAccuracy` reports median and 90% error and right-room rate; `planForTarget` searches for the fewest beacons for a target. EXPERIMENT RESULT (simulation only, radio only, no steps): C-F4 room-level target, 22 beacons, 2.0 m median, 6.1 m p90, 91% right room. No venue accuracy is established.
+
+Next: verification walk with landmark marks once beacons are mounted; compare the walk with the simulator's prediction.
 
 ## Distance-ranked sticky zones, calm dot, "Not here?" corrections — 2026-10-22
 

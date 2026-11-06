@@ -1,10 +1,25 @@
 # TURN project state
 
-Updated: 2026-10-19.
+Updated: 2026-11-06.
 
 ## Current milestone
 
 M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-comparison` includes settled starts, labelled trials, native/manual count comparison, local history and one-tap LAN transfer. Fourteen inbox recordings were replayed; new sessions now use a versioned experimental motion filter. General localization accuracy remains unvalidated.
+
+## TURN 1.0 — 2026-11-06 (Plan 004)
+
+Goal set by the owner: finish everything except connecting the ordered commercial beacons (Minew E7+), with Pointr-level features ([Plan 004](../plans/active/004-turn-1.0.md)). IMPLEMENTED since 2026-10-28:
+
+- **Orientation** ([ADR-0014](../decisions/0014-venue-georeference-and-orientation.md)): venues carry a georeference (origin, bearing of map north) set in TURN Studio over satellite or street maps; live starts use own, crowd or venue-bearing compass offsets instead of assuming the route direction (the FAST "dot goes the wrong way" diagnosis).
+- **3D map** ([ADR-0013](../decisions/0013-maplibre-map-engine.md)): one MapLibre style from `@turn/map-scene` (extruded walls, labels, category icons, route, selection) for the visitor app (native in Android build 8; web) and Studio; follow mode keeps the dot low on screen, heading-up and tilted; offline glyphs and icons.
+- **Guidance**: spoken directions and vibration cues (mutable), off-route notice within 1.5 s, "You passed your turn", "Turn around", reroute after 6 s.
+- **Device profiles** ([ADR-0015](../decisions/0015-device-profiles.md)): platform defaults, a per-model shared median and a per-phone learned stride and RSSI offset.
+- **Beacon programme**: simulator and planner (fewest beacons for room-level, 3 m or 2 m targets with the cost curve and heat map), planned sites, a printable install sheet, snap-to-site setup in the app, beacon health.
+- **Studio map editing**: move and add places, rename rooms, staff-only rooms that routes avoid, all with Undo (`applyVenueEdits`; the TURN-Mapper plan stays untouched).
+
+Validation: `npm run check` passes (271 tests); visitor web and Studio bundles build; Studio editing, install sheet and planner exercised in the browser (DOM checks; the browser pane was hidden, so not visually). Android build 8 built locally, not yet installed. Nothing new has run on a phone; all accuracy figures are simulated (radio only) and are not venue results. EXPERIMENT RESULT: FAST floors of one block are not in a shared frame and stairs are rarely labelled, so the campus cannot yet be one routed building (TURN-Mapper building packages needed).
+
+Next action: install Android build 8 and test the new map, voice, compass start and off-route cues on site; the iPhone needs a CI build (owner's go-ahead to push). When the beacons arrive, follow the install sheet and [beacon setup](BEACON_SETUP.md).
 
 ## Product platform — 2026-10-19 (Plan 003)
 

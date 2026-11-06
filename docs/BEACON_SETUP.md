@@ -69,6 +69,14 @@ For **private LAN venues** (a home or test site) the setup is shared through the
 2. For each beacon press **Set ID** and enter its TURN ID from the table above (the phone's beacon screen shows it as _TURN ID_).
 3. **Save layout**, optionally **Calibrate** with a measured 1 m RSSI, then publish.
 
+### Beacon day: plan, print, mount, assign
+
+1. **Plan** (Studio → Beacons → _How many beacons do we need?_): choose a target (right room, about 3 m or about 2 m) and **Find the fewest beacons**. The simulator shows the predicted error, the cost against accuracy curve and a heat map. These are radio-only predictions (walls, noise, phone differences), not measurements. **Use these N sites** places them as _planned_ sites (B1, B2, …); **Save layout** and publish so phones see them.
+2. **Print** the **Install sheet**: per floor, a map with the numbered sites, a table (site, room, position, beacon ID to fill in, mounted, added in app, calibrated), the mounting rules and the app steps.
+3. **Mount** each beacon within about 1 m of its site, about 2 m high, with Eddystone-UID on, +4 dBm and 100 ms advertising. Write its instance ID on the sheet.
+4. **Assign** in the visitor app (**Beacons**): stand next to the mounted beacon (it rises to the top of _Nearby_), tap it, **Add to venue**. Planned sites show as flags. Move the map until the pin sits on the site's flag: it snaps on (with a tick), and **Set here** puts the beacon exactly on the site and replaces the planned entry. Planned sites are never used for positioning.
+5. **Calibrate** each beacon (1 m for 12 s), then **Test beacons**, then the verification walk with landmark marks ([evaluation](EVALUATION.md)).
+
 ## 4. Live position
 
 With two or more beacons set up, the visitor app **finds you automatically** when the venue opens and the blue dot follows you while browsing, previewing routes and navigating. Without beacons, start it with **Set my location** (map pin) or a TURN code. Marking your direction once with **Set my location** teaches that phone how the venue's map is turned against its compass (walking refines it), so later starts know which way you face.

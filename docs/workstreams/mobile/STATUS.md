@@ -1,6 +1,16 @@
 # Mobile workstream
 
-Updated: 2026-10-28.
+Updated: 2026-11-06.
+
+## TURN 1.0 visitor app — 2026-11-06 ([Plan 004](../../../plans/active/004-turn-1.0.md))
+
+IMPLEMENTED: MapLibre 3D map (`map/VenueMap3D.native.tsx` / `.web.tsx`; falls back to the flat plan on builds without the native module); follow mode with the dot low on screen, heading-up and tilted; compass-based live start with venue, crowd and own orientation; spoken directions and vibration cues with Settings switches; device profiles; off-route notice within 1.5 s, "You passed your turn", "Turn around" and reroute after 6 s (`watchRoute`, tested); places in staff-only rooms hidden; Studio map edits applied on load; beacon setup snaps to Studio's planned sites; 44 pt chip targets with a selection tick; onboarding explains the motion, compass and Bluetooth permissions. FIXED: the venue screen crashed on the web (device model read `Platform.constants`).
+
+Android **build 8** (versionCode 8: MapLibre, expo-speech, expo-haptics, expo-device) built locally, 56 MB, SHA-256 prefix 78d2ca478780f349 ([build notes](../../ANDROID_TEST_BUILD.md)); not yet installed. iPhone needs the CI build (owner's go-ahead to push).
+
+Validation: typecheck, lint and tests pass; the web venue screen loads in the browser. Native map, voice, haptics and compass start are untested on a phone.
+
+Next: install build 8, open a FAST floor, check the map turns and pitches smoothly, the dot moves the right way after a compass start, and the off-route cues; report anything glitchy with a screen recording.
 
 ## Demo from a laptop — 2026-10-28
 

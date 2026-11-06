@@ -1,6 +1,12 @@
 # Venue packages workstream
 
-Updated: 2026-10-28.
+Updated: 2026-11-06.
+
+## Studio map edits; one building from separate floors — 2026-11-06
+
+IMPLEMENTED: Studio map edits live in venue content and are applied on load (`applyVenueEdits`); TURN-Mapper packages stay unchanged. FIXED: `mergeFloor` now accepts floors exported as separate venues (their QR markers join the merged venue).
+
+EXPERIMENT RESULT (private FAST export, this computer): merging each block's floors gives 0 stair or lift links. The floors are not in one frame (for example C-GF 49 × 21 m, C-F3 57 × 25 m, scales from different references), and only 0–1 stairs or lifts per floor are labelled. A campus with a building and floor picker and routes between floors needs TURN-Mapper building packages: floors aligned in one frame, stairs and lifts labelled. Reported for Zaki in [Plan 004 §8](../../../plans/active/004-turn-1.0.md).
 
 ## Several private venues; TURN-Mapper floors added — 2026-10-28
 
