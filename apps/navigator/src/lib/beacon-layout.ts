@@ -22,6 +22,8 @@ export type LayoutBeacon = {
   uuid?: string;
   /** The beacon's own advertised 1 m power, used until it is calibrated. */
   txAt1m?: number;
+  /** A site planned in TURN Studio: no beacon mounted yet, so never used for positioning. */
+  planned?: boolean;
   source: 'venue' | 'phone';
 };
 export type Stored = Omit<LayoutBeacon, 'source'>;
@@ -94,7 +96,7 @@ export function placementsFor(
   floorId?: string,
 ): BeaconPlacement[] {
   return beacons
-    .filter((b) => !floorId || b.floorId === floorId)
+    .filter((b) => !b.planned && (!floorId || b.floorId === floorId))
     .map((b) => {
       const reference =
         b.referenceRssi ??

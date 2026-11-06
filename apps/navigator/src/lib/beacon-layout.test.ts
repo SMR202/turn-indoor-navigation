@@ -134,3 +134,14 @@ describe('sharing the layout between phones', () => {
     ).toBeNull();
   });
 });
+
+it('never gives the fusion a planned site: nothing is mounted there yet', () => {
+  const merged = mergeLayout(
+    [
+      { tag: 'B1', floorId: 'g', x: 1, y: 1, planned: true },
+      { tag: 'B2', floorId: 'g', x: 5, y: 5, referenceRssi: -60 },
+    ],
+    { overrides: {}, added: [] },
+  );
+  expect(placementsFor(merged).map((p) => p.tag)).toEqual(['B2']);
+});

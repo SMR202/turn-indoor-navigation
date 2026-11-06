@@ -57,6 +57,8 @@ export const venueContentSchema = z.object({
         /** RSSI one metre from the beacon (dBm): a hardware model value until calibrated on site. */
         referenceRssi: z.number().min(-110).max(0).optional(),
         calibratedAt: z.string().datetime().optional(),
+        /** A site the Studio planner chose: no beacon mounted there yet. */
+        planned: z.boolean().optional(),
       }),
     )
     .max(64)

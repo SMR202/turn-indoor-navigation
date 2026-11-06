@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -17,6 +17,7 @@ import { BeaconSurveyPanel } from '../../components/beacon-survey-panel';
 import { Icon } from '../../components/icon';
 import { Badge, Button, Chip, IconButton, T, Tap } from '../../components/ui';
 import { useVenue, type VenueBundle } from '../../lib/api';
+import { haptic } from '../../lib/feedback';
 import {
   adoptionTag,
   describe,
@@ -139,8 +140,9 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
         beacon={placing}
         beacons={layout.beacons}
         onCancel={() => setPlacing(null)}
-        onSave={(b) => {
-          layout.upsert(stripSource(b));
+        onSave={(b, replaces) => {
+          layout.upsert({ ...stripSource(b), planned: undefined });
+          if (replaces && replaces !== b.tag) layout.remove(replaces);
           setPlacing(null);
           setSel({ device: null, tag: b.tag });
         }}
@@ -343,14 +345,22 @@ function Setup({ bundle }: { bundle: VenueBundle }) {
                 <Row
                   key={b.tag}
                   first={i === 0}
-                  icon="beacon"
-                  title={b.label ?? describe(b).title}
-                  detail={[
-                    placeOf(b) || 'Not placed',
-                    b.calibratedAt
-                      ? `${Math.round(b.referenceRssi ?? 0)} dBm at 1 m`
-                      : 'Not calibrated',
-                  ].join(' · ')}
+                  icon={b.planned ? 'flag' : 'beacon'}
+                  title={
+                    b.planned
+                      ? `Site ${b.label ?? b.tag}`
+                      : (b.label ?? describe(b).title)
+                  }
+                  detail={
+                    b.planned
+                      ? `${placeOf(b) || 'Planned'} · planned, no beacon yet`
+                      : [
+                          placeOf(b) || 'Not placed',
+                          b.calibratedAt
+                            ? `${Math.round(b.referenceRssi ?? 0)} dBm at 1 m`
+                            : 'Not calibrated',
+                        ].join(' · ')
+                  }
                   rssi={d?.rssi ?? null}
                   selected={sel?.tag === b.tag}
                   onPress={() => setSel({ device: d?.key ?? null, tag: b.tag })}
@@ -1102,7 +1112,8 @@ function BeaconMap({
   beacon: LayoutBeacon | null;
   beacons: LayoutBeacon[];
   onCancel: () => void;
-  onSave?: (b: LayoutBeacon) => void;
+  /** `replaces`: the planned site the beacon was mounted at, now taken by it. */
+  onSave?: (b: LayoutBeacon, replaces?: string) => void;
   onOpen?: (b: LayoutBeacon) => void;
 }) {
   const { c, dark, map } = useTheme();
@@ -1147,9 +1158,26 @@ function BeaconMap({
       key: b.tag,
       x: b.x,
       y: b.y,
-      text: b.label ?? b.tag,
-      icon: 'beacon',
+      text: b.planned ? `Site ${b.label ?? b.tag}` : (b.label ?? b.tag),
+      icon: b.planned ? 'flag' : 'beacon',
     }));
+  // Planned sites from TURN Studio on this floor: the pin snaps to one within 1.5 m.
+  const sites = beacons.filter(
+    (b) => b.planned && placed(b) && b.floorId === floorId,
+  );
+  const snap =
+    mode === 'place' && center
+      ? (sites
+          .map((s) => ({ s, d: Math.hypot(s.x - center.x, s.y - center.y) }))
+          .filter((h) => h.d < 1.5)
+          .sort((a, b) => a.d - b.d)[0]?.s ?? null)
+      : null;
+  const lastSnap = useRef<string | null>(null);
+  useEffect(() => {
+    const tag = snap?.tag ?? null;
+    if (tag && tag !== lastSnap.current) haptic('tap');
+    lastSnap.current = tag;
+  }, [snap?.tag]);
   const onFloor = beacons.filter((b) => placed(b) && b.floorId === floorId);
   const visibleMid = top + (H - top - bottom) / 2;
   const room = center ? roomNameAt(pkg, floorId, center) : null;
@@ -1241,9 +1269,30 @@ function BeaconMap({
         </T>
         <T v="caption" color={c.textMuted}>
           {mode === 'place'
-            ? 'Drag and zoom until the pin points at the beacon, then Set here. Taps do not move it.'
+            ? sites.length
+              ? 'Move the map until the pin sits on the flag of the site where you mounted it: it snaps on. Then Set here.'
+              : 'Drag and zoom until the pin points at the beacon, then Set here. Taps do not move it.'
             : 'Tap a beacon to see its signal, move it or calibrate it.'}
         </T>
+        {mode === 'place' && sites.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {sites.slice(0, 12).map((s) => (
+              <Chip
+                key={s.tag}
+                label={s.label ?? s.tag}
+                selected={snap?.tag === s.tag}
+                onPress={() =>
+                  setCommand((cmd) => ({
+                    kind: 'point',
+                    x: s.x,
+                    y: s.y,
+                    id: cmd.id + 1,
+                  }))
+                }
+              />
+            ))}
+          </View>
+        )}
         {pkg.floors.length > 1 && (
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {[...pkg.floors]
@@ -1283,7 +1332,7 @@ function BeaconMap({
         <T v="caption" color={c.textMuted} lines={2}>
           {mode === 'place'
             ? center
-              ? `Pin in ${room ?? 'this spot'}${pkg.floors.length > 1 ? ` · ${pkg.floors.find((f) => f.id === floorId)?.label ?? ''}` : ''}`
+              ? `${snap ? `On planned site ${snap.label ?? snap.tag}` : 'Pin'} in ${room ?? 'this spot'}${pkg.floors.length > 1 ? ` · ${pkg.floors.find((f) => f.id === floorId)?.label ?? ''}` : ''}`
               : 'Move the map to place the pin.'
             : onFloor.length
               ? onFloor.map((b) => b.label ?? b.tag).join(' · ')
@@ -1306,7 +1355,18 @@ function BeaconMap({
               disabled={!center}
               onPress={() =>
                 center &&
-                onSave?.({ ...beacon, floorId, x: center.x, y: center.y })
+                onSave?.(
+                  snap
+                    ? {
+                        ...beacon,
+                        floorId,
+                        x: snap.x,
+                        y: snap.y,
+                        label: snap.label ?? snap.tag,
+                      }
+                    : { ...beacon, floorId, x: center.x, y: center.y },
+                  snap?.tag,
+                )
               }
             />
           )}

@@ -35,6 +35,8 @@ export type VenueContent = {
     y: number;
     referenceRssi?: number;
     calibratedAt?: string;
+    /** A planned site from TURN Studio: nothing mounted yet. */
+    planned?: boolean;
   }[];
   branding: { accent?: string };
   /** Where the venue sits on Earth and which way is north (ADR-0014). */

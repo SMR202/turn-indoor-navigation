@@ -980,7 +980,67 @@ input[type='range'] {
 .qr svg {
   display: block;
 }
+/* Beacon install sheet: a full-page overlay that prints on its own. */
+.install-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: auto;
+  background: var(--c-background);
+  padding: 0 32px 48px;
+}
+.install-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  background: var(--c-background);
+  border-bottom: 1px solid var(--c-line);
+  margin-bottom: 20px;
+}
+.install-page {
+  max-width: 980px;
+  margin: 0 auto 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.install-table td.fill-in {
+  min-width: 150px;
+  border-bottom: 1px dashed var(--c-line);
+  font-family: ui-monospace, monospace;
+}
+.install-table td.box {
+  font-size: 18px;
+  text-align: center;
+}
+.install-notes ul,
+.install-notes ol {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
 @media print {
+  body.print-sheet > :not(.install-sheet) {
+    display: none !important;
+  }
+  .install-sheet {
+    position: static;
+    overflow: visible;
+    padding: 0;
+    background: #fff;
+  }
+  .install-page {
+    break-after: page;
+    margin: 0;
+  }
+  .install-sheet .map-tools {
+    display: none;
+  }
   .sidebar,
   .topbar,
   .no-print {

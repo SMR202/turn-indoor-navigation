@@ -74,6 +74,8 @@ export type Beacon = {
   y: number;
   referenceRssi?: number;
   calibratedAt?: string;
+  /** Chosen by the planner; nothing mounted yet. */
+  planned?: boolean;
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;

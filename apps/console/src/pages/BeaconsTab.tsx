@@ -11,6 +11,7 @@ import { api, useApi, type Beacon, type BeaconHealth } from '../api';
 import { heardColor, MapCanvas } from '../map/MapCanvas';
 import { href } from '../router';
 import { Empty, fmt, Icon, useToast } from '../ui';
+import { InstallSheet } from './InstallSheet';
 import { TargetPlanner } from './TargetPlanner';
 import type { VenueCtx } from './Venue';
 
@@ -24,6 +25,8 @@ export function BeaconsTab({
   venue,
   pkg,
   scene,
+  scenes,
+  floors,
   floorId,
   floorPicker,
   reload,
@@ -40,6 +43,7 @@ export function BeaconsTab({
   );
   const [adding, setAdding] = useState(false);
   const [showCoverage, setShowCoverage] = useState(true);
+  const [sheet, setSheet] = useState(false);
   const health = useApi<BeaconHealth[]>(`/venues/${venue.id}/beacons/health`);
   useEffect(() => setBeacons(venue.content.beacons), [venue.content.beacons]);
   const floor = pkg?.package.floors.find((f) => f.id === floorId);
@@ -122,7 +126,11 @@ export function BeaconsTab({
           accuracy={accuracy ?? undefined}
           beacons={here.map((b) => ({
             ...b,
-            tone: healthByTag.get(b.tag)?.lastSeen ? 'ok' : 'planned',
+            tone: b.planned
+              ? 'planned'
+              : healthByTag.get(b.tag)?.lastSeen
+                ? 'ok'
+                : undefined,
           }))}
           onBeaconMove={(tag, p) =>
             setBeacons((bs) =>
@@ -242,6 +250,7 @@ export function BeaconsTab({
                 floorId: floor.id,
                 x: Number(s.x.toFixed(2)),
                 y: Number(s.y.toFixed(2)),
+                planned: true,
               })),
             ]);
             toast(
@@ -345,9 +354,19 @@ export function BeaconsTab({
         <div className="card">
           <div className="card-head">
             <h2>Beacons</h2>
-            <span className="subtle">
-              {here.length} on this floor · {beacons.length} total
-            </span>
+            <div className="row" style={{ gap: 10 }}>
+              <span className="subtle">
+                {here.length} on this floor · {beacons.length} total
+              </span>
+              <button
+                className="btn sm"
+                disabled={!beacons.length}
+                onClick={() => setSheet(true)}
+                title="A printable plan for the people mounting beacons"
+              >
+                <Icon name="layers" size={14} /> Install sheet
+              </button>
+            </div>
           </div>
           {health.data && health.data.length > 0 && (
             <div className="banner info" style={{ marginBottom: 8 }}>
@@ -375,7 +394,15 @@ export function BeaconsTab({
                 <div className="grow">
                   <div className="row" style={{ gap: 8 }}>
                     <b>{b.tag}</b>
-                    {h && (
+                    {b.planned && (
+                      <span
+                        className="badge"
+                        title="Planned site: mount a beacon here, then assign it in the TURN app"
+                      >
+                        Planned
+                      </span>
+                    )}
+                    {h && !b.planned && (
                       <span
                         className={`badge ${h.status === 'ok' ? 'live' : h.status === 'quiet' ? 'draft' : ''}`}
                         title="From visitors' phones during live guidance"
@@ -457,7 +484,10 @@ export function BeaconsTab({
                       return toast(`${next} is already in the layout.`);
                     setBeacons((bs) =>
                       bs.map((x) =>
-                        x.tag === b.tag ? { ...x, tag: next } : x,
+                        // A real beacon ID: the site is installed, no longer only planned.
+                        x.tag === b.tag
+                          ? { ...x, tag: next, planned: undefined }
+                          : x,
                       ),
                     );
                   }}
@@ -477,6 +507,15 @@ export function BeaconsTab({
           })}
         </div>
       </div>
+      {sheet && (
+        <InstallSheet
+          venueName={venue.name}
+          beacons={beacons}
+          scenes={scenes}
+          floors={floors}
+          onClose={() => setSheet(false)}
+        />
+      )}
     </div>
   );
 }
