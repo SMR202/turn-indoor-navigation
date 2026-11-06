@@ -15,3 +15,4 @@ export {
   type RawMotionEvent,
 } from './turn-motion';
 export * from './locate';
+export * from './compass';

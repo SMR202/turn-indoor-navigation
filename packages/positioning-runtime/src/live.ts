@@ -59,6 +59,8 @@ export type LiveStart = {
   facing?: keyof typeof START_HEADING_SIGMA;
   /** Venue heading = this + the phone's yaw (rad); required for `facing: 'compass'`. */
   northOffset?: number;
+  /** Start heading spread (rad), when the source knows better than the default for `facing`. */
+  headingSigma?: number;
   /** Start position uncertainty (metres), larger for a beacon fix than for a tap. */
   sigma?: number;
   /** The route being followed on this floor (soft prior and display snapping). */
@@ -216,7 +218,7 @@ export class LivePositioning {
       start.x,
       start.y,
       how.sigma ?? 1.2,
-      START_HEADING_SIGMA[facing],
+      how.headingSigma ?? START_HEADING_SIGMA[facing],
     );
     tracker.setRoute(this.route);
     // The step engine is anchored at the nearest venue anchor; the tracker turns its positions

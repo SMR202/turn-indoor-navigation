@@ -72,6 +72,7 @@ import {
 import { planJourney, positionOnJourney } from '../../lib/journey';
 import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
+import { useVenueOrientation } from '../../lib/orientation';
 import { LiveDot } from '../../lib/live-dot';
 import { useStored } from '../../lib/storage';
 import {
@@ -304,7 +305,14 @@ function Experience({
     () => placementsFor(beaconLayout.beacons),
     [beaconLayout.beacons],
   );
-  const live = useLiveSession(pkg, venueId, placements);
+  const orientation = useVenueOrientation(venueId, bundle.source === 'live');
+  const live = useLiveSession(
+    pkg,
+    venueId,
+    placements,
+    orientation,
+    bundle.source === 'live',
+  );
   const liveAvailability = live.availableOn(start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
     liveAvailability.available ? 'live' : 'demo',

@@ -5,12 +5,15 @@ import {
   LivePositioning,
   liveAvailability,
   locateWithBeacons,
+  startHeading,
   type LiveHeading,
   type LiveStart,
   type LiveState,
+  type VenueOrientation,
 } from '@turn/positioning-runtime';
 import type { VenuePackage } from '@turn/venue-model';
 import { postJson } from './api';
+import { shareOrientation } from './orientation';
 import { load, save } from './storage';
 
 type P = { x: number; y: number };
@@ -61,6 +64,10 @@ export function useLiveSession(
   venueId: string,
   /** Every floor's beacon placements (with reference RSSI where known). */
   placements: BeaconPlacement[],
+  /** Which way the map faces: venue bearing and other phones' learned offsets (ADR-0014). */
+  orientation: VenueOrientation | null = null,
+  /** Learned offsets are shared with the venue server (venues served by it only). */
+  shareLearned = false,
 ) {
   const ref = useRef<LivePositioning | null>(null);
   const [state, setState] = useState<LiveStatus | null>(null);
@@ -74,6 +81,9 @@ export function useLiveSession(
   const restarts = useRef<number[]>([]);
   const placementsRef = useRef(placements);
   placementsRef.current = placements;
+  const orientationRef = useRef(orientation);
+  orientationRef.current = orientation;
+  const sharedAt = useRef(0);
 
   const availableOn = useCallback(
     (f: string) => liveAvailability(pkg, f),
@@ -125,14 +135,24 @@ export function useLiveSession(
         const next = statusOf(s);
         setState((prev) => (sameStatus(prev, next) ? prev : next));
       });
-      const learned = load<number | null>(northKey, null);
+      // Best compass start: this phone's learned offset, other phones', or the map's bearing.
+      const compass = startHeading(
+        Platform.OS === 'ios' ? 'ios' : 'android',
+        load<number | null>(northKey, null),
+        orientationRef.current,
+      );
+      // A direction the walker marked beats the compass; the compass beats assuming they face
+      // along the route (they often do not, and a straight corridor cannot tell the difference).
       const options: LiveStart =
-        how.facing && how.heading != null
+        how.facing &&
+        how.heading != null &&
+        (how.facing !== 'route' || !compass)
           ? { facing: how.facing, route: how.route, sigma: how.sigma }
-          : learned !== null
+          : compass
             ? {
                 facing: 'compass',
-                northOffset: learned,
+                northOffset: compass.northOffset,
+                headingSigma: compass.sigma,
                 route: how.route,
                 sigma: how.sigma,
               }
@@ -161,9 +181,19 @@ export function useLiveSession(
       )
         return;
       learnNorth(h.northOffset, 0.15);
+      // Share it at most once a minute, so other phones start the right way round here.
+      if (shareLearned && Date.now() - sharedAt.current > 60000) {
+        sharedAt.current = Date.now();
+        shareOrientation(venueId, {
+          platform: Platform.OS === 'ios' ? 'ios' : 'android',
+          northOffsetRad: h.northOffset,
+          spreadRad: h.spreadRad,
+          walkedMetres: h.walkedMetres,
+        });
+      }
     }, 3000);
     return () => clearInterval(timer);
-  }, [running, learnNorth]);
+  }, [running, learnNorth, shareLearned, venueId]);
 
   // Sensors stop in the background: resume from the last position when the app is back.
   useEffect(() => {
