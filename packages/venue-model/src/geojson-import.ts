@@ -281,6 +281,47 @@ export function importFloorGeoJson(
     nodes.push({ id: `n-${d.id}`, floorId, x: d.position.x, y: d.position.y });
   const onBoundary = (p: P, poly: P[]) =>
     poly.some((a, i) => segDist(p, a, poly[(i + 1) % poly.length]!).d < 0.35);
+  // Rooms that bend (an L- or U-shaped corridor): a node just inside every inward corner, so a
+  // route can go round the corner instead of failing at the wall.
+  const corners = new Map<string, string[]>();
+  for (const r of rooms) {
+    if (r.kind === 'fixture' || r.kind === 'outdoor') continue;
+    const poly = r.polygon;
+    const n = poly.length;
+    let twice = 0;
+    for (let i = 0; i < n; i++) {
+      const a = poly[i]!;
+      const b = poly[(i + 1) % n]!;
+      twice += a.x * b.y - b.x * a.y;
+    }
+    poly.forEach((v, i) => {
+      const a = poly[(i + n - 1) % n]!;
+      const b = poly[(i + 1) % n]!;
+      const cross = (v.x - a.x) * (b.y - v.y) - (v.y - a.y) * (b.x - v.x);
+      // An inward corner turns against the outline's own direction.
+      if (twice > 0 ? cross >= -1e-9 : cross <= 1e-9) return;
+      const la = dist(a, v) || 1;
+      const lb = dist(b, v) || 1;
+      const dx = -((a.x - v.x) / la + (b.x - v.x) / lb);
+      const dy = -((a.y - v.y) / la + (b.y - v.y) / lb);
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-6) return;
+      const p = {
+        x: round(v.x + (dx / len) * 0.6),
+        y: round(v.y + (dy / len) * 0.6),
+      };
+      if (!inside(p, poly)) return;
+      const id = `n-${r.id}-c${i}`;
+      nodes.push({ id, floorId, x: p.x, y: p.y });
+      corners.set(r.id, [...(corners.get(r.id) ?? []), id]);
+    });
+  }
+  /** The straight line between two points of a room stays in the room. */
+  const staysIn = (a: P, b: P, poly: P[]) =>
+    [0.2, 0.4, 0.6, 0.8].every((t) => {
+      const p = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+      return inside(p, poly) || onBoundary(p, poly);
+    });
   const addEdge = (a: string, b: string) => {
     if (
       a === b ||
@@ -309,6 +350,20 @@ export function importFloorGeoJson(
     for (let i = 0; i < doorsHere.length; i++)
       for (let j = i + 1; j < doorsHere.length; j++)
         addEdge(`n-${doorsHere[i]!.id}`, `n-${doorsHere[j]!.id}`);
+    // Corner nodes join everything they can see inside the room: its centre, its doors and
+    // each other.
+    const local = [
+      `n-${r.id}`,
+      ...doorsHere.map((d) => `n-${d.id}`),
+      ...(corners.get(r.id) ?? []),
+    ];
+    for (const c of corners.get(r.id) ?? [])
+      for (const other of local) {
+        if (other === c) continue;
+        const a = nodes.find((x) => x.id === c)!;
+        const b = nodes.find((x) => x.id === other)!;
+        if (staysIn(a, b, r.polygon)) addEdge(c, other);
+      }
   }
   if (!doorPoints.length)
     warnings.push(

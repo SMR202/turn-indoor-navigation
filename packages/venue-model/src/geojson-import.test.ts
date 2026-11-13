@@ -95,3 +95,86 @@ describe('TURN Floor GeoJSON import', () => {
     ).toThrow(/No room polygons/);
   });
 });
+
+describe('corridors that bend', () => {
+  const m = (x: number, y: number): [number, number] => [x, y];
+  // A U-shaped corridor (three legs, 4 m wide) with a room at the end of each arm.
+  const u: TurnFloorGeoJson = {
+    type: 'FeatureCollection',
+    turn: { units: 'metres' },
+    features: [
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              m(0, 0),
+              m(30, 0),
+              m(30, 20),
+              m(26, 20),
+              m(26, 4),
+              m(4, 4),
+              m(4, 20),
+              m(0, 20),
+            ],
+          ],
+        },
+        properties: { kind: 'circulation', name: 'Corridor', id: 'corridor' },
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[m(0, 20), m(4, 20), m(4, 26), m(0, 26)]],
+        },
+        properties: { kind: 'room', name: 'West Room', id: 'west' },
+      },
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[m(26, 20), m(30, 20), m(30, 26), m(26, 26)]],
+        },
+        properties: { kind: 'room', name: 'East Room', id: 'east' },
+      },
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: m(2, 20) },
+        properties: { kind: 'door', id: 'dw' },
+      },
+      {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: m(28, 20) },
+        properties: { kind: 'door', id: 'de' },
+      },
+    ],
+  };
+  it('routes round the corners instead of leaving the far room unreachable', () => {
+    const { venue, report } = importFloorGeoJson(u, {
+      venueId: 'u',
+      name: 'U',
+    });
+    expect(report.unreachablePlaces).toEqual([]);
+    expect(wallCrossings(venue)).toEqual([]);
+    // A node sits just inside each of the two inward corners.
+    const cornerNodes = venue.nodes.filter((n) => /-c\d+$/.test(n.id));
+    expect(cornerNodes).toHaveLength(2);
+    // West to east is connected through them.
+    const adj = new Map<string, string[]>();
+    for (const e of venue.edges) {
+      adj.set(e.from, [...(adj.get(e.from) ?? []), e.to]);
+      adj.set(e.to, [...(adj.get(e.to) ?? []), e.from]);
+    }
+    const seen = new Set(['n-west']);
+    const queue = ['n-west'];
+    while (queue.length)
+      for (const n of adj.get(queue.shift()!) ?? [])
+        if (!seen.has(n)) {
+          seen.add(n);
+          queue.push(n);
+        }
+    expect(seen.has('n-east')).toBe(true);
+    for (const c of cornerNodes) expect(seen.has(c.id)).toBe(true);
+  });
+});

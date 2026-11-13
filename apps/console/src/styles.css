@@ -1144,3 +1144,144 @@ input[type='range'] {
     transition: none !important;
   }
 }
+
+/* ---- Draw or trace a floor (PlanEditor) ---- */
+.plan-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-background);
+}
+.plan-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-line);
+}
+.plan-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.plan-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-line);
+}
+.plan-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 104px;
+  height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.plan-tools button:hover {
+  background: var(--c-sunken);
+}
+.plan-tools button.on {
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+}
+.plan-tools kbd,
+.plan-hint kbd {
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.6;
+}
+.plan-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--c-sunken);
+  overflow: hidden;
+}
+.plan-canvas svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  user-select: none;
+}
+.plan-hint {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  max-width: calc(100% - 28px);
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-text) 88%, transparent);
+  color: var(--c-background);
+  font-size: 13px;
+  pointer-events: none;
+}
+.plan-side {
+  width: 320px;
+  flex: none;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--c-surface);
+  border-left: 1px solid var(--c-line);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.plan-side section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.plan-side h3 {
+  margin: 0;
+}
+.plan-side p {
+  margin: 0;
+}
+.plan-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-steps li.done {
+  color: var(--c-success);
+}
+.plan-steps li.done::marker {
+  content: '✓  ';
+}
+.plan-detect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--c-text);
+}
+.plan-checks {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--c-warning);
+}
+.plan-checks li.error {
+  color: var(--c-danger);
+}

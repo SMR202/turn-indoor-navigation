@@ -5,6 +5,7 @@ import { api, ApiError, type ImportReport, type Validation } from '../api';
 import { MapCanvas } from '../map/MapCanvas';
 import { href } from '../router';
 import { CatBadge, Empty, Icon, useToast } from '../ui';
+import { PlanEditor } from './PlanEditor';
 import type { VenueCtx } from './Venue';
 
 export function MapTab({
@@ -26,6 +27,10 @@ export function MapTab({
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
+  // The drawing editor: a new floor, or an existing one to reshape.
+  const [drawing, setDrawing] = useState<{ floorId: string | null } | null>(
+    null,
+  );
   // Import target: the whole map, a new floor, or an existing floor (replaced).
   const [target, setTarget] = useState<string>(pkg ? 'new' : 'all');
   const nextLevel = floors.length
@@ -318,6 +323,32 @@ export function MapTab({
           </div>
         )}
         <div className="card">
+          <h2>Draw or trace a floor</h2>
+          <p className="subtle" style={{ marginTop: 4 }}>
+            No file needed. Put a picture of the plan under the sheet and trace
+            it, let TURN find the rooms, or draw from measurements. Doors make
+            the map routable.
+          </p>
+          <div
+            className="row"
+            style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}
+          >
+            <button
+              className="btn primary"
+              onClick={() => setDrawing({ floorId: null })}
+            >
+              <Icon name="plus" size={15} />{' '}
+              {pkg ? 'Draw a new floor' : 'Draw the first floor'}
+            </button>
+            {pkg && floorId && (
+              <button className="btn" onClick={() => setDrawing({ floorId })}>
+                Reshape{' '}
+                {floors.find((f) => f.id === floorId)?.label ?? 'this floor'}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="card">
           <h2>Import floor plan</h2>
           <p className="subtle" style={{ marginTop: 4 }}>
             Floor GeoJSON v1 (rooms, doors, optional walls and places) — the
@@ -439,6 +470,22 @@ export function MapTab({
           )}
         </div>
       </div>
+      {drawing && (
+        <PlanEditor
+          key={drawing.floorId ?? 'new'}
+          venueId={venue.id}
+          floors={floors}
+          pkg={pkg?.package ?? null}
+          editFloorId={drawing.floorId}
+          onClose={() => setDrawing(null)}
+          onBuilt={(id, result) => {
+            setDrawing(null);
+            setReport(result);
+            setFloorId(id);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
