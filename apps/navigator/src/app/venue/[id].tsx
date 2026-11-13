@@ -220,7 +220,7 @@ function Experience({
   anchorId?: string;
 }) {
   const { c, dark, map } = useTheme();
-  const { prefs } = usePrefs();
+  const { prefs, setPrefs } = usePrefs();
   const insets = useSafeAreaInsets();
   const { height: H, width: W } = useWindowDimensions();
   const pkg = bundle.pkg;
@@ -324,7 +324,7 @@ function Experience({
   );
   const liveAvailability = live.availableOn(start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
-    liveAvailability.available ? 'live' : 'demo',
+    liveAvailability.available ? 'live' : 'steps',
   );
   const [walked, setWalked] = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
@@ -827,6 +827,7 @@ function Experience({
 
   // After a look around, guidance takes the camera back (Plan 005 §5.2).
   const lastGesture = useRef(0);
+  const [turned, setTurned] = useState(false);
   useEffect(() => {
     if (!navigating || follow) return;
     const t = setInterval(() => {
@@ -905,8 +906,16 @@ function Experience({
       courseRad: previewCourse(first.points),
     });
   }, [mode.kind, route]);
-  const startGuidance = () => {
+  /**
+   * Start walks the route: live when this phone can position itself here, otherwise step by step.
+   * `demo` plays the route as a preview.
+   */
+  const startGuidance = (
+    how: Guidance = liveAvailability.available ? 'live' : 'steps',
+  ) => {
     if (mode.kind !== 'route') return;
+    const guidance = how;
+    setGuidance(how);
     setWalked(0);
     setStepIndex(0);
     setFollow(true);
@@ -1170,7 +1179,7 @@ function Experience({
             .filter(Boolean)
             .join(' · ')}
         </T>
-        {Platform.OS !== 'web' && (
+        {Platform.OS !== 'web' && prefs.venueSetup && (
           <Tap
             onPress={() =>
               router.push(`/beacons/${encodeURIComponent(venueId)}`)
@@ -1624,71 +1633,45 @@ function Experience({
               <Button
                 label="Start"
                 icon="navigate"
-                onPress={startGuidance}
+                onPress={() => startGuidance()}
                 style={{ paddingHorizontal: 26 }}
               />
             </View>
             <View
-              style={{
-                flexDirection: 'row',
-                padding: 4,
-                gap: 4,
-                backgroundColor: c.sunken,
-                borderRadius: 14,
-              }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
             >
-              {(
-                [
-                  ['demo', 'Demo walk'],
-                  ['steps', 'Step by step'],
-                  ['live', 'Live'],
-                ] as const
-              ).map(([g, label]) => (
-                <Tap
-                  key={g}
-                  disabled={g === 'live' && !liveAvailability.available}
-                  onPress={() => setGuidance(g)}
-                  style={{
-                    flex: 1,
-                    height: 36,
-                    borderRadius: 11,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: guidance === g ? c.surface : 'transparent',
-                    opacity:
-                      g === 'live' && !liveAvailability.available ? 0.45 : 1,
-                  }}
-                >
-                  <T
-                    v="caption"
-                    weight="600"
-                    color={guidance === g ? c.text : c.textMuted}
-                  >
-                    {label}
-                  </T>
-                </Tap>
-              ))}
-            </View>
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
-            >
-              <T v="caption" color={c.textSubtle} style={{ flex: 1 }}>
-                {guidance === 'demo'
-                  ? 'Demo walk moves the dot along the route at walking pace — no positioning.'
-                  : guidance === 'steps'
-                    ? 'Move through the directions yourself, one turn at a time.'
-                    : liveAvailability.available
-                      ? `Live follows your steps${live.beaconCount ? ` and ${live.beaconCount} venue beacons` : ''}. Hold the phone in front of you, screen up.`
-                      : (liveAvailability.reason ??
-                        'Live position is unavailable here.')}
-              </T>
+              <Chip
+                label="Preview"
+                icon="play"
+                onPress={() => startGuidance('demo')}
+              />
               <Chip
                 label="Step-free"
                 icon="accessible"
                 selected={stepFree}
                 onPress={() => setStepFree((v) => !v)}
               />
+              {route.legs.length > 1 && (
+                <T
+                  v="caption"
+                  color={c.textSubtle}
+                  lines={1}
+                  style={{ flex: 1, textAlign: 'right' }}
+                >
+                  {route.legs
+                    .map((l) => floorLabel(l.floorId))
+                    .filter((x, i, all) => x !== all[i - 1])
+                    .join(' → ')}
+                </T>
+              )}
             </View>
+            {!liveAvailability.available && Platform.OS !== 'web' && (
+              <T v="caption" color={c.textSubtle}>
+                {liveAvailability.reason ??
+                  'Your position cannot be followed here yet.'}{' '}
+                Start shows each turn; tap to move on.
+              </T>
+            )}
           </>
         ) : (
           <T v="callout" color={c.danger}>
@@ -1843,6 +1826,7 @@ function Experience({
         onGesture={() => {
           lastGesture.current = Date.now();
           setFollow(false);
+          setTurned(true);
         }}
       />
       {pick?.stage === 'where' && (
@@ -2336,6 +2320,48 @@ function Experience({
         </View>
       ) : null}
 
+      {navigating && !follow && !pick && (
+        <Animated.View
+          entering={FadeInDown.duration(220)}
+          exiting={FadeOut.duration(160)}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: sheetVisible + 14,
+            alignItems: 'center',
+          }}
+          pointerEvents="box-none"
+        >
+          <Tap
+            accessibilityRole="button"
+            accessibilityLabel="Re-centre the map on your position"
+            onPress={() => {
+              haptic('tap');
+              if (at && at.floorId !== floorId) setFloorId(at.floorId);
+              setFollow(true);
+            }}
+            style={[
+              {
+                height: 44,
+                paddingHorizontal: 18,
+                borderRadius: 22,
+                backgroundColor: c.accent,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              },
+              shadow('floating', dark),
+            ]}
+          >
+            <Icon name="navigate" size={16} color={c.onAccent} />
+            <T v="callout" weight="600" color={c.onAccent}>
+              Re-centre
+            </T>
+          </Tap>
+        </Animated.View>
+      )}
+
       {/* Floating map controls */}
       {mode.kind !== 'arrived' &&
         !(
@@ -2419,21 +2445,15 @@ function Experience({
                 {flat ? '3D' : '2D'}
               </T>
             </Tap>
-            {!((navigating || live.running) && follow) && (
+            {turned && !((navigating || live.running) && follow) && (
               <IconButton
                 icon="compass"
                 label="Turn the map upright"
                 size={46}
-                onPress={() => camera({ kind: 'reset-bearing' })}
-              />
-            )}
-            {mode.kind !== 'navigate' && !pick && (
-              <IconButton
-                icon="pin"
-                label="Set my location"
-                size={46}
-                active={start.kind === 'picked'}
-                onPress={beginPick}
+                onPress={() => {
+                  setTurned(false);
+                  camera({ kind: 'reset-bearing' });
+                }}
               />
             )}
             <IconButton
@@ -2458,12 +2478,8 @@ function Experience({
                   }
                 } else if (navigating) setFollow(true);
                 else if (live.canLocate && locating !== 'busy') findMe();
-                else if (!live.canLocate)
-                  setLocateNote(
-                    Platform.OS === 'web'
-                      ? 'Finding you needs the TURN app on a phone.'
-                      : 'Set up two or more beacons to be found automatically, or use the pin to set your location.',
-                  );
+                // Nothing can find the walker here: let them say where they are.
+                else if (!live.canLocate && !pick) beginPick();
               }}
             />
           </View>
@@ -2565,14 +2581,12 @@ function Experience({
               </T>
               <T v="caption" color={c.textMuted}>
                 {formatDistance(remaining)} · arrive{' '}
-                {arrivalClock(remaining / WALK_SPEED)} ·{' '}
+                {arrivalClock(remaining / WALK_SPEED)}
                 {guidance === 'demo'
-                  ? 'Demo walk'
-                  : guidance === 'live'
-                    ? live.beaconCount
-                      ? `Live · ${live.state?.beaconsUsed ?? 0} beacons heard`
-                      : 'Live · steps and map'
-                    : 'Step by step'}
+                  ? ' · Preview'
+                  : guidance === 'live' && (liveSigma ?? 0) > 4
+                    ? ' · Approximate position'
+                    : ''}
               </T>
             </View>
             {guidance === 'steps' && (
@@ -2595,6 +2609,20 @@ function Experience({
                 />
               </>
             )}
+            <IconButton
+              icon={prefs.voice ? 'volume' : 'mute'}
+              label={
+                prefs.voice
+                  ? 'Turn spoken directions off'
+                  : 'Turn spoken directions on'
+              }
+              tone="sunken"
+              size={42}
+              onPress={() => {
+                haptic('tap');
+                setPrefs({ voice: !prefs.voice });
+              }}
+            />
             <Button label="End" kind="danger" size="md" onPress={end} />
           </View>
           <Progress value={route.length ? walked / route.length : 0} />

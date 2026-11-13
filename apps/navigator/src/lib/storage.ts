@@ -62,6 +62,8 @@ export type Preferences = {
   voice: boolean;
   /** Vibration on turns, arrival and when the route changes. */
   haptics: boolean;
+  /** Staff tools (beacon setup and tests) shown inside venues. */
+  venueSetup: boolean;
 };
 export const defaultPreferences: Preferences = {
   onboarded: false,
@@ -70,4 +72,5 @@ export const defaultPreferences: Preferences = {
   theme: 'system',
   voice: true,
   haptics: true,
+  venueSetup: false,
 };

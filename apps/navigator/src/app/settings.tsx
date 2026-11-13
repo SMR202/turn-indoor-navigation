@@ -113,6 +113,15 @@ export default function Settings() {
             onChange={(v) => setPrefs({ haptics: v })}
           />
         </Group>
+        <Group title="Venue staff">
+          <Row
+            icon="beacon"
+            title="Venue setup tools"
+            detail="Shows beacon setup and beacon tests inside a venue. For the people who install and maintain it."
+            value={prefs.venueSetup}
+            onChange={(v) => setPrefs({ venueSetup: v })}
+          />
+        </Group>
         <Group title="Privacy">
           <Row
             icon="share"

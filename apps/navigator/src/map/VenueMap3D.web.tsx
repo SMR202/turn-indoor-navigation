@@ -52,6 +52,12 @@ import {
 if (globalThis.location)
   setWorkerUrl(`${globalThis.location.origin}/maplibre/maplibre-gl-worker.mjs`);
 
+/**
+ * Margin around a fitted floor, on top of the map's own padding (`setPadding` already keeps the
+ * search bar and the sheet clear; MapLibre adds the two together).
+ */
+const FIT_MARGIN = { top: 14, bottom: 14, left: 28, right: 28 };
+
 /** Where map labels and icons come from: the TURN server, else this web app's own copy. */
 function assetBase() {
   return (apiBase() ?? `${globalThis.location?.origin ?? ''}`) + '/map';
@@ -95,7 +101,7 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     const m = map.current;
     if (!m) return 18;
     const cam = m.cameraForBounds(sceneLngLatBounds(props.scene, g), {
-      padding: { ...padding(), left: 28, right: 28 },
+      padding: FIT_MARGIN,
       bearing: g.bearingDeg,
     });
     return cam?.zoom ?? 18;
@@ -162,7 +168,7 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
       const p = latest.current;
       m.setPadding(padding());
       m.fitBounds(sceneLngLatBounds(p.scene, g), {
-        padding: { ...padding(), left: 28, right: 28 },
+        padding: FIT_MARGIN,
         bearing: g.bearingDeg,
         pitch: overviewPitch(),
         duration: 0,
@@ -350,7 +356,7 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     const run = () => {
       if (c.kind === 'fit')
         m.fitBounds(sceneLngLatBounds(props.scene, g), {
-          padding: { ...padding(), left: 28, right: 28 },
+          padding: FIT_MARGIN,
           bearing: g.bearingDeg,
           pitch: overviewPitch(),
           duration: 600,
@@ -380,12 +386,7 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
             [Math.max(...lngs), Math.max(...lats)],
           ],
           {
-            padding: {
-              top: props.insets.top + 48,
-              bottom: props.insets.bottom + 48,
-              left: 48,
-              right: 48,
-            },
+            padding: { top: 44, bottom: 44, left: 44, right: 44 },
             maxZoom: fitZoom() + 2.5,
             bearing:
               c.courseRad !== undefined && c.courseRad !== null

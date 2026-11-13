@@ -13,3 +13,4 @@ export * from './assist-fusion';
 export * from './walk-graph';
 export * from './beacon-ids';
 export * from './beacon-simulator';
+export * from './floor';

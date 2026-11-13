@@ -341,7 +341,7 @@ function VenueCard({
             gap: 6,
           }}
         >
-          {venue.private && <Tag icon="lock" text="Private · local network" />}
+          {venue.private && <Tag icon="lock" text="Private" />}
           {venue.id === bundledDemo.summary.id && (
             <Tag icon="sun" text="Demo venue" />
           )}
@@ -361,7 +361,10 @@ function VenueCard({
           </T>
           <T v="caption" color={c.textMuted} lines={1}>
             {[
-              venue.address,
+              // Private test venues carry a technical note instead of an address.
+              /private|lan only/i.test(venue.address ?? '')
+                ? null
+                : venue.address,
               `${venue.places} places`,
               venue.floors > 1 ? `${venue.floors} floors` : null,
             ]
