@@ -1,6 +1,7 @@
 import type { Feature } from 'geojson';
 import {
   headingToBearing,
+  type FollowCamera,
   type Georeference,
   type P,
   type Scene,
@@ -29,11 +30,19 @@ export type Map3DProps = {
   markers?: { key: string; x: number; y: number; text: string; icon: string }[];
   liveDot?: LiveDot;
   liveVisible?: boolean;
+  /** Rooms that show their floor instead of a block (the walker's room, rooms on the route). */
+  openRooms?: string[];
+  /** `lift`: the selected room rises; `floor`: it shows its floor, tinted (a destination). */
+  selectionStyle?: 'lift' | 'floor';
+  /** While following: where the camera director wants the view (course, tilt, scale). */
+  followCamera?: FollowCamera | null;
+  /** 2D: look straight down. */
+  flat?: boolean;
 };
 
-/** Overview: slightly tilted so walls read as 3D; following: tilted further, heading-up. */
-export const OVERVIEW_PITCH = 32;
-export const FOLLOW_PITCH = 52;
+/** Overview: tilted enough that room blocks read as volumes; following: set by the camera director. */
+export const OVERVIEW_PITCH = 38;
+export const FOLLOW_PITCH = 55;
 export const MAX_ZOOM = 23.5;
 /** While following, the dot sits this far down the visible area (more map ahead, as in car maps). */
 export const FOLLOW_DOT_AT = 0.68;
@@ -46,9 +55,10 @@ export const PICK_PX = 10;
 export function followPadding(
   height: number,
   insets: { top: number; bottom: number },
+  dotAt = FOLLOW_DOT_AT,
 ) {
   const visible = Math.max(1, height - insets.top - insets.bottom);
-  const dotY = insets.top + visible * FOLLOW_DOT_AT;
+  const dotY = insets.top + visible * dotAt;
   // The camera centre is the middle of the padded area: make that middle the dot.
   const bottom = insets.bottom;
   return {
@@ -58,6 +68,10 @@ export function followPadding(
     right: 0,
   };
 }
+
+/** Layers a tap may pick from, nearest the finger first. */
+export const PICK_NEAR_LAYERS = ['place-icons', 'room-labels'];
+export const PICK_ROOM_LAYERS = ['selection-lift', 'blocks', 'room-fill'];
 
 /** The best feature under a tap: a place icon, then a room label, then the room itself. */
 export function pickPlace(features: Feature[]): {
@@ -69,7 +83,13 @@ export function pickPlace(features: Feature[]): {
     features.filter(
       (f) => (f as Feature & { layer?: { id: string } }).layer?.id === id,
     );
-  for (const layer of ['place-icons', 'room-labels', 'room-fill']) {
+  for (const layer of [
+    'place-icons',
+    'room-labels',
+    'selection-lift',
+    'blocks',
+    'room-fill',
+  ]) {
     const hit = byLayer(layer).find((f) => props(f).placeId || props(f).roomId);
     if (hit)
       return {

@@ -68,7 +68,14 @@ export type MapUser = {
 export type CameraRequest =
   | { kind: 'fit' }
   | { kind: 'point'; x: number; y: number; zoom?: number }
-  | { kind: 'points'; points: P[] };
+  | {
+      kind: 'points';
+      points: P[];
+      /** Venue direction (rad) to turn up the screen while framing; unset keeps the view. */
+      courseRad?: number | null;
+    }
+  /** Turn the map back to the venue's own "up" (and to the overview tilt). */
+  | { kind: 'reset-bearing' };
 export type CameraCommand = CameraRequest & { id: number };
 
 type Props = {
@@ -273,7 +280,8 @@ export const VenueMap = memo(function VenueMap(props: Props) {
   useEffect(() => {
     const c = props.command;
     if (!c || !size.w || !rendered) return;
-    if (c.kind === 'fit') animateTo(fit(null, size.w, size.h));
+    if (c.kind === 'fit' || c.kind === 'reset-bearing')
+      animateTo(fit(null, size.w, size.h));
     else if (c.kind === 'points') animateTo(fit(c.points, size.w, size.h, 36));
     else {
       const s = Math.min(

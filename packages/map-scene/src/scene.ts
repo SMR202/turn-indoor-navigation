@@ -1,4 +1,6 @@
 import {
+  categoryColors,
+  mixHex,
   normaliseCategory,
   placeCategories,
   type MapPalette,
@@ -17,6 +19,15 @@ export type SceneRoom = {
   fill: string;
   /** Drawn behind the room, shifted down by `extrusionMetres`, to suggest wall height. */
   casts: boolean;
+  /**
+   * Drawn as a low solid block on the 3D map (places you go to), unless it is opened: the room the
+   * walker is in, rooms a route passes through and the destination show their floor instead.
+   */
+  block: boolean;
+  /** Colour of the block's top: the room colour with a faint tint of its place category. */
+  top: string;
+  /** Block height in metres. */
+  blockHeight: number;
   labelAnchor: P;
   area: number;
   /** Lower is more important when labels compete for space. */
@@ -83,6 +94,12 @@ export function inferPlaceCategory(
       : fromCategory
     : fromName;
 }
+
+/** Heights on the 3D map (metres): low enough that nothing hides the route or the walker. */
+export const BLOCK_HEIGHT = 1.8;
+export const FIXTURE_HEIGHT = 0.7;
+export const WALL_HEIGHT = 0.9;
+export const LIFT_HEIGHT = 2.7;
 
 const KIND_PRIORITY = {
   room: 1,
@@ -169,13 +186,23 @@ export function buildScene(
             : kind === 'fixture'
               ? palette.fixture
               : palette.room;
+    const tinted = (base: string, strength: number) =>
+      place && place.category !== 'room' && place.category !== 'other'
+        ? mixHex(base, categoryColors[place.category], strength)
+        : base;
     return {
       id: r.id,
       name: r.name,
       kind,
       polygon: r.polygon,
-      fill,
+      fill: kind === 'room' ? tinted(fill, palette.blockTint * 0.7) : fill,
       casts: kind === 'room' || kind === 'stairs' || kind === 'fixture',
+      block: kind === 'room' || kind === 'fixture',
+      top:
+        kind === 'fixture'
+          ? palette.fixture
+          : tinted(palette.block, palette.blockTint),
+      blockHeight: kind === 'fixture' ? FIXTURE_HEIGHT : BLOCK_HEIGHT,
       labelAnchor: r.labelPosition,
       area: polygonArea(r.polygon),
       priority:

@@ -11,15 +11,22 @@ import type { FeatureCollection } from 'geojson';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import {
+  blockData,
   buildMapStyle,
+  categoryImageId,
   composeStyle,
+  DESTINATION_PIN_IMAGE,
   endpointData,
   fromLngLat,
   markerData,
   metresPerPixel,
+  MAP_CATEGORIES,
+  ROUTE_ARROW_IMAGE,
   routeData,
   sceneLngLatBounds,
   selectionData,
+  stepBearing,
+  stepTowards,
   toLngLat,
   userData,
   zoomForMetresPerPixel,
@@ -34,7 +41,9 @@ import {
   followPadding,
   MAX_ZOOM,
   OVERVIEW_PITCH,
+  PICK_NEAR_LAYERS,
   PICK_PX,
+  PICK_ROOM_LAYERS,
   pickPlace,
   type Map3DProps,
 } from './map3d-shared';
@@ -86,12 +95,13 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     const m = map.current;
     if (!m) return 18;
     const cam = m.cameraForBounds(sceneLngLatBounds(props.scene, g), {
-      padding: { ...padding(), left: 16, right: 16 },
+      padding: { ...padding(), left: 28, right: 28 },
       bearing: g.bearingDeg,
     });
     return cam?.zoom ?? 18;
   };
-  const setData = (id: DynamicSource, data: FeatureCollection) => {
+  const overviewPitch = () => (latest.current.flat ? 0 : OVERVIEW_PITCH);
+  const setData = (id: DynamicSource | 'blocks', data: FeatureCollection) => {
     const m = map.current;
     if (!m || !loaded.current) return;
     (m.getSource(id) as GeoJSONSource | undefined)?.setData(data);
@@ -112,9 +122,9 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
       bounds: sceneLngLatBounds(props.scene, g),
       fitBoundsOptions: { padding: 24 },
       bearing: g.bearingDeg,
-      pitch: OVERVIEW_PITCH,
+      pitch: overviewPitch(),
       maxZoom: MAX_ZOOM,
-      maxPitch: 65,
+      maxPitch: 68,
       attributionControl: false,
       dragRotate: true,
       pitchWithRotate: true,
@@ -123,25 +133,38 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     map.current = m;
     // Inspectable from the browser console while developing.
     if (__DEV__) (globalThis as { __turnMap?: MLMap }).__turnMap = m;
-    m.on('styleimagemissing', (e: MapStyleImageMissingEvent) => {
-      if (m.hasImage(e.id)) return;
+    const loading = new Set<string>();
+    const loadIcon = (id: string, placeholder: boolean) => {
+      if (loading.has(id)) return;
+      loading.add(id);
       // Reserve the id at once so repeated misses do not start more downloads.
-      m.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
-      m.loadImage(`${assetBase()}/icons/${e.id}.png`)
+      if (placeholder && !m.hasImage(id))
+        m.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
+      m.loadImage(`${assetBase()}/icons/${id}.png`)
         .then((img: { data: HTMLImageElement | ImageBitmap }) => {
-          if (m.hasImage(e.id)) m.removeImage(e.id);
-          m.addImage(e.id, img.data, { pixelRatio: 2 });
+          if (m.hasImage(id)) m.removeImage(id);
+          m.addImage(id, img.data, { pixelRatio: 2 });
         })
         .catch(() => undefined);
+    };
+    // Fetch the badges before the style asks for them, so they do not pop in late.
+    for (const id of [
+      ...MAP_CATEGORIES.map(categoryImageId),
+      ROUTE_ARROW_IMAGE,
+      DESTINATION_PIN_IMAGE,
+    ])
+      loadIcon(id, false);
+    m.on('styleimagemissing', (e: MapStyleImageMissingEvent) => {
+      if (!m.hasImage(e.id)) loadIcon(e.id, true);
     });
     m.on('load', () => {
       loaded.current = true;
       const p = latest.current;
       m.setPadding(padding());
       m.fitBounds(sceneLngLatBounds(p.scene, g), {
-        padding: { ...padding(), left: 16, right: 16 },
+        padding: { ...padding(), left: 28, right: 28 },
         bearing: g.bearingDeg,
-        pitch: OVERVIEW_PITCH,
+        pitch: overviewPitch(),
         duration: 0,
       });
       m.setMinZoom(Math.max(0, fitZoom() - 2));
@@ -180,18 +203,18 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
         [e.point.x + PICK_PX, e.point.y + PICK_PX],
       ];
       const hits = m.queryRenderedFeatures(box, {
-        layers: ['place-icons', 'room-labels'],
+        layers: PICK_NEAR_LAYERS,
       });
       const inside = m.queryRenderedFeatures(e.point, {
-        layers: ['room-fill'],
+        layers: PICK_ROOM_LAYERS,
       });
       p.onSelect(pickPlace([...hits, ...inside]).placeId);
     });
     m.getCanvas().style.cursor = 'default';
-    m.on('mousemove', ['place-icons', 'room-fill'], () => {
+    m.on('mousemove', ['place-icons', 'blocks', 'room-fill'], () => {
       m.getCanvas().style.cursor = 'pointer';
     });
-    m.on('mouseleave', ['place-icons', 'room-fill'], () => {
+    m.on('mouseleave', ['place-icons', 'blocks', 'room-fill'], () => {
       m.getCanvas().style.cursor = 'default';
     });
     return () => {
@@ -218,9 +241,19 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
 
   function pushDynamic() {
     const p = latest.current;
+    const selected = p.selectedPlace?.roomId ?? null;
+    const style = p.selectionStyle ?? 'lift';
+    setData('selection', selectionData(p.scene, selected, g, style));
     setData(
-      'selection',
-      selectionData(p.scene, p.selectedPlace?.roomId ?? null, g),
+      'blocks',
+      blockData(
+        p.scene,
+        g,
+        style === 'floor' && selected
+          ? [...(p.openRooms ?? []), selected]
+          : (p.openRooms ?? []),
+        style === 'lift' ? selected : null,
+      ),
     );
     setData('route', routeData(p.route, p.walked ?? 0, g));
     setData(
@@ -249,6 +282,8 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     props.user,
     props.liveVisible,
     props.scene,
+    props.openRooms?.join('|'),
+    props.selectionStyle,
   ]);
 
   useEffect(() => {
@@ -262,24 +297,35 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
       dot.current = null;
       return;
     }
+    let lastFrame = performance.now();
     const animator = new DotAnimator((f) => {
       const m = map.current;
       dot.current = f ? { x: f.x, y: f.y, heading: f.heading } : null;
       setData('user', userData(f, g));
+      const now = performance.now();
+      const dt = now - lastFrame;
+      lastFrame = now;
       if (!m || !f || !following.current) return;
-      const target =
-        f.heading !== null ? bearingFor(f.heading, g) : m.getBearing();
-      // Turn the map gently: at most a few degrees per frame, the short way round.
+      // The camera director says where to look; each frame eases a little of the way there.
+      const want = latest.current.followCamera;
+      const course = want?.courseRad ?? f.heading;
       const cur = bearing.current ?? m.getBearing();
-      const diff = ((target - cur + 540) % 360) - 180;
-      const next = cur + Math.max(-4, Math.min(4, diff * 0.15));
+      const next =
+        course !== null && course !== undefined
+          ? stepBearing(cur, bearingFor(course, g), dt)
+          : cur;
       bearing.current = next;
+      const pitch = latest.current.flat ? 0 : (want?.pitchDeg ?? FOLLOW_PITCH);
+      const zoom = zoomForMetresPerPixel(want?.metresPerPixel ?? 0.045, g.lat);
       m.jumpTo({
         center: toLngLat(f, g),
         bearing: next,
+        pitch: stepTowards(m.getPitch(), pitch, dt, 520),
+        zoom: stepTowards(m.getZoom(), zoom, dt, 620),
         padding: followPadding(
           m.getContainer().clientHeight,
           latest.current.insets,
+          want?.dotAt,
         ),
       });
     });
@@ -287,25 +333,14 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     return () => animator.detach();
   }, [props.liveDot, props.liveVisible, g]);
 
-  // Following: tilt and zoom in once; leaving: back to the overview tilt.
+  // Following is driven frame by frame above; leaving it settles back to the overview tilt.
   useEffect(() => {
     const m = map.current;
     following.current = !!props.follow && !!props.liveVisible;
     bearing.current = null;
-    if (!m || !loaded.current) return;
-    if (following.current)
-      m.easeTo({
-        pitch: FOLLOW_PITCH,
-        zoom: Math.max(m.getZoom(), zoomForMetresPerPixel(0.045, g.lat)),
-        duration: 700,
-      });
-    else
-      m.easeTo({
-        pitch: OVERVIEW_PITCH,
-        padding: padding(),
-        duration: 500,
-      });
-  }, [props.follow, props.liveVisible]);
+    if (!m || !loaded.current || following.current) return;
+    m.easeTo({ pitch: overviewPitch(), padding: padding(), duration: 500 });
+  }, [props.follow, props.liveVisible, props.flat]);
 
   // Camera commands from the screen.
   useEffect(() => {
@@ -315,10 +350,16 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
     const run = () => {
       if (c.kind === 'fit')
         m.fitBounds(sceneLngLatBounds(props.scene, g), {
-          padding: { ...padding(), left: 16, right: 16 },
+          padding: { ...padding(), left: 28, right: 28 },
           bearing: g.bearingDeg,
-          pitch: OVERVIEW_PITCH,
+          pitch: overviewPitch(),
           duration: 600,
+        });
+      else if (c.kind === 'reset-bearing')
+        m.easeTo({
+          bearing: g.bearingDeg,
+          pitch: overviewPitch(),
+          duration: 500,
         });
       else if (c.kind === 'point')
         m.easeTo({
@@ -346,7 +387,11 @@ export const VenueMap3D = memo(function VenueMap3D(props: Map3DProps) {
               right: 48,
             },
             maxZoom: fitZoom() + 2.5,
-            bearing: m.getBearing(),
+            bearing:
+              c.courseRad !== undefined && c.courseRad !== null
+                ? bearingFor(c.courseRad, g)
+                : m.getBearing(),
+            pitch: overviewPitch(),
             duration: 650,
           },
         );

@@ -7,6 +7,9 @@ import {
 } from 'react-native';
 import type * as MapLibre from '@maplibre/maplibre-react-native';
 import {
+  blockData,
+  BLOCKS_BEFORE,
+  blocksLayer,
   buildMapStyle,
   dynamicLayers,
   endpointData,
@@ -16,6 +19,8 @@ import {
   routeData,
   sceneLngLatBounds,
   selectionData,
+  stepBearing,
+  stepTowards,
   toLngLat,
   userData,
   zoomForMetresPerPixel,
@@ -30,7 +35,9 @@ import {
   followPadding,
   MAX_ZOOM,
   OVERVIEW_PITCH,
+  PICK_NEAR_LAYERS,
   PICK_PX,
+  PICK_ROOM_LAYERS,
   pickPlace,
   type Map3DProps,
 } from './map3d-shared';
@@ -65,6 +72,8 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
   latest.current = props;
   const size = useRef({ height: 800 });
   const zoom = useRef(18);
+  const pitch = useRef(OVERVIEW_PITCH);
+  const overviewPitch = () => (latest.current.flat ? 0 : OVERVIEW_PITCH);
   const following = useRef(false);
   const bearing = useRef<number | null>(null);
   const dot = useRef<{ x: number; y: number } | null>(null);
@@ -73,9 +82,12 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
   );
   const glyphs = `${apiBase() ?? 'http://localhost:8090'}/map/glyphs/{fontstack}/{range}.pbf`;
   const style = useMemo(
-    () => buildMapStyle(props.scene, { georef: g, glyphs }),
+    // The room blocks change as rooms open, so they are a source of their own (below).
+    () =>
+      buildMapStyle(props.scene, { georef: g, glyphs, dynamicBlocks: true }),
     [props.scene, g, glyphs],
   );
+  const blockLayer = useMemo(() => blocksLayer(), []);
   const layers = useMemo(
     () => dynamicLayers(props.scene.palette),
     [props.scene],
@@ -94,9 +106,25 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
     right: 16,
   });
 
+  const selectedRoom = props.selectedPlace?.roomId ?? null;
+  const selectionStyle = props.selectionStyle ?? 'lift';
   const selection = useMemo(
-    () => selectionData(props.scene, props.selectedPlace?.roomId ?? null, g),
-    [props.scene, props.selectedPlace, g],
+    () => selectionData(props.scene, selectedRoom, g, selectionStyle),
+    [props.scene, selectedRoom, g, selectionStyle],
+  );
+  const openKey = (props.openRooms ?? []).join('|');
+  const blocks = useMemo(
+    () =>
+      blockData(
+        props.scene,
+        g,
+        selectionStyle === 'floor' && selectedRoom
+          ? [...(props.openRooms ?? []), selectedRoom]
+          : (props.openRooms ?? []),
+        selectionStyle === 'lift' ? selectedRoom : null,
+      ),
+    // The list is compared by its content.
+    [props.scene, g, openKey, selectedRoom, selectionStyle],
   );
   const route = useMemo(
     () => routeData(props.route, props.walked ?? 0, g),
@@ -135,19 +163,38 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
       if (!f || !following.current) return;
       const now = Date.now();
       // The native camera animates itself between our steps.
-      if (now - lastCamera < 100) return;
+      const dt = now - lastCamera;
+      if (dt < 100) return;
       lastCamera = now;
-      const target =
-        f.heading !== null ? bearingFor(f.heading, g) : bearing.current;
-      if (target !== null) {
-        const cur = bearing.current ?? target;
-        const diff = ((target - cur + 540) % 360) - 180;
-        bearing.current = cur + Math.max(-12, Math.min(12, diff * 0.5));
-      }
+      // The camera director says where to look; each step eases part of the way there.
+      const want = latest.current.followCamera;
+      const course = want?.courseRad ?? f.heading;
+      if (course !== null && course !== undefined)
+        bearing.current = stepBearing(
+          bearing.current ?? bearingFor(course, g),
+          bearingFor(course, g),
+          dt,
+        );
+      const wantPitch = latest.current.flat
+        ? 0
+        : (want?.pitchDeg ?? FOLLOW_PITCH);
+      pitch.current = stepTowards(pitch.current, wantPitch, dt, 520);
+      zoom.current = stepTowards(
+        zoom.current,
+        zoomForMetresPerPixel(want?.metresPerPixel ?? 0.045, g.lat),
+        dt,
+        620,
+      );
       camera.current?.easeTo({
         center: toLngLat(f, g),
         ...(bearing.current !== null ? { bearing: bearing.current } : {}),
-        padding: followPadding(size.current.height, latest.current.insets),
+        pitch: pitch.current,
+        zoom: zoom.current,
+        padding: followPadding(
+          size.current.height,
+          latest.current.insets,
+          want?.dotAt,
+        ),
         duration: 120,
         easing: 'linear',
       });
@@ -156,32 +203,26 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
     return () => animator.detach();
   }, [props.liveDot, props.liveVisible, g]);
 
+  // Following is driven step by step above; leaving it settles back to the overview tilt.
   useEffect(() => {
     following.current = !!props.follow && !!props.liveVisible;
     bearing.current = null;
+    if (following.current) return;
     const d = dot.current;
-    if (following.current && d)
-      camera.current?.easeTo({
-        center: toLngLat(d, g),
-        pitch: FOLLOW_PITCH,
-        zoom: Math.max(zoom.current, zoomForMetresPerPixel(0.045, g.lat)),
-        padding: followPadding(size.current.height, latest.current.insets),
-        duration: 700,
-      });
-    else if (!following.current)
-      camera.current?.easeTo({
-        center: toLngLat(
-          d ?? {
-            x: (props.scene.bounds.minX + props.scene.bounds.maxX) / 2,
-            y: (props.scene.bounds.minY + props.scene.bounds.maxY) / 2,
-          },
-          g,
-        ),
-        pitch: OVERVIEW_PITCH,
-        padding: padding(),
-        duration: 500,
-      });
-  }, [props.follow, props.liveVisible]);
+    pitch.current = overviewPitch();
+    camera.current?.easeTo({
+      center: toLngLat(
+        d ?? {
+          x: (props.scene.bounds.minX + props.scene.bounds.maxX) / 2,
+          y: (props.scene.bounds.minY + props.scene.bounds.maxY) / 2,
+        },
+        g,
+      ),
+      pitch: pitch.current,
+      padding: padding(),
+      duration: 500,
+    });
+  }, [props.follow, props.liveVisible, props.flat]);
 
   // Camera commands from the screen.
   useEffect(() => {
@@ -192,8 +233,14 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
       cam.fitBounds(lngLatBounds, {
         padding: padding(),
         bearing: g.bearingDeg,
-        pitch: OVERVIEW_PITCH,
+        pitch: overviewPitch(),
         duration: 600,
+      });
+    else if (c.kind === 'reset-bearing')
+      void cam.setStop({
+        bearing: g.bearingDeg,
+        pitch: overviewPitch(),
+        duration: 500,
       });
     else if (c.kind === 'point')
       cam.easeTo({
@@ -220,6 +267,10 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
             left: 48,
             right: 48,
           },
+          ...(c.courseRad !== undefined && c.courseRad !== null
+            ? { bearing: bearingFor(c.courseRad, g) }
+            : {}),
+          pitch: overviewPitch(),
           duration: 650,
         },
       );
@@ -253,10 +304,10 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
         [point[0] - PICK_PX, point[1] - PICK_PX],
         [point[0] + PICK_PX, point[1] + PICK_PX],
       ],
-      { layers: ['place-icons', 'room-labels'] },
+      { layers: PICK_NEAR_LAYERS },
     );
     const inside = await m.queryRenderedFeatures(point, {
-      layers: ['room-fill'],
+      layers: PICK_ROOM_LAYERS,
     });
     p.onSelect(pickPlace([...near, ...inside]).placeId);
   };
@@ -280,7 +331,7 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
         if (e.nativeEvent.userInteraction) latest.current.onGesture?.();
       }}
       onRegionDidChange={(e) => {
-        zoom.current = e.nativeEvent.zoom;
+        if (!following.current) zoom.current = e.nativeEvent.zoom;
         latest.current.onCenterChange?.(fromLngLat(e.nativeEvent.center, g));
       }}
     >
@@ -290,11 +341,17 @@ function NativeMap(props: Map3DProps & { ml: typeof MapLibre }) {
           bounds: lngLatBounds,
           padding: padding(),
           bearing: g.bearingDeg,
-          pitch: OVERVIEW_PITCH,
+          pitch: overviewPitch(),
         }}
         maxZoom={MAX_ZOOM}
       />
       <Images images={CATEGORY_IMAGES} />
+      <GeoJSONSource id="blocks" data={blocks}>
+        <Layer
+          {...(blockLayer as unknown as MapLibre.LayerProps)}
+          beforeId={BLOCKS_BEFORE}
+        />
+      </GeoJSONSource>
       <GeoJSONSource id="selection" data={selection}>
         {layers.under
           .filter((l) => 'source' in l && l.source === 'selection')

@@ -28,8 +28,11 @@ import { motion, placeCategories, type PlaceCategory } from '@turn/design';
 import {
   applyPlaceOverrides,
   buildScene,
+  followCamera,
   NEUTRAL_GEOREFERENCE,
+  openRoomIds,
   pointInPolygon,
+  previewCourse,
   type P,
   type Scene,
   type ScenePlace,
@@ -774,6 +777,64 @@ function Experience({
   const next =
     route?.steps[Math.min(route.steps.length - 1, current + 1)] ?? null;
 
+  // ---- Map look: which rooms open up, and where the camera director wants the view -----------
+  const [flat, setFlat] = useState(false);
+  const routing3d = routing && destination?.floorId === floorId;
+  const openRooms = useMemo(
+    () =>
+      openRoomIds(scene, {
+        user: here && (dotFloor ?? liveFloor) === floorId ? here : null,
+        route: shownLeg?.points ?? null,
+        keep: routing3d ? [destination?.roomId] : [],
+      }),
+    [
+      scene,
+      here,
+      dotFloor,
+      liveFloor,
+      floorId,
+      shownLeg,
+      routing3d,
+      destination,
+    ],
+  );
+  const walkedLeg = route?.legs[liveLeg] ?? null;
+  const nextManoeuvre = route
+    ? (route.steps.find(
+        (st) => st.along > walked + 0.5 && st.kind !== 'arrive',
+      ) ?? null)
+    : null;
+  const followCam = useMemo(
+    () =>
+      navigating
+        ? followCamera({
+            route: walkedLeg?.points ?? null,
+            along: walkedLeg ? Math.max(0, walked - walkedLeg.offset) : 0,
+            toManoeuvre:
+              nextManoeuvre &&
+              walkedLeg &&
+              nextManoeuvre.along <= walkedLeg.offset + walkedLeg.length + 0.5
+                ? nextManoeuvre.along - walked
+                : null,
+            lastLeg: !!route && liveLeg === route.legs.length - 1,
+            heading: null,
+            viewportWidth: W,
+            flat,
+          })
+        : null,
+    [navigating, walkedLeg, walked, nextManoeuvre, route, liveLeg, W, flat],
+  );
+
+  // After a look around, guidance takes the camera back (Plan 005 §5.2).
+  const lastGesture = useRef(0);
+  useEffect(() => {
+    if (!navigating || follow) return;
+    const t = setInterval(() => {
+      if (Date.now() - lastGesture.current > 10000) setFollow(true);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [navigating, follow]);
+
   // ---- Layout / camera insets ----------------------------------------------------------------
   const topBar = insets.top + 64 + (mode.kind === 'browse' ? 46 : 0);
   const snaps = useMemo(() => {
@@ -838,7 +899,11 @@ function Experience({
     const first = route.legs[0]!;
     setFloorId(first.floorId);
     setFollow(false);
-    camera({ kind: 'points', points: first.points });
+    camera({
+      kind: 'points',
+      points: first.points,
+      courseRad: previewCourse(first.points),
+    });
   }, [mode.kind, route]);
   const startGuidance = () => {
     if (mode.kind !== 'route') return;
@@ -1740,6 +1805,10 @@ function Experience({
         user={user}
         liveDot={liveDot}
         liveVisible={showLive}
+        openRooms={openRooms}
+        selectionStyle={mode.kind === 'place' ? 'lift' : 'floor'}
+        followCamera={followCam}
+        flat={flat}
         onDotTap={live.running && !pick ? openWhere : undefined}
         command={command}
         follow={(navigating || live.running) && follow}
@@ -1771,7 +1840,10 @@ function Experience({
                 }
               : undefined
         }
-        onGesture={() => setFollow(false)}
+        onGesture={() => {
+          lastGesture.current = Date.now();
+          setFollow(false);
+        }}
       />
       {pick?.stage === 'where' && (
         // The pin stays still; the map moves under it. Its tip is the chosen spot.
@@ -2320,6 +2392,40 @@ function Experience({
                   </Tap>
                 ))}
               </View>
+            )}
+            <Tap
+              accessibilityRole="button"
+              accessibilityLabel={
+                flat ? 'Show the map in 3D' : 'Show a flat map'
+              }
+              scaleTo={0.92}
+              onPress={() => {
+                haptic('tap');
+                setFlat((f) => !f);
+              }}
+              style={[
+                {
+                  width: 46,
+                  height: 46,
+                  borderRadius: 23,
+                  backgroundColor: c.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                },
+                shadow('floating', dark),
+              ]}
+            >
+              <T v="caption" weight="700">
+                {flat ? '3D' : '2D'}
+              </T>
+            </Tap>
+            {!((navigating || live.running) && follow) && (
+              <IconButton
+                icon="compass"
+                label="Turn the map upright"
+                size={46}
+                onPress={() => camera({ kind: 'reset-bearing' })}
+              />
             )}
             {mode.kind !== 'navigate' && !pick && (
               <IconButton

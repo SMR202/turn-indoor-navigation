@@ -20,9 +20,14 @@ const scene = buildScene(demoCentre, 'ground', lightMap);
 describe('scene', () => {
   it('styles rooms by kind, links places to rooms and computes bounds', () => {
     const cafe = scene.rooms.find((r) => r.id === 'cafe')!;
-    expect(cafe.fill).toBe(lightMap.room);
+    // A place's category faintly tints its room: the floor a little, the block top more.
+    expect(cafe.fill).not.toBe(lightMap.room);
+    expect(cafe.top).not.toBe(lightMap.block);
+    expect(cafe.block).toBe(true);
     expect(cafe.casts).toBe(true);
     expect(cafe.category).toBe('food');
+    // Corridors are open floor, never blocks.
+    expect(scene.rooms.find((r) => r.id === 'corridor')!.block).toBe(false);
     expect(scene.rooms.find((r) => r.id === 'corridor')!.fill).toBe(
       lightMap.circulation,
     );

@@ -12,10 +12,13 @@ import {
   type Georeference,
 } from './geo';
 import {
+  blockData,
   buildMapStyle,
   composeStyle,
+  openRoomIds,
   routeData,
   sceneLngLatBounds,
+  selectionData,
   userData,
 } from './maplibre';
 import { buildScene } from './scene';
@@ -114,8 +117,88 @@ describe('MapLibre style', () => {
         { x: 3, y: 4, sigma: 2, heading, live: true },
         campus,
       ).features.map((f) => f.properties!.part);
-    expect(parts(0.5)).toEqual(['accuracy', 'heading', 'dot']);
+    expect(parts(0.5)).toEqual(['accuracy', 'heading', 'heading-core', 'dot']);
     expect(parts(null)).toEqual(['accuracy', 'dot']);
     expect(userData(null, campus).features).toEqual([]);
+  });
+  it('keeps the uncertainty disc between 1 m and 8 m, and widens the beam when unsure', () => {
+    const radius = (sigma: number) => {
+      const ring = (
+        userData({ x: 0, y: 0, sigma, heading: null, live: true }, campus)
+          .features[0]!.geometry as unknown as {
+          coordinates: [number, number][][];
+        }
+      ).coordinates[0]!;
+      const p = fromLngLat(ring[0]!, campus);
+      return Math.hypot(p.x, p.y);
+    };
+    expect(radius(0.2)).toBeCloseTo(1, 2);
+    expect(radius(3)).toBeCloseTo(3, 2);
+    expect(radius(40)).toBeCloseTo(8, 2);
+    const width = (headingSigma: number) => {
+      const ring = (
+        userData(
+          { x: 0, y: 0, sigma: 2, heading: 0, live: true, headingSigma },
+          campus,
+        ).features[1]!.geometry as unknown as {
+          coordinates: [number, number][][];
+        }
+      ).coordinates[0]!;
+      const a = fromLngLat(ring[1]!, campus);
+      return Math.abs(Math.atan2(a.y, a.x));
+    };
+    expect(width(0.6)).toBeGreaterThan(width(0));
+  });
+  it('draws rooms as blocks, except open and lifted ones', () => {
+    const scene = buildScene(demoCentre, 'ground', lightMap);
+    const all = blockData(scene, campus).features.map(
+      (f) => f.properties!.roomId as string,
+    );
+    expect(all).toContain('cafe');
+    expect(all).not.toContain('corridor');
+    const some = blockData(scene, campus, ['cafe'], 'books').features.map(
+      (f) => f.properties!.roomId as string,
+    );
+    expect(some).not.toContain('cafe');
+    expect(some).not.toContain('books');
+    expect(some.length).toBe(all.length - 2);
+    // Without blocks in the style, phones supply them as their own source.
+    const style = buildMapStyle(scene, {
+      georef: campus,
+      glyphs: 'http://localhost/{fontstack}/{range}.pbf',
+      dynamicBlocks: true,
+    });
+    expect(style.sources.blocks).toBeUndefined();
+    expect(style.layers.some((l) => l.id === 'blocks')).toBe(false);
+  });
+  it('opens the room the walker is in, rooms on the route and the destination', () => {
+    const scene = buildScene(demoCentre, 'ground', lightMap);
+    const cafe = scene.rooms.find((r) => r.id === 'cafe')!;
+    const inside = {
+      x: cafe.polygon.reduce((s, p) => s + p.x, 0) / cafe.polygon.length,
+      y: cafe.polygon.reduce((s, p) => s + p.y, 0) / cafe.polygon.length,
+    };
+    expect(openRoomIds(scene, {})).toEqual([]);
+    expect(openRoomIds(scene, { user: inside })).toEqual(['cafe']);
+    expect(openRoomIds(scene, { keep: ['books', null, 'corridor'] })).toEqual([
+      'books',
+    ]);
+    // A route that only crosses a room between its points still opens it.
+    const through = openRoomIds(scene, {
+      route: [
+        { x: inside.x - 30, y: inside.y },
+        { x: inside.x + 30, y: inside.y },
+      ],
+    });
+    expect(through).toContain('cafe');
+  });
+  it('lifts a selected block and tints a destination floor', () => {
+    const scene = buildScene(demoCentre, 'ground', lightMap);
+    const style = (room: string, s?: 'lift' | 'floor') =>
+      selectionData(scene, room, campus, s).features[0]!.properties!.style;
+    expect(style('cafe')).toBe('lift');
+    expect(style('cafe', 'floor')).toBe('floor');
+    // Open floor cannot lift.
+    expect(style('corridor', 'lift')).toBe('floor');
   });
 });

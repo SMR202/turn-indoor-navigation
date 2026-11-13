@@ -16,4 +16,6 @@ export const CATEGORY_IMAGES = {
   'cat-service': require('@turn/map-scene/assets/icons/cat-service.png'),
   'cat-shop': require('@turn/map-scene/assets/icons/cat-shop.png'),
   'cat-stairs': require('@turn/map-scene/assets/icons/cat-stairs.png'),
+  'pin-dest': require('@turn/map-scene/assets/icons/pin-dest.png'),
+  'route-arrow': require('@turn/map-scene/assets/icons/route-arrow.png'),
 } as Record<string, number>;

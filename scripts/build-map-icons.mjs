@@ -33,4 +33,18 @@ for (const [category, { icon }] of Object.entries(placeCategories)) {
     .toFile(join(out, `cat-${category}@2x.png`));
   n++;
 }
-console.log(`${n} category badges in ${out}`);
+// The chevron drawn along a route (points along the line, +x): white with a soft dark edge so it
+// reads on the accent line in both themes.
+const arrow = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <path d="M17 11 L31 24 L17 37" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+await sharp(Buffer.from(arrow)).png().toFile(join(out, 'route-arrow@2x.png'));
+// The destination pin (drawn at 36 x 44): dark with a white edge, so it reads on both themes and
+// beside any venue accent colour.
+const pin = `<svg xmlns="http://www.w3.org/2000/svg" width="72" height="88" viewBox="0 0 72 88">
+  <ellipse cx="36" cy="82" rx="9" ry="3.2" fill="#000" opacity="0.22"/>
+  <path d="M36 80 C36 80 11 53 11 33 a25 25 0 1 1 50 0 C61 53 36 80 36 80 Z" fill="#0B1220" stroke="#fff" stroke-width="5" stroke-linejoin="round"/>
+  <circle cx="36" cy="33" r="9.5" fill="#fff"/>
+</svg>`;
+await sharp(Buffer.from(pin)).png().toFile(join(out, 'pin-dest@2x.png'));
+console.log(`${n} category badges, the route arrow and the pin in ${out}`);

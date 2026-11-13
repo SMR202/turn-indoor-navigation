@@ -94,16 +94,32 @@ export const darkColors: ThemeColors = {
   scrim: 'rgba(0,0,0,0.55)',
 };
 
-/** Map palette: reads like a building, not boxes. Warm land, white rooms, soft extruded walls. */
+/**
+ * Map palette (Plan 005 §3.2, §5.1): the building reads as architecture. Cool paper ground, a
+ * bright slab for the walkable floor, rooms as soft blocks with a faint category tint, and the
+ * accent kept for the walker, the route and the selection.
+ */
 export type MapPalette = {
+  /** Ground outside the building. */
   land: string;
+  /** Soft shadow the building casts on the ground. */
+  shadow: string;
+  /** Flat room floor (open rooms, and under the blocks). */
   room: string;
   roomSelected: string;
+  /** Walkable floor: corridors and halls, the brightest surface. */
   circulation: string;
   outdoor: string;
   stairs: string;
   fixture: string;
+  /** Top and side of a room block. */
+  block: string;
+  blockSide: string;
+  /** How strongly a place's category colours its block (0-1). */
+  blockTint: number;
+  /** Outlines between floor areas. */
   extrusion: string;
+  /** Low wall rims. */
   wall: string;
   window: string;
   door: string;
@@ -113,6 +129,7 @@ export type MapPalette = {
   route: string;
   routeCasing: string;
   routeWalked: string;
+  routeArrow: string;
   dot: string;
   dotHalo: string;
   dotRing: string;
@@ -120,23 +137,28 @@ export type MapPalette = {
   beacon: string;
 };
 export const lightMap: MapPalette = {
-  land: '#ECE8E1',
-  room: '#FFFFFF',
-  roomSelected: '#E8EDFE',
-  circulation: '#F8F6F2',
-  outdoor: '#DFE8D5',
-  stairs: '#EEE8DC',
-  fixture: '#F1EEE8',
-  extrusion: '#D9D3C9',
-  wall: '#BCB4A7',
+  land: '#E4E6E9',
+  shadow: 'rgba(40,48,66,0.20)',
+  room: '#F3F1EC',
+  roomSelected: '#DCE5FF',
+  circulation: '#FFFFFF',
+  outdoor: '#DCE9D0',
+  stairs: '#E6EAF2',
+  fixture: '#ECE9E3',
+  block: '#F1EEE8',
+  blockSide: '#CFC9BD',
+  blockTint: 0.13,
+  extrusion: '#DDD8CE',
+  wall: '#D8D3C9',
   window: '#9DBAD6',
   door: '#FFFFFF',
-  label: '#3A4456',
+  label: '#2B3445',
   labelHalo: '#FFFFFF',
-  labelMuted: '#7A8394',
+  labelMuted: '#8A919E',
   route: palette.accent,
   routeCasing: '#FFFFFF',
-  routeWalked: '#A9B6E8',
+  routeWalked: '#B4C0EC',
+  routeArrow: '#FFFFFF',
   dot: palette.accent,
   dotHalo: 'rgba(47,90,242,0.14)',
   dotRing: '#FFFFFF',
@@ -144,29 +166,46 @@ export const lightMap: MapPalette = {
   beacon: '#6E56CF',
 };
 export const darkMap: MapPalette = {
-  land: '#0E131C',
-  room: '#1A2130',
-  roomSelected: '#22305A',
-  circulation: '#161C28',
-  outdoor: '#14211A',
-  stairs: '#1F2633',
-  fixture: '#1C2230',
-  extrusion: '#0A0E15',
-  wall: '#3A4354',
+  land: '#090C12',
+  shadow: 'rgba(0,0,0,0.55)',
+  room: '#1D2431',
+  roomSelected: '#24356B',
+  circulation: '#2A3344',
+  outdoor: '#16261C',
+  stairs: '#263047',
+  fixture: '#202735',
+  block: '#1C2330',
+  blockSide: '#0F141D',
+  blockTint: 0.16,
+  extrusion: '#141A24',
+  wall: '#3B4557',
   window: '#355A7D',
-  door: '#1A2130',
-  label: '#C9CED8',
+  door: '#2A3344',
+  label: '#DDE1E8',
   labelHalo: '#0E131C',
-  labelMuted: '#808898',
+  labelMuted: '#8F97A6',
   route: '#5B7DFF',
-  routeCasing: '#0E131C',
+  routeCasing: '#0B0F17',
   routeWalked: '#3A4A80',
+  routeArrow: '#FFFFFF',
   dot: '#5B7DFF',
   dotHalo: 'rgba(91,125,255,0.18)',
   dotRing: '#FFFFFF',
   pin: '#F2F1EE',
   beacon: '#9A86F0',
 };
+
+/** Mixes two #RRGGBB colours: `t` = 0 gives `a`, 1 gives `b`. */
+export function mixHex(a: string, b: string, t: number) {
+  const ch = (h: string, i: number) =>
+    parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+  const out = [0, 1, 2].map((i) =>
+    Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t)
+      .toString(16)
+      .padStart(2, '0'),
+  );
+  return `#${out.join('')}`;
+}
 
 export const fonts = {
   /** Families loaded by the apps (Inter, SIL Open Font License). */

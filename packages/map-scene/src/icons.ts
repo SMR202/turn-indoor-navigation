@@ -106,6 +106,16 @@ export const UI_ICON_PATHS: Record<string, string[]> = {
   check: ['M5 12.5l4.5 4.5L19 7'],
   play: ['M8 5.5v13l10.5-6.5Z'],
   layers: ['M12 3l9 5-9 5-9-5 9-5Z', 'M3 13l9 5 9-5'],
+  compass: [
+    'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z',
+    'M15.5 8.5l-2 5-5 2 2-5 5-2Z',
+  ],
+  cube: [
+    'M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z',
+    'M4 7.5l8 4.5 8-4.5',
+    'M12 12v9',
+  ],
+  mute: ['M11 5 6 9H3v6h3l5 4V5Z', 'M16 9.5l5 5', 'M21 9.5l-5 5'],
   offline: [
     'M3 3l18 18',
     'M8.5 16.5a5 5 0 0 1 7 0',
