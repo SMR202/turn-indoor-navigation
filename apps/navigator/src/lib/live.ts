@@ -121,6 +121,9 @@ export function useLiveSession(
         venue: pkg,
         floorId: onFloor,
         beacons: placementsRef.current.filter((b) => b.floorId === onFloor),
+        otherFloorBeacons: placementsRef.current
+          .filter((b) => b.floorId !== onFloor)
+          .map((b) => ({ tag: b.tag, floorId: b.floorId })),
         ...(profileRef.current ? { profile: profileRef.current } : {}),
       });
       ref.current = live;
@@ -287,6 +290,8 @@ export function useLiveSession(
   const roomBelief = useCallback(() => ref.current?.roomBelief() ?? [], []);
   /** Median RSSI per beacon the filter is using now. */
   const readings = useCallback(() => ref.current?.readings() ?? [], []);
+  /** The strongest beacon heard on each floor just now. */
+  const floorVotes = useCallback(() => ref.current?.floorVotes() ?? [], []);
   /** Every filter update (each step or fix), outside React; returns the unsubscribe function. */
   const onFix = useCallback((listener: (s: LiveState) => void) => {
     fixListeners.current.add(listener);
@@ -323,6 +328,7 @@ export function useLiveSession(
     correct,
     roomBelief,
     readings,
+    floorVotes,
     onFix,
     setRoute,
     heading,

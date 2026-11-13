@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { lightMap } from '@turn/design';
 import { buildScene } from '@turn/map-scene';
 import { demoCentre } from '@turn/venue-model';
-import { planJourney, positionOnJourney, watchRoute } from './journey';
+import {
+  landingOnFloor,
+  planJourney,
+  positionOnJourney,
+  watchRoute,
+} from './journey';
 
 const scenes = Object.fromEntries(
   demoCentre.floors.map((f) => [f.id, buildScene(demoCentre, f.id, lightMap)]),
@@ -105,5 +110,29 @@ describe('watching a live walk', () => {
   it('notices walking back towards the start', () => {
     expect(watch(12, 0, 19).behind).toBe(true);
     expect(watch(17, 0, 19).behind).toBe(false);
+  });
+});
+
+describe('landing on another floor', () => {
+  it('comes out at the far end of the nearest stairs or lift', () => {
+    const connector = demoCentre.connectors[0]!;
+    const ends = connector.nodeIds.map((id) =>
+      demoCentre.nodes.find((n) => n.id === id)!,
+    );
+    const below = ends.find((n) => n.floorId === 'ground')!;
+    const above = ends.find((n) => n.floorId === 'level-1')!;
+    const land = landingOnFloor(demoCentre, 'ground', 'level-1', {
+      x: below.x + 1,
+      y: below.y,
+    })!;
+    expect(land.nodeId).toBe(above.id);
+    expect(land.connectorKind).toBe(connector.kind);
+  });
+  it('falls back to the nearest walkable point when no connector joins the floors', () => {
+    const cut = { ...demoCentre, connectors: [] };
+    const land = landingOnFloor(cut, 'ground', 'level-1', { x: 30, y: 18 })!;
+    const n = demoCentre.nodes.find((x) => x.id === land.nodeId)!;
+    expect(n.floorId).toBe('level-1');
+    expect(land.connectorKind).toBeNull();
   });
 });

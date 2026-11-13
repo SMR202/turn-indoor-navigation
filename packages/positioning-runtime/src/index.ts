@@ -4,6 +4,7 @@ export * from './ble';
 export * from './display-pose';
 export * from './live';
 export * from './sensors/android-motion';
+export * from './sensors/barometer';
 export * from './sensors/foreground';
 export * from './sensors/motion-source';
 export * from './sensors/normalize-motion';

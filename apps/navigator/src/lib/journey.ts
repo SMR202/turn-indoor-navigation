@@ -139,6 +139,64 @@ export function planJourney(
   };
 }
 
+/**
+ * Where a walker who changed floor most likely came out: the far end of the stairs or lift whose
+ * near end is closest to where they were. Without a connector between the two floors, the node on
+ * the new floor nearest to the same spot (floors share one frame).
+ */
+export function landingOnFloor(
+  pkg: VenuePackage,
+  fromFloorId: string,
+  toFloorId: string,
+  here: P,
+): {
+  nodeId: string;
+  point: P;
+  connectorKind: Connector['kind'] | null;
+} | null {
+  const node = new Map(pkg.nodes.map((n) => [n.id, n]));
+  let best: {
+    nodeId: string;
+    point: P;
+    connectorKind: Connector['kind'] | null;
+    d: number;
+  } | null = null;
+  for (const c of pkg.connectors) {
+    const ends = c.nodeIds.flatMap((id) => {
+      const n = node.get(id);
+      return n ? [n] : [];
+    });
+    const from = ends.filter((n) => n.floorId === fromFloorId);
+    const to = ends.filter((n) => n.floorId === toFloorId);
+    for (const a of from)
+      for (const b of to) {
+        const d = Math.hypot(a.x - here.x, a.y - here.y);
+        if (!best || d < best.d)
+          best = {
+            nodeId: b.id,
+            point: { x: b.x, y: b.y },
+            connectorKind: c.kind,
+            d,
+          };
+      }
+  }
+  if (best) {
+    const { nodeId, point, connectorKind } = best;
+    return { nodeId, point, connectorKind };
+  }
+  const routable = new Set(pkg.edges.flatMap((e) => [e.from, e.to]));
+  const near = pkg.nodes
+    .filter((n) => n.floorId === toFloorId && routable.has(n.id))
+    .sort(
+      (a, b) =>
+        Math.hypot(a.x - here.x, a.y - here.y) -
+        Math.hypot(b.x - here.x, b.y - here.y),
+    )[0];
+  return near
+    ? { nodeId: near.id, point: { x: near.x, y: near.y }, connectorKind: null }
+    : null;
+}
+
 /** Where a walker is after `walked` metres: floor, point and heading. */
 export function positionOnJourney(
   j: Journey,

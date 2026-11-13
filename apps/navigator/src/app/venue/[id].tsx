@@ -71,7 +71,14 @@ import {
   WALK_SPEED,
   type Step,
 } from '../../lib/directions';
-import { planJourney, positionOnJourney, watchRoute } from '../../lib/journey';
+import {
+  landingOnFloor,
+  planJourney,
+  positionOnJourney,
+  watchRoute,
+} from '../../lib/journey';
+import { useFloorSensing } from '../../lib/floor-sense';
+import { searchPlaces, suggestions } from '../../lib/search';
 import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
 import { useVenueOrientation } from '../../lib/orientation';
@@ -195,8 +202,6 @@ function startOptions(pkg: VenuePackage, places: Place[]): Start[] {
     }));
   return [...entrances, ...markers, ...rest];
 }
-const norm = (s: string) =>
-  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const stepIcon = (k: Step['kind']) =>
   k === 'depart'
     ? 'turn-straight'
@@ -382,9 +387,15 @@ function Experience({
     );
     return () => liveDot.stop();
   }, [dotDriver, liveDot, heading]);
+  const lastStepAt = useRef(0);
+  const stepsSeen = useRef(0);
   useEffect(
     () =>
       live.onFix((st) => {
+        if (st.steps !== stepsSeen.current) {
+          stepsSeen.current = st.steps;
+          lastStepAt.current = Date.now();
+        }
         if (st.fix && driverRef.current === 'live')
           liveDot.update(st.fix, st.steps, st.fix.source === 'fix');
       }),
@@ -581,6 +592,42 @@ function Experience({
       route: nextLeg.points,
     });
   };
+  // The floor changes by itself (Plan 005 §6): the barometer, beacons and the route decide.
+  const arriveOnFloor = (toFloor: string) => {
+    if (!liveFloor || toFloor === liveFloor) return;
+    haptic('success');
+    if (navLive && nextLeg && nextLeg.floorId === toFloor) {
+      speak(`${floorLabel(toFloor)}.`);
+      continueOnNextFloor();
+      return;
+    }
+    const land = landingOnFloor(pkg, liveFloor, toFloor, here ?? start.point);
+    if (!land) return;
+    setFloorId(toFloor);
+    setFollow(true);
+    void live.start(land.point, toFloor, { sigma: 2.5 });
+    if (navigating) {
+      // Not the floor the route expected: go on from where the walker really is.
+      speak(`You are on ${floorLabel(toFloor)}. Here is a new route.`);
+      setNavStart({
+        key: `floor-${Date.now()}`,
+        label: 'Your location',
+        nodeId: land.nodeId,
+        point: land.point,
+        floorId: toFloor,
+        kind: 'live',
+      });
+      setWalked(0);
+    } else speak(`${floorLabel(toFloor)}.`);
+  };
+  const floorSense = useFloorSensing({
+    floors: pkg.floors,
+    liveFloorId: live.running ? liveFloor : null,
+    stepping: () => Date.now() - lastStepAt.current < 2500,
+    votes: live.floorVotes,
+    expectedFloorId: atFloorChange && nextLeg ? nextLeg.floorId : null,
+    onChange: (change) => arriveOnFloor(change.floorId),
+  });
   // Demo and step guidance carry the map to the walker's floor.
   useEffect(() => {
     if (
@@ -1060,33 +1107,39 @@ function Experience({
     return () => sub.remove();
   }, [back]);
 
-  const results = useMemo(() => {
-    const q = norm(query.trim());
-    const scored = places
-      .map((p) => {
-        const content = bundle.content.places[p.id];
-        const name = norm(p.name);
-        let score = 0;
-        if (category && p.category !== category) return null;
-        if (!q) score = 1;
-        else if (name.startsWith(q)) score = 5;
-        else if (name.includes(q)) score = 4;
-        else if (norm(p.categoryLabel).includes(q) || p.category.startsWith(q))
-          score = 3;
-        else if ((content?.tags ?? []).some((t) => norm(t).includes(q)))
-          score = 2.5;
-        else if (content?.description && norm(content.description).includes(q))
-          score = 2;
-        return score ? { p, score } : null;
-      })
-      .filter((x): x is { p: Place; score: number } => x !== null)
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          (distances.get(a.p.id) ?? 1e9) - (distances.get(b.p.id) ?? 1e9),
-      );
-    return scored.map((x) => x.p);
-  }, [query, category, places, bundle, distances]);
+  // Search (Plan 005 §10): word starts, typos, everyday words, room numbers; nearest first.
+  const searchable = useMemo(
+    () =>
+      places.map((p) => ({
+        ...p,
+        tags: bundle.content.places[p.id]?.tags,
+        description: bundle.content.places[p.id]?.description,
+      })),
+    [places, bundle],
+  );
+  const results = useMemo<Place[]>(
+    () =>
+      searchPlaces(searchable, query, {
+        category,
+        distance: (id) => distances.get(id),
+      }).map((h) => h.item),
+    [searchable, query, category, distances],
+  );
+  const didYouMean = useMemo(
+    () =>
+      query.trim() && !results.length ? suggestions(searchable, query) : [],
+    [searchable, query, results.length],
+  );
+  // A search that finds nothing is worth telling the venue about (anonymously), once it settles.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 3 || results.length) return;
+    const t = setTimeout(
+      () => track({ venueId, type: 'search_failed', query: q }),
+      1500,
+    );
+    return () => clearTimeout(t);
+  }, [query, results.length, venueId]);
   const categoriesHere = useMemo(
     () =>
       (Object.keys(placeCategories) as PlaceCategory[]).filter(
@@ -1319,11 +1372,47 @@ function Experience({
       />
       {results.map(placeRow)}
       {results.length === 0 && (
-        <View style={{ padding: 32, alignItems: 'center', gap: 8 }}>
-          <Icon name="search" size={28} color={c.textSubtle} />
-          <T v="callout" color={c.textMuted} center>
-            No places match “{query}”.
-          </T>
+        <View style={{ paddingTop: 20, gap: 4 }}>
+          <View style={{ paddingHorizontal: 32, alignItems: 'center', gap: 8 }}>
+            <Icon name="search" size={28} color={c.textSubtle} />
+            <T v="callout" color={c.textMuted} center>
+              {query.trim()
+                ? `Nothing here is called “${query.trim()}”.`
+                : 'No places in this category.'}
+            </T>
+          </View>
+          {didYouMean.length > 0 && (
+            <>
+              <Section title="Did you mean" />
+              {didYouMean.map(placeRow)}
+            </>
+          )}
+          {!category && (
+            <>
+              <Section title="Browse instead" />
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  paddingHorizontal: 20,
+                }}
+              >
+                {categoriesHere.slice(0, 6).map((k) => (
+                  <Chip
+                    key={k}
+                    label={placeCategories[k].label}
+                    icon={placeCategories[k].icon}
+                    iconColor={catColor(k)}
+                    onPress={() => {
+                      setQuery('');
+                      setCategory(k);
+                    }}
+                  />
+                ))}
+              </View>
+            </>
+          )}
         </View>
       )}
     </>
@@ -1958,7 +2047,9 @@ function Experience({
                 )?.text ?? `Go to ${floorLabel(nextLeg.floorId)}`}
               </T>
               <T v="caption" color="rgba(255,255,255,0.85)">
-                Tap when you are there. Live position restarts on the new floor.
+                {floorSense.barometer
+                  ? 'The map follows you to the new floor. Tap below if it does not.'
+                  : 'Tap when you are there.'}
               </T>
             </View>
           </View>
@@ -1966,7 +2057,10 @@ function Experience({
             label={`I'm on ${floorLabel(nextLeg.floorId)}`}
             kind="secondary"
             size="md"
-            onPress={continueOnNextFloor}
+            onPress={() => {
+              floorSense.confirm(nextLeg.floorId);
+              continueOnNextFloor();
+            }}
           />
         </Animated.View>
       ) : navLive && livePhase !== 'tracking' ? (

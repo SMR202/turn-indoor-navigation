@@ -91,6 +91,8 @@ export type LiveOptions = {
   /** This phone's profile (ADR-0015): stride, radio window and RSSI offset prior. */
   profile?: DeviceProfile;
   save?: (trace: BleTraceRecord) => void;
+  /** Beacons on other floors, heard only as floor hints. */
+  otherFloorBeacons?: { tag: string; floorId: string }[];
 };
 
 /** Whether live positioning can run here, and why not. Feature-detected, never assumed. */
@@ -207,6 +209,7 @@ export class LivePositioning {
         : null,
       platform: Platform.OS === 'ios' ? 'ios' : 'android',
       save: this.options.save,
+      otherFloors: this.options.otherFloorBeacons,
       // iPhones range iBeacons about once a second: a longer window, two packets are enough.
       assist: {
         windowSeconds: this.options.profile?.scan.windowSeconds ?? 4,
@@ -391,6 +394,11 @@ export class LivePositioning {
   /** Median RSSI per beacon the filter is using now. */
   readings(): { tag: string; rssi: number }[] {
     return this.tracker?.readings() ?? [];
+  }
+
+  /** The strongest beacon heard on each floor just now (floor evidence). */
+  floorVotes(): { floorId: string; rssi: number }[] {
+    return this.tracker?.floorVotes() ?? [];
   }
 
   /** Beacons in the layout and when this phone last heard them (empty without a beacon stream). */

@@ -42,6 +42,11 @@ export type TrackerOptions = {
   /** Where finished traces go (the test app saves them for upload); none by default. */
   save?: (trace: BleTraceRecord) => void;
   seed?: number;
+  /**
+   * Beacons on the venue's other floors: heard only to tell which floor the phone is on (a slab
+   * weakens them by 15–20 dB), never used for position.
+   */
+  otherFloors?: { tag: string; floorId: string }[];
 };
 
 /**
@@ -71,6 +76,11 @@ export class AssistedTracker {
   private finished = false;
   private started = false;
   private lastFusedLog = -Infinity;
+  private readonly floorSamples: {
+    t: number;
+    floorId: string;
+    rssi: number;
+  }[] = [];
 
   constructor(private readonly options: TrackerOptions) {
     this.assist = new AssistFusion(
@@ -102,11 +112,15 @@ export class AssistedTracker {
     this.started = true;
     this.startedAt = (this.options.now ?? (() => performance.now()))() / 1000;
     this.startedIso = new Date().toISOString();
-    if (this.assist.beaconCount === 0) return;
+    const elsewhere = new Map(
+      (this.options.otherFloors ?? []).map((b) => [b.tag, b.floorId]),
+    );
+    if (this.assist.beaconCount === 0 && elsewhere.size === 0) return;
     const start = this.options.start ?? startBeaconStream;
     const tags = new Set(
       (this.options.placements?.beacons ?? []).map((b) => b.tag),
     );
+    const otherTags = new Set(elsewhere.keys());
     this.stopStream = await start(
       (batch, drop) => {
         this.dropped += drop;
@@ -114,7 +128,23 @@ export class AssistedTracker {
         for (const s of batch) {
           // A beacon may be laid out by its address or name instead of its frame identity.
           const tag = matchTag(s, tags);
-          if (!tag) continue;
+          if (!tag) {
+            // A beacon on another floor: remembered for a few seconds as a floor hint.
+            const other = matchTag(s, otherTags);
+            if (other) {
+              this.floorSamples.push({
+                t: at,
+                floorId: elsewhere.get(other)!,
+                rssi: s.rssi,
+              });
+              while (
+                this.floorSamples.length > 400 ||
+                (this.floorSamples[0] && this.floorSamples[0].t < at - 8)
+              )
+                this.floorSamples.shift();
+            }
+            continue;
+          }
           if (this.samples.length < MAX_SAMPLES)
             this.samples.push({ t: s.t, tag, rssi: s.rssi });
           else this.dropped++;
@@ -125,7 +155,9 @@ export class AssistedTracker {
         this.failure = message;
       },
       // Beacons known only by their advertised name need discovery frames.
-      { discover: [...tags].some((t) => t.startsWith('NM')) },
+      {
+        discover: [...tags, ...otherTags].some((t) => t.startsWith('NM')),
+      },
     );
     this.timer = setInterval(() => this.tick(), TICK_MS);
   }
@@ -237,6 +269,21 @@ export class AssistedTracker {
   }
   health(): BeaconHealth[] {
     return this.assist.health(this.clock());
+  }
+  /**
+   * The strongest beacon heard on each floor in the last few seconds (this floor from the filter's
+   * own readings): evidence for which floor the phone is on.
+   */
+  floorVotes(windowSeconds = 4): { floorId: string; rssi: number }[] {
+    const best = new Map<string, number>();
+    const here = this.readings();
+    if (here.length)
+      best.set(this.options.floorId, Math.max(...here.map((r) => r.rssi)));
+    const since = this.clock() - windowSeconds;
+    for (const s of this.floorSamples)
+      if (s.t >= since)
+        best.set(s.floorId, Math.max(best.get(s.floorId) ?? -Infinity, s.rssi));
+    return [...best].map(([floorId, rssi]) => ({ floorId, rssi }));
   }
 
   /** Stops the stream and saves the assisted-navigation trace (null when nothing was recorded). */

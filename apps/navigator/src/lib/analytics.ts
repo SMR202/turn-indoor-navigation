@@ -13,7 +13,12 @@ export type UsageEvent = {
     | 'place_viewed'
     | 'route_started'
     | 'arrived'
-    | 'route_cancelled';
+    | 'route_cancelled'
+    /** A search that found nothing: tells the venue which names or aliases are missing. */
+    | 'search_failed'
+    | 'offer_shown'
+    | 'offer_opened'
+    | 'offer_dismissed';
   placeId?: string;
   query?: string;
 };
