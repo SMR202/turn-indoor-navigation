@@ -113,6 +113,15 @@ export default function Settings() {
             onChange={(v) => setPrefs({ haptics: v })}
           />
         </Group>
+        <Group title="Offers">
+          <Row
+            icon="bag"
+            title="Offers and tips nearby"
+            detail="A small card when you are near a place with an offer. Decided on this phone: your position is not sent to the venue."
+            value={prefs.offers}
+            onChange={(v) => setPrefs({ offers: v })}
+          />
+        </Group>
         <Group title="Venue staff">
           <Row
             icon="beacon"

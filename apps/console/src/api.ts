@@ -67,6 +67,21 @@ export type CustomPlace = {
   category: string;
 };
 export type RoomEdit = { name?: string; restricted?: boolean };
+/** An offer or tip shown in the app near a place; evaluated on the phone. */
+export type Offer = {
+  id: string;
+  title: string;
+  text?: string;
+  placeId: string;
+  radiusMetres: number;
+  dwellSeconds: number;
+  startsAt?: string;
+  endsAt?: string;
+  hours?: string;
+  days?: number[];
+  cooldownMinutes: number;
+  active: boolean;
+};
 export type Beacon = {
   tag: string;
   floorId: string;
@@ -79,6 +94,7 @@ export type Beacon = {
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;
+  offers: Offer[];
   customPlaces: CustomPlace[];
   rooms: Record<string, RoomEdit>;
   beacons: Beacon[];
@@ -145,6 +161,13 @@ export type Analytics = {
   daily: { day: string; sessions: number; routes: number; arrivals: number }[];
   topSearches: { query: string; n: number }[];
   topDestinations: { placeId: string; n: number }[];
+  failedSearches: { query: string; n: number }[];
+  offers: {
+    offerId: string;
+    shown: number;
+    opened: number;
+    dismissed: number;
+  }[];
 };
 export type BeaconHealth = Beacon & {
   lastSeen: string | null;

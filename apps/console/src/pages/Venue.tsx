@@ -18,6 +18,7 @@ import { FloorPicker, fmt, Icon, StatusBadge } from '../ui';
 import { AnalyticsTab } from './AnalyticsTab';
 import { BeaconsTab } from './BeaconsTab';
 import { MapTab } from './MapTab';
+import { OffersTab } from './OffersTab';
 import { PlacesTab } from './PlacesTab';
 import { PublishTab, QR, visitorLink } from './PublishTab';
 import { SettingsTab } from './SettingsTab';
@@ -162,6 +163,7 @@ export function VenuePage({
       {tab === 'map' && <MapTab {...ctx} />}
       {tab === 'places' && <PlacesTab {...ctx} />}
       {tab === 'beacons' && <BeaconsTab {...ctx} />}
+      {tab === 'offers' && <OffersTab {...ctx} />}
       {tab === 'publish' && <PublishTab {...ctx} />}
       {tab === 'analytics' && <AnalyticsTab {...ctx} />}
       {tab === 'settings' && <SettingsTab {...ctx} />}

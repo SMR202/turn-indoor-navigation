@@ -5,6 +5,7 @@ export type VenueTab =
   | 'map'
   | 'places'
   | 'beacons'
+  | 'offers'
   | 'publish'
   | 'analytics'
   | 'settings';
@@ -20,6 +21,7 @@ const tabs: VenueTab[] = [
   'map',
   'places',
   'beacons',
+  'offers',
   'publish',
   'analytics',
   'settings',

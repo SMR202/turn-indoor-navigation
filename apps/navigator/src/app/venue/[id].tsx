@@ -79,13 +79,14 @@ import {
 } from '../../lib/journey';
 import { useFloorSensing } from '../../lib/floor-sense';
 import { searchPlaces, suggestions } from '../../lib/search';
+import { OfferEngine, type Offer, type OfferMemory } from '../../lib/offers';
 import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
 import { useVenueOrientation } from '../../lib/orientation';
 import { useDeviceProfile } from '../../lib/device-profile';
 import { haptic, speak, useSpokenGuidance } from '../../lib/feedback';
 import { LiveDot } from '../../lib/live-dot';
-import { useStored } from '../../lib/storage';
+import { load, save, useStored } from '../../lib/storage';
 import {
   type CameraCommand,
   type CameraRequest,
@@ -871,6 +872,54 @@ function Experience({
         : null,
     [navigating, walkedLeg, walked, nextManoeuvre, route, liveLeg, W, flat],
   );
+
+  // ---- Offers near a place (Plan 005 §11): decided here, on the phone ------------------------
+  const [nudge, setNudge] = useState<Offer | null>(null);
+  const offerEngine = useMemo(() => {
+    const list = prefs.offers ? (bundle.content.offers ?? []) : [];
+    if (!list.length) return null;
+    return new OfferEngine(
+      list.filter((o) => places.some((p) => p.id === o.placeId)),
+      new Map(
+        places.map((p) => [p.id, { floorId: p.floorId, x: p.x, y: p.y }]),
+      ),
+      load<OfferMemory>(`offers-${venueId}`, {}),
+    );
+  }, [prefs.offers, bundle.content.offers, places, venueId]);
+  const offerTick = useRef(0);
+  const offerFloor = dotFloor ?? liveFloor;
+  const offerBusy =
+    !!nudge ||
+    !!pick ||
+    mode.kind === 'search' ||
+    mode.kind === 'arrived' ||
+    (navigating && nextManoeuvre !== null && nextManoeuvre.along - walked < 10);
+  useEffect(() => {
+    if (!offerEngine || !here || !offerFloor) return;
+    const now = Date.now();
+    if (now - offerTick.current < 1000) return;
+    offerTick.current = now;
+    const o = offerEngine.update({
+      now: new Date(now),
+      floorId: offerFloor,
+      x: here.x,
+      y: here.y,
+      sigma: dotDriver === 'demo' ? 1.2 : (liveSigma ?? 3),
+      busy: offerBusy,
+    });
+    if (!o) return;
+    save(`offers-${venueId}`, offerEngine.remembered);
+    haptic('tap');
+    setNudge(o);
+    track({ venueId, type: 'offer_shown', placeId: o.placeId, query: o.id });
+  }, [offerEngine, here, offerFloor, offerBusy, dotDriver, liveSigma, venueId]);
+  // A nudge leaves by itself; it never needs an answer.
+  useEffect(() => {
+    if (!nudge) return;
+    const t = setTimeout(() => setNudge(null), 14000);
+    return () => clearTimeout(t);
+  }, [nudge]);
+  const nudgePlace = nudge ? placeById(nudge.placeId) : null;
 
   // After a look around, guidance takes the camera back (Plan 005 §5.2).
   const lastGesture = useRef(0);
@@ -2413,6 +2462,95 @@ function Experience({
             )}
         </View>
       ) : null}
+
+      {nudge && nudgePlace && !pick && (
+        <Animated.View
+          entering={FadeInUp.duration(260)}
+          exiting={FadeOut.duration(180)}
+          style={[
+            {
+              position: 'absolute',
+              left: 12,
+              right: 12,
+              top: mapInsets.top + (navigating ? 34 : 8),
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              padding: 12,
+              paddingRight: 8,
+              borderRadius: 20,
+              backgroundColor: c.surface,
+            },
+            shadow('floating', dark),
+          ]}
+        >
+          <Tap
+            accessibilityRole="button"
+            accessibilityLabel={`Offer: ${nudge.title} at ${nudgePlace.name}`}
+            scaleTo={0.985}
+            onPress={() => {
+              track({
+                venueId,
+                type: 'offer_opened',
+                placeId: nudge.placeId,
+                query: nudge.id,
+              });
+              setNudge(null);
+              // While being guided the walker keeps their route; otherwise open the place.
+              if (!navigating) select(nudge.placeId);
+            }}
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+            }}
+          >
+            <Badge
+              icon={nudgePlace.icon}
+              color={catColor(nudgePlace.category)}
+              size={40}
+            />
+            <View style={{ flex: 1 }}>
+              <T v="callout" weight="600" lines={1}>
+                {nudge.title}
+              </T>
+              <T v="caption" color={c.textMuted} lines={2}>
+                {[
+                  nudge.text,
+                  `${nudgePlace.name}${
+                    here
+                      ? ` · ${formatDistance(
+                          Math.hypot(
+                            nudgePlace.x - here.x,
+                            nudgePlace.y - here.y,
+                          ),
+                        )}`
+                      : ''
+                  }`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </T>
+            </View>
+          </Tap>
+          <IconButton
+            icon="close"
+            label="Dismiss this offer"
+            tone="sunken"
+            size={34}
+            onPress={() => {
+              track({
+                venueId,
+                type: 'offer_dismissed',
+                placeId: nudge.placeId,
+                query: nudge.id,
+              });
+              setNudge(null);
+            }}
+          />
+        </Animated.View>
+      )}
 
       {navigating && !follow && !pick && (
         <Animated.View

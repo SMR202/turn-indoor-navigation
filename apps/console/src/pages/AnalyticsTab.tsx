@@ -156,6 +156,17 @@ export function AnalyticsTab({ venue, scenes }: VenueCtx) {
                 text={`${placeName(top.placeId)!.name} is the most requested destination — make sure its signage and hours are current.`}
               />
             )}
+            {d?.failedSearches?.[0] && (
+              <Insight
+                icon="search"
+                text={`People searched for “${d.failedSearches
+                  .slice(0, 3)
+                  .map((f) => f.query)
+                  .join(
+                    '”, “',
+                  )}” and found nothing. Add these as names or tags on the right places.`}
+              />
+            )}
             {d?.topSearches[0] && (
               <Insight
                 icon="search"

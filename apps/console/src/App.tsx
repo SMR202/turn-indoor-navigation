@@ -58,6 +58,7 @@ const venueTabs: { tab: VenueTab; label: string; icon: string }[] = [
   { tab: 'map', label: 'Map', icon: 'layers' },
   { tab: 'places', label: 'Places', icon: 'pin' },
   { tab: 'beacons', label: 'Beacons', icon: 'beacon' },
+  { tab: 'offers', label: 'Offers', icon: 'bag' },
   { tab: 'publish', label: 'Publish', icon: 'share' },
   { tab: 'analytics', label: 'Analytics', icon: 'walk' },
   { tab: 'settings', label: 'Settings', icon: 'sliders' },

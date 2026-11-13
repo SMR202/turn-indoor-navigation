@@ -1,3 +1,4 @@
+import type { Offer } from './offers';
 import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -25,6 +26,8 @@ export type PlaceContent = {
 };
 export type VenueContent = {
   places: Record<string, PlaceContent>;
+  /** Offers and tips near places, decided on the phone (see `lib/offers`). */
+  offers?: Offer[];
   /** Studio map edits: places added and rooms renamed or made staff-only (applied to `pkg`). */
   customPlaces?: VenueEdits['customPlaces'];
   rooms?: VenueEdits['rooms'];

@@ -64,6 +64,8 @@ export type Preferences = {
   haptics: boolean;
   /** Staff tools (beacon setup and tests) shown inside venues. */
   venueSetup: boolean;
+  /** Offers and tips from the venue when you are near a place. */
+  offers: boolean;
 };
 export const defaultPreferences: Preferences = {
   onboarded: false,
@@ -73,4 +75,5 @@ export const defaultPreferences: Preferences = {
   voice: true,
   haptics: true,
   venueSetup: false,
+  offers: true,
 };

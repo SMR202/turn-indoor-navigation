@@ -42,8 +42,37 @@ export const customPlaceSchema = z.object({
   name: z.string().min(1).max(80),
   category: z.string().max(40),
 });
+/**
+ * An offer or tip shown in the app when a visitor is near a place (Plan 005 §11). It is evaluated
+ * on the phone: no position is sent anywhere, only anonymous counts come back.
+ */
+export const offerSchema = z.object({
+  id: z.string().regex(/^offer-[a-z0-9-]{1,40}$/),
+  title: z.string().min(1).max(60),
+  text: z.string().max(160).optional(),
+  /** The place it belongs to: the trigger is centred on it and a tap opens it. */
+  placeId: z.string().min(1).max(80),
+  /** Shown within this walking-position distance of the place (metres). */
+  radiusMetres: z.number().min(3).max(60).default(15),
+  /** Only after staying in range this long (seconds); 0 shows it on arrival. */
+  dwellSeconds: z.number().min(0).max(600).default(0),
+  startsAt: z.string().datetime().optional(),
+  endsAt: z.string().datetime().optional(),
+  /** Local opening window, "HH:MM-HH:MM". */
+  hours: z
+    .string()
+    .regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
+    .optional(),
+  /** Days of the week it runs (0 = Sunday); all days when empty. */
+  days: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+  /** One visitor sees it at most once in this many minutes. */
+  cooldownMinutes: z.number().min(1).max(10080).default(240),
+  active: z.boolean().default(true),
+});
+export type Offer = z.infer<typeof offerSchema>;
 export const venueContentSchema = z.object({
   places: z.record(z.string(), placeContentSchema).default({}),
+  offers: z.array(offerSchema).max(100).default([]),
   /** Places added in Studio (not in the floor plan). */
   customPlaces: z.array(customPlaceSchema).max(300).default([]),
   rooms: z.record(z.string(), roomEditSchema).default({}),
@@ -709,6 +738,31 @@ export function createApp(
     saveContent(v.id, content);
     return c.json({ ok: true });
   });
+  app.put('/venues/:id/offers/:offerId', auth, async (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const offer = offerSchema.parse({
+      ...(await c.req.json()),
+      id: param(c, 'offerId'),
+    });
+    if (offer.startsAt && offer.endsAt && offer.endsAt <= offer.startsAt)
+      return c.json({ error: 'The offer ends before it starts' }, 422);
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    const others = content.offers.filter((o) => o.id !== offer.id);
+    if (others.length >= 100) return c.json({ error: 'Too many offers' }, 422);
+    content.offers = [...others, offer];
+    saveContent(v.id, content);
+    return c.json(offer);
+  });
+  app.delete('/venues/:id/offers/:offerId', auth, (c) => {
+    const v = venueFor(c, param(c, 'id'));
+    if (!v) return c.json({ error: 'Not found' }, 404);
+    const content = venueContentSchema.parse(JSON.parse(v.content));
+    const id = param(c, 'offerId');
+    content.offers = content.offers.filter((o) => o.id !== id);
+    saveContent(v.id, content);
+    return c.json({ ok: true });
+  });
   app.patch('/venues/:id/rooms/:roomId', auth, async (c) => {
     const v = venueFor(c, param(c, 'id'));
     if (!v) return c.json({ error: 'Not found' }, 404);
@@ -906,8 +960,30 @@ export function createApp(
       v.id,
       since,
     ) ?? { sessions: 0, routes: 0, arrivals: 0, sample: 0 };
+    // Searches that found nothing: names or aliases the venue is missing.
+    const failedSearches = all<{ query: string; n: number }>(
+      "SELECT lower(query) AS query, COUNT(*) AS n FROM events WHERE venue_id = ? AND at >= ? AND type = 'search_failed' AND query IS NOT NULL GROUP BY lower(query) ORDER BY n DESC LIMIT 8",
+      v.id,
+      since,
+    );
+    // Offer counts only: how often each was shown, opened and dismissed (the id travels as `query`).
+    const offers = all<{
+      offerId: string;
+      shown: number;
+      opened: number;
+      dismissed: number;
+    }>(
+      `SELECT query AS offerId, SUM(type = 'offer_shown') AS shown,
+        SUM(type = 'offer_opened') AS opened, SUM(type = 'offer_dismissed') AS dismissed
+       FROM events WHERE venue_id = ? AND at >= ? AND type LIKE 'offer_%' AND query IS NOT NULL
+       GROUP BY query`,
+      v.id,
+      since,
+    );
     return c.json({
       days,
+      failedSearches,
+      offers,
       sampleData: Boolean(totals.sample),
       totals: {
         sessions: totals.sessions ?? 0,

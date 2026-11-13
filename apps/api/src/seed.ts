@@ -74,6 +74,63 @@ export function upgradeDemo(db: Db) {
   return true;
 }
 
+/** Offers for the fictional demo venue, so the feature can be seen without setting anything up. */
+export const demoOffers = [
+  {
+    id: 'offer-cafe-pastry',
+    title: 'Free pastry with any coffee',
+    text: 'Today at Harbour Café.',
+    placeId: 'poi-cafe',
+    radiusMetres: 14,
+    dwellSeconds: 0,
+    cooldownMinutes: 240,
+    active: true,
+  },
+  {
+    id: 'offer-market-bread',
+    title: 'Fresh bread, straight from the oven',
+    text: 'At the bakery counter.',
+    placeId: 'poi-market',
+    radiusMetres: 12,
+    dwellSeconds: 0,
+    cooldownMinutes: 240,
+    active: true,
+  },
+];
+
+/**
+ * Adds the demo offers to an existing development database (the demo venue only), in the draft
+ * content and in the published version visitors load. Does nothing once the venue has an `offers`
+ * list, even an empty one, so offers removed in Studio stay removed.
+ */
+export function upgradeDemoOffers(db: Db) {
+  const row = db
+    .prepare("SELECT content FROM venues WHERE id = 'turn-demo-centre'")
+    .get() as { content: string } | undefined;
+  if (!row) return false;
+  const content = JSON.parse(row.content) as { offers?: unknown };
+  if (content.offers !== undefined) return false;
+  content.offers = demoOffers;
+  db.prepare(
+    "UPDATE venues SET content = ?, updated_at = ? WHERE id = 'turn-demo-centre'",
+  ).run(JSON.stringify(content), now());
+  const live = db
+    .prepare(
+      "SELECT number, content FROM versions WHERE venue_id = 'turn-demo-centre' AND status = 'published'",
+    )
+    .get() as { number: number; content: string } | undefined;
+  if (live) {
+    const published = JSON.parse(live.content) as { offers?: unknown };
+    if (published.offers === undefined) {
+      published.offers = demoOffers;
+      db.prepare(
+        "UPDATE versions SET content = ? WHERE venue_id = 'turn-demo-centre' AND number = ?",
+      ).run(JSON.stringify(published), live.number);
+    }
+  }
+  return true;
+}
+
 /** Deterministic pseudo-random numbers so seeded sample analytics are stable between runs. */
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -173,6 +230,7 @@ export function seed(db: Db, options: { privateVenuePath?: string } = {}) {
       },
       ...upperContent,
     },
+    offers: demoOffers,
     beacons: [],
     branding: {},
   };

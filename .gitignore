@@ -31,3 +31,5 @@ apps/navigator/public/maplibre/
 apps/navigator/public/map/
 apps/console/public/maplibre/
 apps/console/public/map/
+# Browser automation logs from local checks
+.playwright-mcp/
