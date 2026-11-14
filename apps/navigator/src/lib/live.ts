@@ -72,6 +72,8 @@ export function useLiveSession(
   shareLearned = false,
   /** This phone's profile: stride, radio window and RSSI offset prior (ADR-0015). */
   profile: DeviceProfile | null = null,
+  /** Filter size for this phone's performance tier (Plan 005 §12). */
+  particles: number | null = null,
 ) {
   const ref = useRef<LivePositioning | null>(null);
   const [state, setState] = useState<LiveStatus | null>(null);
@@ -89,6 +91,8 @@ export function useLiveSession(
   orientationRef.current = orientation;
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const particlesRef = useRef(particles);
+  particlesRef.current = particles;
   const learnedAt = useRef(0);
   const sharedAt = useRef(0);
 
@@ -125,6 +129,7 @@ export function useLiveSession(
           .filter((b) => b.floorId !== onFloor)
           .map((b) => ({ tag: b.tag, floorId: b.floorId })),
         ...(profileRef.current ? { profile: profileRef.current } : {}),
+        ...(particlesRef.current ? { particles: particlesRef.current } : {}),
       });
       ref.current = live;
       setFloorId(onFloor);

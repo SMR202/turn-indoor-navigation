@@ -5,6 +5,9 @@ import { ScrollView, Switch, View } from 'react-native';
 import { hapticsAvailable, voiceAvailable } from '../lib/feedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiBase } from '../lib/api';
+import { capabilityNotes } from '@turn/positioning-runtime';
+import { deviceModel } from '../lib/device-profile';
+import { useCapabilities, usePerformance } from '../lib/performance';
 import { Icon } from '../components/icon';
 import { Divider, IconButton, T, Tap } from '../components/ui';
 import { usePrefs, useTheme } from '../theme';
@@ -13,6 +16,21 @@ export default function Settings() {
   const { c } = useTheme();
   const { prefs, setPrefs } = usePrefs();
   const insets = useSafeAreaInsets();
+  const performance = usePerformance(prefs.simpleMap);
+  const capabilities = useCapabilities();
+  const tierName = {
+    full: 'Full detail',
+    balanced: 'Balanced',
+    light: 'Light: flat map, lighter positioning',
+  }[performance.tier];
+  const sensors = capabilities
+    ? [
+        capabilities.motion ? 'motion' : null,
+        capabilities.gyroscope ? 'gyroscope' : null,
+        capabilities.compass ? 'compass' : null,
+        capabilities.barometer ? 'pressure' : null,
+      ].filter(Boolean)
+    : [];
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <View
@@ -111,6 +129,44 @@ export default function Settings() {
             }
             value={prefs.haptics}
             onChange={(v) => setPrefs({ haptics: v })}
+          />
+        </Group>
+        <Group title="This phone">
+          <Info
+            icon="sliders"
+            title={
+              deviceModel === 'unknown'
+                ? tierName
+                : `${deviceModel} · ${tierName}`
+            }
+            detail={
+              capabilities
+                ? `Sensors: ${sensors.length ? sensors.join(', ') : 'none found'}.${
+                    performance.frameMs
+                      ? ` Draws ${Math.round(1000 / performance.frameMs)} frames a second.`
+                      : ''
+                  }`
+                : 'Checking sensors…'
+            }
+          />
+          {capabilities &&
+            capabilityNotes(capabilities).map((note) => (
+              <View key={note}>
+                <Divider inset={56} />
+                <Info
+                  icon="info"
+                  title="Works differently here"
+                  detail={note}
+                />
+              </View>
+            ))}
+          <Divider inset={56} />
+          <Row
+            icon="layers"
+            title="Simple map"
+            detail="Always the flat map and lighter positioning. Saves battery; TURN chooses this by itself on phones that need it."
+            value={prefs.simpleMap}
+            onChange={(v) => setPrefs({ simpleMap: v })}
           />
         </Group>
         <Group title="Offers">

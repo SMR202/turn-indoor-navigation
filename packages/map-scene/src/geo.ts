@@ -63,3 +63,67 @@ export function zoomForMetresPerPixel(metres: number, lat: number) {
 export function metresPerPixel(zoom: number, lat: number) {
   return (40075016.686 * Math.cos(lat * RAD)) / (512 * 2 ** zoom);
 }
+
+/** A satellite position fix from the phone. */
+export type GpsFix = {
+  lat: number;
+  lon: number;
+  /** The phone's own estimate of the error radius (metres, about 68%). */
+  accuracyMetres: number;
+};
+export type Entrance = P & { id: string; floorId: string };
+
+/**
+ * A GPS fix as a way in (Plan 005 §7.1): outdoors the phone knows where it is, so on arrival the
+ * nearest entrance is a good first position for the indoor filter. Returns null when the fix is
+ * too vague to trust (GPS indoors, or under a canopy) or nowhere near a door of this venue.
+ *
+ * The result is the entrance, not the raw fix: a walker reported 8 m from a door is almost
+ * certainly at it, and starting on the walk graph lets the first steps settle the rest.
+ */
+export function entryFix(
+  fix: GpsFix,
+  g: Georeference,
+  entrances: Entrance[],
+  options: { maxAccuracyMetres?: number; withinMetres?: number } = {},
+): (Entrance & { sigmaMetres: number; distanceMetres: number }) | null {
+  const maxAccuracy = options.maxAccuracyMetres ?? 25;
+  if (
+    !Number.isFinite(fix.accuracyMetres) ||
+    fix.accuracyMetres <= 0 ||
+    fix.accuracyMetres > maxAccuracy
+  )
+    return null;
+  const p = fromLngLat([fix.lon, fix.lat], g);
+  let best: { e: Entrance; d: number } | null = null;
+  for (const e of entrances) {
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (!best || d < best.d) best = { e, d };
+  }
+  // The door must be believable from where the phone says it is.
+  if (!best || best.d > (options.withinMetres ?? 20) + fix.accuracyMetres)
+    return null;
+  return {
+    ...best.e,
+    distanceMetres: best.d,
+    // Never tighter than a doorway and its approach, however confident the phone claims to be.
+    sigmaMetres: Math.max(3, Math.min(10, fix.accuracyMetres)),
+  };
+}
+
+/**
+ * The venue a GPS fix is at, for opening the right map by itself: the nearest venue whose centre
+ * is within its radius plus the fix's own error. Null when none is.
+ */
+export function venueAt<
+  T extends { georeference: Georeference; radiusMetres: number },
+>(fix: GpsFix, venues: T[]): T | null {
+  let best: { v: T; d: number } | null = null;
+  for (const v of venues) {
+    const p = fromLngLat([fix.lon, fix.lat], v.georeference);
+    const d = Math.hypot(p.x, p.y);
+    if (d <= v.radiusMetres + fix.accuracyMetres && (!best || d < best.d))
+      best = { v, d };
+  }
+  return best?.v ?? null;
+}

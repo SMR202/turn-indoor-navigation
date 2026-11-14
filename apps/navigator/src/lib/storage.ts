@@ -66,6 +66,8 @@ export type Preferences = {
   venueSetup: boolean;
   /** Offers and tips from the venue when you are near a place. */
   offers: boolean;
+  /** Always draw the flat map and run the lighter filter (saves battery). */
+  simpleMap: boolean;
 };
 export const defaultPreferences: Preferences = {
   onboarded: false,
@@ -76,4 +78,5 @@ export const defaultPreferences: Preferences = {
   haptics: true,
   venueSetup: false,
   offers: true,
+  simpleMap: false,
 };

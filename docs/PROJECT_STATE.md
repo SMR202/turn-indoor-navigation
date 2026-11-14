@@ -1,10 +1,28 @@
 # TURN project state
 
-Updated: 2026-11-06.
+Updated: 2026-11-14.
 
 ## Current milestone
 
 M0/M1/M2 and experimental PDR implemented. Current branch `codex/native-step-comparison` includes settled starts, labelled trials, native/manual count comparison, local history and one-tap LAN transfer. Fourteen inbox recordings were replayed; new sessions now use a versioned experimental motion filter. General localization accuracy remains unvalidated.
+
+## Product excellence — 2026-11-14 (Plan 005)
+
+Owner's brief (2026-11-13): the app works but is not publishable; make every part excellent. [Plan 005](../plans/active/005-turn-masterplan-excellence.md) is the plan of record. IMPLEMENTED since 2026-11-13:
+
+- **Map** ([ADR-0016](../decisions/0016-map-look-and-camera-director.md)): rooms as low blocks with names, open corridors, ground shadow, light and dark palettes; the walker's room, rooms on the route and the destination open; route chevrons, destination pin, a constant-size dot with an uncertainty disc and a beam; a camera director that turns the map with the route, not the compass; 2D/3D, compass and re-centre controls. A framing bug (padding counted twice) is fixed.
+- **Experience**: one Start button (live when the phone can position itself, else step by step), Preview, no technical mode names, staff tools behind a setting, mute in the navigation bar.
+- **Floors** ([ADR-0017](../decisions/0017-floor-belief.md)): barometric floor-change detector and a floor belief that also uses beacons on other floors and the route; the map changes floor by itself, the button stays as fallback.
+- **Search**: word starts in any order, typo tolerance, everyday synonyms, room numbers, nearest first, did-you-mean; failed searches reported anonymously.
+- **Offers** ([ADR-0018](../decisions/0018-offers-decided-on-the-phone.md)): authored in Studio, decided on the phone with fixed limits, anonymous counts back.
+- **Mapping studio**: draw or trace a floor over a plan picture, detect rooms and doors automatically, reshape existing floors, live checks; corridors that bend now route.
+- **Phones**: performance tiers (filter size, 2D/3D), a capability report with what each missing sensor changes, GPS entry maths.
+
+Validation: `npm run check` passes (346 tests); visitor app and Studio exercised in a headless browser (demo walk, search, offer card, editor from picture to built floor). Nothing new has run on a phone: the phone map renderer, barometer, floor switching and tiers are unverified there. Floor and tier thresholds are untuned defaults; all positioning accuracy remains unmeasured (beacons not mounted).
+
+Not done from Plan 005: magnetic-disturbance handling and the opposite-direction start hypothesis in the filter, fade and "lost" states of the dot, search results as map pins, DXF import, phone capture of a building, background offer notifications, the native build with GPS and beacon battery frames, store release, hosted backend.
+
+Next action: install the current builds' JavaScript on both phones (no new native build is needed for the map, floors, search or offers), walk the home venue and one FAST floor, and record floor changes on stairs to tune the detector. Then beacon day ([beacon setup](BEACON_SETUP.md)).
 
 ## TURN 1.0 — 2026-11-06 (Plan 004)
 

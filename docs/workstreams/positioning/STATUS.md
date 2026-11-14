@@ -1,6 +1,18 @@
 # Positioning workstream
 
-Updated: 2026-11-06.
+Updated: 2026-11-14.
+
+## Floors, phone tiers, GPS entry — 2026-11-14 ([Plan 005](../../../plans/active/005-turn-masterplan-excellence.md))
+
+IMPLEMENTED: `positioning-core/floor.ts` ([ADR-0017](../../../decisions/0017-floor-belief.md)): `FloorChangeDetector` (pressure to floor-change events: relative height only, 60% of a storey then 2.5 s level, pressure steps faster than 1.2 s ignored, stairs / lift / escalator from climb rate and stepping) and `FloorBelief` (barometer moves, strongest beacon per floor, a route nudge, the walker's confirmation; shown floor switches at 0.8). Runtime: `sensors/barometer.ts` (feature-detected), beacons on other floors heard as floor hints only (`AssistedTracker.floorVotes`), `performance.ts` (tier from memory, model age and measured frame pacing; 800 / 400 / 200 particles; capability notes) and `sensors/capabilities.ts`. `map-scene/geo.ts`: `entryFix` and `venueAt` for a GPS fix at an entrance.
+
+Validation: 16 floor tests on simulated pressure traces (an hour of ±1.2 hPa drift with noise gives no event; one storey by stairs with a landing; three storeys by lift; a 0.3 hPa door step ignored at 1 Hz and 10 Hz; a mezzanine not counted; beacons alone decide without a barometer; recovery from a false barometer event). 7 performance tests, 4 GPS tests. EXPERIMENT RESULT: none; no pressure recording from a building exists yet.
+
+Decisions: floor is a belief, never one sensor ([ADR-0017](../../../decisions/0017-floor-belief.md)). All thresholds are PROPOSED defaults.
+
+Open: magnetic disturbance widening the heading uncertainty; the opposite-direction start hypothesis; stillness and kidnapped-recovery rules; expo-location for the GPS fix (native build).
+
+Next: record pressure while climbing each staircase at home and at FAST (phone in hand and in pocket), replay through the detector, and set storey heights and thresholds per venue.
 
 ## Orientation, device profiles, beacon simulator — 2026-11-06
 

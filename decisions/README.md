@@ -18,3 +18,6 @@ Use sequential ADR IDs. Accepted decisions remain in history; supersede rather t
 - [ADR-0013: MapLibre as TURN's map engine](0013-maplibre-map-engine.md)
 - [ADR-0014: venue georeference and orientation](0014-venue-georeference-and-orientation.md)
 - [ADR-0015: device profiles and self-calibration](0015-device-profiles.md)
+- [ADR-0016: room blocks and a camera director for the 3D map](0016-map-look-and-camera-director.md)
+- [ADR-0017: floors from a belief over barometer, beacons and the route](0017-floor-belief.md)
+- [ADR-0018: offers are decided on the phone](0018-offers-decided-on-the-phone.md)

@@ -247,7 +247,7 @@ Replay every recorded walk through each engine change; report median, 90th and 9
 
 **Rules** (DECISION):
 
-- Opt-in, with a visible "Offers" switch; quiet during an active manoeuvre; at most one nudge on screen; never the same one twice inside its cooldown.
+- In-app cards are on by default with a visible "Offers" switch in Settings; background notifications will be opt-in. Quiet during an active manoeuvre; at most one card on screen; never the same one twice inside its cooldown.
 - A nudge is a small card under the search bar: what, where, how far; tap to see the place; swipe to dismiss.
 - Only anonymous counts (shown, opened, dismissed) return to the venue.
 
@@ -306,45 +306,45 @@ Each wave ends with tests, a browser or phone check, updated status files and a 
 
 **Wave 1 — Map that looks like a building**
 
-- [ ] Room blocks, open floor, ambient shadow, light and dark palettes, labels on blocks.
-- [ ] The current, selected and destination rooms open or lift.
-- [ ] Route with casing and direction chevrons; new user puck (ring, beam, disc).
-- [ ] Camera director (modes of §5.2), course-up following, re-centre, 2D/3D and compass controls.
-- [ ] Web and native renderers on the same style.
+- [x] Room blocks, open floor, ambient shadow, light and dark palettes, labels on blocks. Headless-browser screenshots in both themes ([ADR-0016](../../decisions/0016-map-look-and-camera-director.md)).
+- [x] The current, selected and destination rooms open or lift (`openRoomIds`, `selectionData`; tested).
+- [x] Route with casing and direction chevrons; new user puck (ring, beam, disc); destination pin.
+- [x] Camera director (modes of §5.2), course-up following, re-centre, 2D/3D and compass controls (`followCamera`, tested; seen in a browser walk). Following resumes 10 s after a gesture.
+- [ ] Web and native renderers on the same style. Both are written and typecheck; only the web one has been run. The phone renderer needs a phone session.
 
 **Wave 2 — Experience**
 
-- [ ] Visitor flow without engineering wording; one Start button; setup tools moved.
-- [ ] Route preview frames the route; floor steps.
-- [ ] Navigation chrome: banner, then-chip, bottom bar, pills, floor-change card, arrival.
-- [ ] Blue-dot display rules of §4 (ride the line, states, fade on large corrections).
+- [x] Visitor flow without engineering wording; one Start button (live when available, else step by step), Preview; staff tools behind a Settings switch.
+- [x] Route preview frames the route and turns it bottom to top; floors listed. This also fixed a framing bug: the map padding was counted twice.
+- [x] Navigation chrome: banner, then-chip, bottom bar with mute, re-centre pill, floor-change card, arrival (existing pieces kept, wording simplified).
+- [ ] Blue-dot display rules of §4. Constant-size dot, clamped disc and a beam that widens with heading doubt are done; riding the route and no wall crossings already existed in `LiveDot`. Fade on large corrections and the "stale" and "lost" states are not done.
 - [ ] Empty, loading, error and offline states; accessibility pass.
 
 **Wave 3 — Engine and floors**
 
-- [ ] Barometric floor-change detector and floor belief (pure, tested on synthetic traces with drift, door slams, lifts, landings).
-- [ ] Barometer source in the app (feature-detected) and automatic floor switch with confirmation fallback.
+- [x] Barometric floor-change detector and floor belief (pure; 16 tests on simulated traces: drift, landings, lifts, pressure steps, mezzanines) ([ADR-0017](../../decisions/0017-floor-belief.md)). No recording from a real building yet.
+- [x] Barometer source in the app (feature-detected), beacons on other floors as floor hints, automatic floor switch with the confirmation button as fallback. Written and typechecked; not yet run on a phone.
 - [ ] Magnetic disturbance → heading uncertainty.
 - [ ] Opposite-direction start hypothesis.
-- [ ] Performance tiers and capability report.
-- [ ] GPS entry fix maths (sensor wiring in the next native build).
+- [x] Performance tiers and capability report: tier from memory, model age and measured frame pacing sets the filter size and 2D/3D; "This phone" in Settings lists sensors and what each missing one changes; a Simple map switch. Seen in the browser; tier thresholds are PROPOSED.
+- [x] GPS entry fix maths (`entryFix`, `venueAt`; tested). The sensor itself (expo-location) needs the next native build.
 
 **Wave 4 — Search**
 
-- [ ] Search engine (synonyms, typos, numbers, walking-distance ranking) with tests.
-- [ ] Search sheet, nearest-by-category, results on the map, failed-search logging.
+- [x] Search engine (synonyms, typos, numbers, walking-distance ranking) with 8 tests.
+- [ ] Search sheet, nearest-by-category, results on the map, failed-search logging. Did-you-mean, browse-instead and anonymous failed-search logging are done (shown in Studio Analytics); results as pins on the map are not.
 
 **Wave 5 — Mapping studio**
 
-- [ ] Trace editor: underlay, scale, rooms, doors, snapping, undo, validation, build.
-- [ ] Room detection from the plan image.
-- [ ] Edit an existing floor's geometry (round trip).
+- [x] Trace editor: underlay, scale, rooms, doors, places, snapping, move and reshape, undo, autosave, live checks, build. Exercised end to end in a headless browser on a made-up plan (Pier Offices demo venue: 8 rooms, 8 doors, valid).
+- [x] Room detection from the plan image, with doors at openings and the corridor recognised. Tested on synthetic plans only; real plans with shading or missing walls will need hand correction.
+- [x] Edit an existing floor's geometry (round trip, tested). Rebuilding derives walls from room outlines again; the editor says so when a floor would lose free-standing walls. FAST floors stay with TURN-Mapper.
 - [ ] DXF import (PROPOSED), phone capture (PROPOSED, native).
 
 **Wave 6 — Offers**
 
-- [ ] Offer model, Studio authoring, publish.
-- [ ] On-device trigger engine (zones, dwell, schedule, caps) with tests; nudge card; anonymous counts.
+- [x] Offer model, Studio authoring (Offers tab with 30-day counts), carried by publish ([ADR-0018](../../decisions/0018-offers-decided-on-the-phone.md)).
+- [x] On-device trigger engine (radius, dwell, schedule, caps) with 8 tests; card in the app; anonymous counts. Seen on a preview walk in the browser.
 - [ ] Background delivery (native build, permissions).
 
 **Wave 7 — Hardware day and release**

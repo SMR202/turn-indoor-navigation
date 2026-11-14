@@ -84,6 +84,7 @@ import { placementsFor, useBeaconLayout } from '../../lib/beacons';
 import { useLiveSession } from '../../lib/live';
 import { useVenueOrientation } from '../../lib/orientation';
 import { useDeviceProfile } from '../../lib/device-profile';
+import { usePerformance } from '../../lib/performance';
 import { haptic, speak, useSpokenGuidance } from '../../lib/feedback';
 import { LiveDot } from '../../lib/live-dot';
 import { load, save, useStored } from '../../lib/storage';
@@ -320,6 +321,8 @@ function Experience({
   );
   const orientation = useVenueOrientation(venueId, bundle.source === 'live');
   const profile = useDeviceProfile(bundle.source === 'live');
+  // What this phone can comfortably do decides the map's detail and the filter's size.
+  const performance = usePerformance(prefs.simpleMap);
   const live = useLiveSession(
     pkg,
     venueId,
@@ -327,6 +330,7 @@ function Experience({
     orientation,
     bundle.source === 'live',
     profile,
+    performance.settings.particles,
   );
   const liveAvailability = live.availableOn(start.floorId);
   const [guidance, setGuidance] = useState<Guidance>(
@@ -826,7 +830,9 @@ function Experience({
     route?.steps[Math.min(route.steps.length - 1, current + 1)] ?? null;
 
   // ---- Map look: which rooms open up, and where the camera director wants the view -----------
-  const [flat, setFlat] = useState(false);
+  // 2D by choice (the button), or because this phone is on the light tier.
+  const [flatChoice, setFlat] = useState<boolean | null>(null);
+  const flat = flatChoice ?? !performance.settings.map3d;
   const routing3d = routing && destination?.floorId === floorId;
   const openRooms = useMemo(
     () =>
@@ -2659,7 +2665,7 @@ function Experience({
               scaleTo={0.92}
               onPress={() => {
                 haptic('tap');
-                setFlat((f) => !f);
+                setFlat(!flat);
               }}
               style={[
                 {

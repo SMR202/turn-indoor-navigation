@@ -18,3 +18,5 @@ export {
 export * from './locate';
 export * from './compass';
 export * from './device-profile';
+export * from './performance';
+export * from './sensors/capabilities';

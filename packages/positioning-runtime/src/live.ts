@@ -93,6 +93,8 @@ export type LiveOptions = {
   save?: (trace: BleTraceRecord) => void;
   /** Beacons on other floors, heard only as floor hints. */
   otherFloorBeacons?: { tag: string; floorId: string }[];
+  /** Hypotheses in the filter, from the phone's performance tier; the default when unset. */
+  particles?: number;
 };
 
 /** Whether live positioning can run here, and why not. Feature-detected, never assumed. */
@@ -214,17 +216,20 @@ export class LivePositioning {
       assist: {
         windowSeconds: this.options.profile?.scan.windowSeconds ?? 4,
         minPackets: this.options.profile?.scan.minPackets ?? 2,
-        ...(this.options.profile
-          ? {
-              fusion: {
+        fusion: {
+          ...(this.options.profile
+            ? {
                 rssiSigmaDb: 9,
                 rssiTemper: 0.6,
                 rssiGateSigmas: 2.5,
                 rssiOffsetSigmaDb: 6,
                 rssiOffsetPriorDb: this.options.profile.rssiOffsetDb,
-              },
-            }
-          : {}),
+              }
+            : {}),
+          ...(this.options.particles
+            ? { particles: this.options.particles }
+            : {}),
+        },
       },
     });
     this.tracker = tracker;

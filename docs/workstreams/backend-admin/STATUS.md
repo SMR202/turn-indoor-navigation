@@ -1,6 +1,14 @@
 # backend-admin workstream
 
-Last meaningful update: 2026-11-06 (TURN 1.0: georeference, map editing, beacon programme)
+Last meaningful update: 2026-11-14 (offers, failed searches, drawing editor)
+
+## Offers and Studio additions — 2026-11-14 ([Plan 005](../../../plans/active/005-turn-masterplan-excellence.md))
+
+IMPLEMENTED: venue content gains `offers` (place, radius, dwell, dates, hours, days, cooldown, on/off) with `PUT` / `DELETE /venues/:id/offers/:offerId`; publish carries them ([ADR-0018](../../../decisions/0018-offers-decided-on-the-phone.md)). Events accept `search_failed`, `offer_shown`, `offer_opened`, `offer_dismissed`; analytics returns `failedSearches` and per-offer counts. Studio: an **Offers** tab (list with 30-day counts, editor drawer, undo on remove), a failed-search insight in Analytics, and **Draw or trace a floor** on the Map tab ([mapping status](../mapping/STATUS.md)). The demo venue ships two sample offers (added once to existing development databases).
+
+Validation: API tests for offers, counts and failed searches; the Offers tab and editor seen in a headless browser with the seeded demo account.
+
+Note: the Pier Offices demo venue's draft now holds the floor drawn during the editor test (one floor, 8 rooms).
 
 ## TURN 1.0 — 2026-11-06 ([Plan 004](../../../plans/active/004-turn-1.0.md))
 

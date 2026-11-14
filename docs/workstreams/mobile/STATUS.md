@@ -1,6 +1,16 @@
 # Mobile workstream
 
-Updated: 2026-11-06.
+Updated: 2026-11-14.
+
+## Product excellence pass — 2026-11-14 ([Plan 005](../../../plans/active/005-turn-masterplan-excellence.md))
+
+IMPLEMENTED: the new map look and camera director ([ADR-0016](../../../decisions/0016-map-look-and-camera-director.md)) in both renderers (`map/VenueMap3D.web.tsx`, `.native.tsx`; phones keep room blocks in their own source); 2D/3D, compass (after the map is turned) and one where-am-I button; re-centre pill and automatic return to following after 10 s; route sheet with Start, Preview and Step-free; mute in the navigation bar; staff tools behind Settings → Venue setup tools. Automatic floor changes (`lib/floor-sense.ts`, [ADR-0017](../../../decisions/0017-floor-belief.md)). Search (`lib/search.ts`). Offer cards (`lib/offers.ts`, [ADR-0018](../../../decisions/0018-offers-decided-on-the-phone.md)) with an Offers switch. Performance tiers and a "This phone" panel (`lib/performance.ts`), Simple map switch.
+
+Validation: typecheck, lint and tests pass. Headless browser (390 × 844, light and dark): overview, place, route preview framed and turned, preview walk with course-up camera, offer card, search with a typo, Settings. FACT: the browser's built-in preview pane throttles animation when hidden; a headless browser was used instead.
+
+Not validated: anything on a phone. The phone map renderer, barometer, floor switching, tiers and offer cards have only been typechecked. No new native module is needed: the installed Android build 8 and the iPhone build of 2026-11-06 load this JavaScript from the phone server.
+
+Next: scan the Expo launch QR on both phones; check the map (blocks, labels, camera turning with the route), a floor change on stairs with and without tapping, search and an offer card on the demo venue; record anything glitchy.
 
 ## TURN 1.0 visitor app — 2026-11-06 ([Plan 004](../../../plans/active/004-turn-1.0.md))
 

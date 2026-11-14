@@ -46,6 +46,19 @@ FACT (home beacons, 2026-10-22): they shipped at **Tx Power 0 dBm** and **Advert
 
 At 100 ms and 4 dBm a coin cell lasts months rather than years; Freq 2 (200 ms) is the compromise.
 
+### Minew E7 Plus: slot plan (DECISION, [Plan 005 §13](../plans/active/005-turn-masterplan-excellence.md))
+
+Set with the maker's BeaconSET+ app before mounting. Vendor facts: up to six advertising slots, replaceable 1000 mAh cell.
+
+| Slot | Frame                                               | Interval, power   | Why                                                               |
+| ---- | --------------------------------------------------- | ----------------- | ----------------------------------------------------------------- |
+| 1    | Eddystone-UID (venue namespace, beacon instance)    | 250–300 ms, 0 dBm | Positioning on iPhone and Android                                 |
+| 2    | iBeacon (venue UUID, major = floor, minor = beacon) | 800–1000 ms       | iPhone background wake later; a floor hint                        |
+| 3    | Eddystone-TLM                                       | 10 s              | Battery and temperature for beacon health (needs a new app build) |
+| 4    | Accelerometer, if fitted                            | on movement       | "This beacon was moved" (later)                                   |
+
+Use −4 to −8 dBm where beacons are close together and +4 dBm in long open corridors. Put one beacon at every stair and lift landing: it settles the floor on phones without a pressure sensor.
+
 ### Buying beacons (PROPOSED)
 
 Candidates the owner shortlisted, from Minew's product pages (vendor figures, not measured here):
