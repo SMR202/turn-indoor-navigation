@@ -2,6 +2,8 @@ import { AppState, Platform } from 'react-native';
 import type { Observation } from '@turn/contracts';
 import {
   GUARDED_PDR_REVISION,
+  headingNoiseFactorFor,
+  MagneticMonitor,
   NavigationEngine,
   type BeaconPlacement,
   type BleTraceRecord,
@@ -22,6 +24,7 @@ import {
 import { bleBuildAvailable } from './ble';
 import type { DeviceProfile } from './device-profile';
 import { waitForForeground } from './sensors/foreground';
+import { watchMagneticField } from './sensors/magnetometer';
 import { startMotionSource } from './sensors/motion-source';
 import { SettledStart } from './sensors/settled-start';
 
@@ -55,6 +58,17 @@ export const START_HEADING_SIGMA = {
   compass: 0.5,
   unknown: Math.PI,
 } as const;
+/**
+ * Share of the filter's hypotheses that start facing the opposite way (Plan 005 §7.2). "Facing
+ * along the route" is an assumption people often break; a compass can be half a turn out near
+ * steel; a direction the walker marked is trusted.
+ */
+export const START_FLIP_SHARE = {
+  route: 0.25,
+  chosen: 0,
+  compass: 0.15,
+  unknown: 0,
+} as const;
 export type LiveStart = {
   /** Where the start heading comes from (default: the route's first direction). */
   facing?: keyof typeof START_HEADING_SIGMA;
@@ -80,6 +94,10 @@ export type LiveHeading = {
   /** Where the start heading came from, and whether the settle cue has been given. */
   facing: NonNullable<LiveStart['facing']>;
   settled: boolean;
+  /** Weight (0–1) of the "started facing the other way" hypothesis still alive, 0 when settled. */
+  ambiguity: number;
+  /** How disturbed the magnetic field is now (0 calm … 1 heavy), when the phone can tell. */
+  magneticDisturbance: number;
 };
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export type LiveOptions = {
@@ -126,6 +144,8 @@ export class LivePositioning {
   private tracker: AssistedTracker | null = null;
   private engine: NavigationEngine | null = null;
   private stopMotion: (() => void) | null = null;
+  private stopMagnetic: (() => void) | null = null;
+  private magnetic: MagneticMonitor | null = null;
   private listeners = new Set<(s: LiveState) => void>();
   private abort: AbortController | null = null;
   private generation = 0;
@@ -251,7 +271,33 @@ export class LivePositioning {
       start.y,
       how.sigma ?? 1.2,
       how.headingSigma ?? START_HEADING_SIGMA[facing],
+      START_FLIP_SHARE[facing],
     );
+    // The compass is trusted less where the magnetic field is disturbed (steel, lifts).
+    const magnetic = new MagneticMonitor();
+    this.magnetic = magnetic;
+    let doubted = false;
+    void watchMagneticField((sample) => {
+      if (token !== this.generation) return;
+      const m = magnetic.update(sample);
+      tracker.assist.fusion.setHeadingNoiseFactor(
+        headingNoiseFactorFor(m.disturbance),
+      );
+      // A compass start taken in a disturbed spot gets a wider heading, once.
+      if (
+        !doubted &&
+        facing === 'compass' &&
+        this.state.phase === 'tracking' &&
+        this.state.steps < 4 &&
+        m.disturbance > 0.3
+      ) {
+        doubted = true;
+        tracker.assist.fusion.spreadHeading(0.6 * m.disturbance);
+      }
+    }).then((stop) => {
+      if (token !== this.generation) stop();
+      else this.stopMagnetic = stop;
+    });
     tracker.setRoute(this.route);
     // The step engine is anchored at the nearest venue anchor; the tracker turns its positions
     // into displacements from that point, so any start position works.
@@ -366,6 +412,8 @@ export class LivePositioning {
       walkedMetres: this.state.steps * this.stepLength,
       facing: this.facing ?? 'route',
       settled: this.state.phase === 'tracking',
+      ambiguity: e.alternativeWeight,
+      magneticDisturbance: this.magnetic?.disturbance ?? 0,
     };
   }
 
@@ -426,6 +474,8 @@ export class LivePositioning {
     this.abort = null;
     this.stopMotion?.();
     this.stopMotion = null;
+    this.stopMagnetic?.();
+    this.stopMagnetic = null;
     this.tracker?.finish();
     this.tracker = null;
     this.engine = null;

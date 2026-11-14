@@ -40,7 +40,14 @@ export type DotSnapshot = {
   headingOn: boolean;
   live: boolean;
   visible: boolean;
+  /** This step is a jump to a corrected position: do not glide to it. */
+  jump: boolean;
+  /** The position is too unsure to trust (drawn grey; the app offers to set it). */
+  lost: boolean;
 };
+
+/** Uncertainty (metres) from which the position counts as lost. */
+export const LOST_SIGMA_METRES = 10;
 
 /**
  * Drives the live blue dot. The display pose (route snapping, moves through doors, standing hold)
@@ -69,6 +76,9 @@ export class LiveDot {
   private emitted: P | null = null;
   private sigma = 2;
   private tracking = false;
+  private lost = false;
+  private jumpNow = false;
+  private jumpListeners = new Set<(metres: number) => void>();
   private watchers = new Set<(s: DotSnapshot) => void>();
   private tickers = new Set<(s: DotSnapshot) => void>();
   private watched: DotSnapshot | null = null;
@@ -86,12 +96,30 @@ export class LiveDot {
     this.display.update(p, performance.now() / 1000, walked, fix);
     this.sigma = p.sigma;
     this.values.sigma.value = withTiming(p.sigma, { duration: 600 });
+    const lost = p.sigma >= LOST_SIGMA_METRES;
+    if (lost !== this.lost) {
+      this.lost = lost;
+      this.showLive();
+      this.notify(true);
+    }
+  }
+  private showLive() {
+    this.values.live.value = withTiming(this.tracking && !this.lost ? 1 : 0, {
+      duration: 300,
+    });
   }
   setTracking(tracking: boolean) {
     this.tracking = tracking;
-    this.values.live.value = withTiming(tracking ? 1 : 0, { duration: 300 });
+    this.showLive();
     this.notify(true);
   }
+  /** A large correction was shown as a jump (metres moved); returns the unsubscribe function. */
+  onJump = (listener: (metres: number) => void) => {
+    this.jumpListeners.add(listener);
+    return () => {
+      this.jumpListeners.delete(listener);
+    };
+  };
   /** Starts animating; `heading` is read every tick (venue rad or null while unknown). */
   run(heading: () => number | null) {
     if (this.timer) return;
@@ -104,6 +132,7 @@ export class LiveDot {
     this.shown = null;
     this.lastSteps = -1;
     this.emitted = null;
+    this.lost = false;
     this.display.reset();
     for (const l of this.listeners) l(null);
     for (const t of this.tickers) t(this.snapshot());
@@ -116,8 +145,10 @@ export class LiveDot {
       sigma: this.sigma,
       heading: this.unwrapped,
       headingOn: this.headingKnown,
-      live: this.tracking,
+      live: this.tracking && !this.lost,
       visible: this.shown !== null,
+      jump: this.jumpNow,
+      lost: this.lost,
     };
   }
   /** Resting state for the map (a few times a second at most, only on visible change). */
@@ -135,6 +166,7 @@ export class LiveDot {
       !o ||
       n.visible !== o.visible ||
       n.live !== o.live ||
+      n.lost !== o.lost ||
       n.headingOn !== o.headingOn ||
       Math.hypot(n.x - o.x, n.y - o.y) >= 0.03 ||
       Math.abs(n.sigma - o.sigma) >= 0.1 ||
@@ -163,12 +195,22 @@ export class LiveDot {
   }
   private tick(heading: number | null) {
     const p = this.display.step(TICK);
+    const jump = this.display.takeJump();
+    this.jumpNow = false;
     if (p) {
       const v = this.values;
       if (!this.shown) {
         v.x.value = p.x;
         v.y.value = p.y;
         v.visible.value = withTiming(1, { duration: 300 });
+      } else if (jump) {
+        // A corrected position: reappear there instead of sliding through walls.
+        v.visible.value = 0;
+        v.x.value = p.x;
+        v.y.value = p.y;
+        v.visible.value = withTiming(1, { duration: 350 });
+        this.jumpNow = true;
+        for (const l of this.jumpListeners) l(jump.metres);
       } else if (p.x !== this.shown.x || p.y !== this.shown.y) {
         const cfg = {
           duration: TICK * 1000 + 20,

@@ -238,3 +238,34 @@ describe('nearest beacon zone (synthetic mechanics, not venue accuracy)', () => 
     expect(Math.hypot(e.x - before.x, e.y - before.y)).toBeLessThan(1);
   });
 });
+
+describe('finding a lost position again', () => {
+  // Believed near B3 in the east; really walking near B1 in the west.
+  function lostWalk(config: { recoverAfterContradictions?: number }) {
+    const a = new AssistFusion(map, placements, config, 5);
+    a.setPosition(18, 2, 0.8);
+    a.syncRaw(0, 0);
+    const sources: string[] = [];
+    let truth = { x: 3, y: 5 };
+    for (let s = 0; s < 16; s++) {
+      // A short walk up and down, so radio evidence is allowed (it needs movement).
+      truth = { x: 3 + (s % 2), y: 5 };
+      a.walk(s % 2, 0);
+      feed(a, truth.x, truth.y, s, 1);
+      sources.push(a.estimate()!.source);
+    }
+    return { a, truth, sources };
+  }
+  it('looks again over the floor when another spot keeps explaining the signals better', () => {
+    const { a, truth, sources } = lostWalk({});
+    expect(sources).toContain('recovered');
+    const e = a.estimate()!;
+    expect(Math.hypot(e.x - truth.x, e.y - truth.y)).toBeLessThan(4);
+  });
+  it('stays lost when recovery is switched off (the old behaviour)', () => {
+    const { a, truth, sources } = lostWalk({ recoverAfterContradictions: 0 });
+    expect(sources).not.toContain('recovered');
+    const e = a.estimate()!;
+    expect(Math.hypot(e.x - truth.x, e.y - truth.y)).toBeGreaterThan(8);
+  });
+});

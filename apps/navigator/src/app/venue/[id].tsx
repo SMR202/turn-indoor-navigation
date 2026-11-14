@@ -402,7 +402,12 @@ function Experience({
           lastStepAt.current = Date.now();
         }
         if (st.fix && driverRef.current === 'live')
-          liveDot.update(st.fix, st.steps, st.fix.source === 'fix');
+          liveDot.update(
+            st.fix,
+            st.steps,
+            // A position found again is shown at once, like a fix.
+            st.fix.source === 'fix' || st.fix.source === 'recovered',
+          );
       }),
     [live.onFix, liveDot],
   );
@@ -926,6 +931,22 @@ function Experience({
     return () => clearTimeout(t);
   }, [nudge]);
   const nudgePlace = nudge ? placeById(nudge.placeId) : null;
+
+  // A large correction is said, not hidden (Plan 005 §4.8): trust survives an honest "updated".
+  const [positionNote, setPositionNote] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = liveDot.onJump(() => {
+      if (driverRef.current !== 'live') return;
+      setPositionNote(true);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setPositionNote(false), 3500);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [liveDot]);
 
   // After a look around, guidance takes the camera back (Plan 005 §5.2).
   const lastGesture = useRef(0);
@@ -2555,6 +2576,42 @@ function Experience({
               setNudge(null);
             }}
           />
+        </Animated.View>
+      )}
+
+      {positionNote && !pick && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(300)}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: sheetVisible + (navigating && !follow ? 70 : 14),
+            alignItems: 'center',
+          }}
+        >
+          <View
+            style={[
+              {
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                height: 36,
+                paddingHorizontal: 14,
+                borderRadius: 18,
+                backgroundColor: c.text,
+              },
+              shadow('floating', dark),
+            ]}
+          >
+            <Icon name="locate" size={15} color={c.background} />
+            <T v="caption" weight="600" color={c.background}>
+              Position updated
+            </T>
+          </View>
         </Animated.View>
       )}
 

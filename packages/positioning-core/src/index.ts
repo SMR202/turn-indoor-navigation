@@ -14,3 +14,4 @@ export * from './walk-graph';
 export * from './beacon-ids';
 export * from './beacon-simulator';
 export * from './floor';
+export * from './magnetic';

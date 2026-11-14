@@ -57,6 +57,14 @@ export type AssistConfig = {
   /** Route prior while navigating: Gaussian width (metres, 0 = off) and least weight kept far away. */
   routePriorSigmaMetres: number;
   routePriorFloor: number;
+  /**
+   * Lost-position recovery. After this many radio updates in a row (three or more beacons heard)
+   * that some other spot on the floor explains better than every hypothesis by a clear margin,
+   * with `recoverEvidence` nats in total, the position is looked for again over the whole floor.
+   * 0 = never.
+   */
+  recoverAfterContradictions: number;
+  recoverEvidence: number;
   fusion: Partial<FusionConfig>;
 };
 export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
@@ -81,6 +89,8 @@ export const DEFAULT_ASSIST_CONFIG: AssistConfig = {
   defaultExponent: 2.3,
   routePriorSigmaMetres: 2.5,
   routePriorFloor: 0.15,
+  recoverAfterContradictions: 3,
+  recoverEvidence: 6,
   fusion: {
     rssiSigmaDb: 9,
     rssiTemper: 0.6,
@@ -113,7 +123,8 @@ export function pooledReferences(
 }
 export type AssistEstimate = FusionEstimate & {
   beaconsUsed: number;
-  source: 'beacons' | 'fix' | 'walking';
+  /** `recovered`: the position was found again after the signals kept contradicting it. */
+  source: 'beacons' | 'fix' | 'walking' | 'recovered';
   /** Uncertainty for display: the particle spread, floored so the app never overclaims. */
   displaySigmaMetres: number;
 };
@@ -143,6 +154,9 @@ export class AssistFusion {
   private settleLeft = 0;
   private current: AssistEstimate | null = null;
   private lastUsed = 0;
+  /** Radio updates in a row that another spot explained clearly better, and by how much in all. */
+  private contradicted = 0;
+  private contradiction = 0;
 
   constructor(
     map: FusionMap,
@@ -253,8 +267,16 @@ export class AssistFusion {
    * walking heading is: small when the walker faced a known direction, large when they did not,
    * so the map can settle it in the first metres.
    */
-  setPosition(x: number, y: number, sigma = 1.2, headingSigma = 0.1) {
-    this.fusion.reset(x, y, sigma, headingSigma);
+  setPosition(
+    x: number,
+    y: number,
+    sigma = 1.2,
+    headingSigma = 0.1,
+    /** Share of hypotheses that start facing the opposite way (see `ParticleFusion.reset`). */
+    flipShare = 0,
+  ) {
+    this.fusion.reset(x, y, sigma, headingSigma, flipShare);
+    this.contradicted = this.contradiction = 0;
     this.sinceRoutePrior = 0;
     this.positioned = true;
     this.settleLeft = 0;
@@ -333,6 +355,26 @@ export class AssistFusion {
       this.movedSinceRadio = 0;
       if (this.settleLeft > 0) this.settleLeft--;
       this.lastUsed = r.length;
+      // Signals that another spot keeps explaining clearly better mean the position is wrong.
+      const here = this.fusion.lastRssiFit;
+      const elsewhere = r.length >= 3 ? this.fusion.bestFitOnFloor(r) : null;
+      const gap = here !== null && elsewhere !== null ? elsewhere - here : 0;
+      if (gap > 1) {
+        this.contradicted++;
+        this.contradiction += gap;
+      } else this.contradicted = this.contradiction = 0;
+      if (
+        this.config.recoverAfterContradictions > 0 &&
+        this.contradicted >= this.config.recoverAfterContradictions &&
+        this.contradiction >= this.config.recoverEvidence &&
+        this.fusion.recoverFromRssi(r, 0.5, this.contradicted)
+      ) {
+        this.contradicted = this.contradiction = 0;
+        this.zone = null;
+        this.challenger = null;
+        this.publish('recovered');
+        return { radioApplied: true, proximity: null };
+      }
     }
     const proximity = this.positioned ? this.nearest(at, r) : null;
     if (radioApplied || proximity || this.zoneMoved) this.publish('beacons');

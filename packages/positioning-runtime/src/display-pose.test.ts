@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { crossesWalls } from '@turn/positioning-core';
 import { DisplayPose } from './display-pose';
 
@@ -160,4 +160,49 @@ it('lets the accuracy circle, not the standing dot, absorb uncertain estimates',
     d.update({ x: 3 + (s % 2 ? 2 : -2), y: 3, sigma: 4 }, s, false);
   for (let i = 0; i < 30; i++) d.step(0.1);
   expect(Math.hypot(d.current()!.x - 3, d.current()!.y - 3)).toBeLessThan(0.3);
+});
+
+describe('large corrections', () => {
+  const settle = (d: DisplayPose) => {
+    for (let i = 0; i < 40; i++) d.step(0.1);
+    return d.current()!;
+  };
+  it('glides to a small correction and reports no jump', () => {
+    const d = new DisplayPose();
+    d.update({ x: 0, y: 0 }, 0, true);
+    // Two agreeing estimates 3 m away, no step in between.
+    d.update({ x: 3, y: 0 }, 1, false);
+    d.update({ x: 3, y: 0 }, 2, false);
+    expect(d.takeJump()).toBeNull();
+    expect(d.current()!.x).toBeLessThan(1);
+    expect(settle(d).x).toBeCloseTo(3, 1);
+  });
+  it('shows a confirmed 10 m correction as a jump, reported once', () => {
+    const d = new DisplayPose();
+    d.update({ x: 0, y: 0 }, 0, true);
+    d.update({ x: 10, y: 0 }, 1, false);
+    // One estimate alone is not believed yet.
+    expect(d.current()!.x).toBe(0);
+    d.update({ x: 10, y: 0 }, 2, false);
+    expect(d.current()!.x).toBe(10);
+    expect(d.takeJump()!.metres).toBeCloseTo(10, 1);
+    expect(d.takeJump()).toBeNull();
+  });
+  it('keeps gliding when steps explain the move', () => {
+    const d = new DisplayPose();
+    d.update({ x: 0, y: 0 }, 0, true);
+    d.update({ x: 8, y: 0 }, 1, true);
+    expect(d.takeJump()).toBeNull();
+    expect(d.current()!.x).toBe(0);
+  });
+  it('jumps at once for an explicit fix (a tap, a code, a position found again)', () => {
+    const d = new DisplayPose();
+    d.update({ x: 0, y: 0 }, 0, true);
+    d.update({ x: 8, y: 0 }, 1, false, true);
+    expect(d.current()!.x).toBe(8);
+    expect(d.takeJump()!.metres).toBeCloseTo(8, 1);
+    // A small fix moves the dot without the "updated" note.
+    d.update({ x: 9, y: 0 }, 2, false, true);
+    expect(d.takeJump()).toBeNull();
+  });
 });

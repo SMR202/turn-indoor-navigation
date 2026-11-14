@@ -317,15 +317,15 @@ Each wave ends with tests, a browser or phone check, updated status files and a 
 - [x] Visitor flow without engineering wording; one Start button (live when available, else step by step), Preview; staff tools behind a Settings switch.
 - [x] Route preview frames the route and turns it bottom to top; floors listed. This also fixed a framing bug: the map padding was counted twice.
 - [x] Navigation chrome: banner, then-chip, bottom bar with mute, re-centre pill, floor-change card, arrival (existing pieces kept, wording simplified).
-- [ ] Blue-dot display rules of §4. Constant-size dot, clamped disc and a beam that widens with heading doubt are done; riding the route and no wall crossings already existed in `LiveDot`. Fade on large corrections and the "stale" and "lost" states are not done.
+- [ ] Blue-dot display rules of §4. Constant-size dot, clamped disc and a beam that widens with heading doubt are done; riding the route and no wall crossings already existed in `LiveDot`. A correction over 6 m is now a jump with a "Position updated" note, and an uncertainty of 10 m or more draws the dot grey with "Not sure where you are". A "stale" state (no sensor data) still shows only the existing stopped banner.
 - [ ] Empty, loading, error and offline states; accessibility pass.
 
 **Wave 3 — Engine and floors**
 
 - [x] Barometric floor-change detector and floor belief (pure; 16 tests on simulated traces: drift, landings, lifts, pressure steps, mezzanines) ([ADR-0017](../../decisions/0017-floor-belief.md)). No recording from a real building yet.
 - [x] Barometer source in the app (feature-detected), beacons on other floors as floor hints, automatic floor switch with the confirmation button as fallback. Written and typechecked; not yet run on a phone.
-- [ ] Magnetic disturbance → heading uncertainty.
-- [ ] Opposite-direction start hypothesis.
+- [x] Magnetic disturbance → heading uncertainty (`MagneticMonitor`, 6 simulated tests; wired through a feature-detected magnetometer; [ADR-0019](../../decisions/0019-start-hypotheses-and-recovery.md)). Not yet run on a phone.
+- [x] Opposite-direction start hypothesis, and lost-position recovery (simulated tests with controls; recovery never triggered on the 4 recorded home walks).
 - [x] Performance tiers and capability report: tier from memory, model age and measured frame pacing sets the filter size and 2D/3D; "This phone" in Settings lists sensors and what each missing one changes; a Simple map switch. Seen in the browser; tier thresholds are PROPOSED.
 - [x] GPS entry fix maths (`entryFix`, `venueAt`; tested). The sensor itself (expo-location) needs the next native build.
 

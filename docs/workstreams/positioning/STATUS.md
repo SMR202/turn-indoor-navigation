@@ -10,7 +10,9 @@ Validation: 16 floor tests on simulated pressure traces (an hour of ±1.2 hPa dr
 
 Decisions: floor is a belief, never one sensor ([ADR-0017](../../../decisions/0017-floor-belief.md)). All thresholds are PROPOSED defaults.
 
-Open: magnetic disturbance widening the heading uncertainty; the opposite-direction start hypothesis; stillness and kidnapped-recovery rules; expo-location for the GPS fix (native build).
+Added the same day ([ADR-0019](../../../decisions/0019-start-hypotheses-and-recovery.md)): an opposite-direction start family in `ParticleFusion` (25% route starts, 15% compass starts), `MagneticMonitor` raising heading noise while the field is disturbed, lost-position recovery in `AssistFusion` (another spot explains the signals better three updates running), and jump / lost display states. Validation: simulated tests with controls where the old behaviour fails; EXPERIMENT RESULT: on the 4 recorded assisted home walks matching the current map, recovery never triggered and paths were identical. Standing still was already covered by an existing test.
+
+Open: body shadowing of beacons behind the walker; a carry-mode classifier; expo-location for the GPS fix (native build).
 
 Next: record pressure while climbing each staircase at home and at FAST (phone in hand and in pocket), replay through the detector, and set storey heights and thresholds per venue.
 

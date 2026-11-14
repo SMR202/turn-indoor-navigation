@@ -223,8 +223,14 @@ export class AssistedTracker {
    * A trusted position: user tap, QR, confirmed fingerprint, known anchor. `headingSigma` (rad)
    * is how unsure the starting walking direction is.
    */
-  setPosition(x: number, y: number, sigma = 1, headingSigma?: number) {
-    this.assist.setPosition(x, y, sigma, headingSigma);
+  setPosition(
+    x: number,
+    y: number,
+    sigma = 1,
+    headingSigma?: number,
+    flipShare = 0,
+  ) {
+    this.assist.setPosition(x, y, sigma, headingSigma, flipShare);
     this.publish();
   }
   /** A correction while walking (tap on the map): keeps the learned heading and stride. */

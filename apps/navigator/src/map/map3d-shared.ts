@@ -147,7 +147,8 @@ export class DotAnimator {
       this.onFrame(null);
       return;
     }
-    this.from = this.to ? this.frameAt(this.now()) : s;
+    // A corrected position is shown at once, never as a glide across the map.
+    this.from = this.to && !s.jump ? this.frameAt(this.now()) : s;
     this.to = s;
     this.since = this.now();
     if (this.raf === null) this.loop();

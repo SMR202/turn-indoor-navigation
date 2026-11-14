@@ -33,6 +33,12 @@ export type DisplayOptions = {
   confirmJumpMetres: number;
   confirmMetres: number;
   confirmSeconds: number;
+  /**
+   * A correction longer than this (metres) that no step explains is not animated as a walk: the
+   * dot disappears and reappears at the new place (Plan 005 §4.2), and `takeJump` reports it so
+   * the app can say "Position updated".
+   */
+  fadeJumpMetres: number;
 };
 export const DEFAULT_DISPLAY: DisplayOptions = {
   snapMetres: 2,
@@ -46,6 +52,7 @@ export const DEFAULT_DISPLAY: DisplayOptions = {
   confirmJumpMetres: 2,
   confirmMetres: 2,
   confirmSeconds: 8,
+  fadeJumpMetres: 6,
 };
 
 /** Walls and walk graph of the floor being shown (the same shape as the fusion map). */
@@ -137,6 +144,13 @@ export class DisplayPose {
   }
   /** A large unexplained move waiting for a second estimate to confirm it. */
   private candidate: { p: P; at: number } | null = null;
+  private jumped: { metres: number } | null = null;
+  /** The last large correction shown as a jump, once. */
+  takeJump() {
+    const j = this.jumped;
+    this.jumped = null;
+    return j;
+  }
   /**
    * Feed a new filter estimate (with its uncertainty `sigma` in metres, when known). `walked` is
    * true when this update came from a step.
@@ -194,18 +208,34 @@ export class DisplayPose {
         return;
     }
     this.pendingS = targetS;
-    if (!this.shown || fix) {
+    const jumpTo = (metres: number) => {
+      if (this.shown && metres > this.opts.fadeJumpMetres)
+        this.jumped = { metres };
       this.shown = { ...target };
       this.routeS = targetS;
       this.path = [];
+    };
+    if (!this.shown || fix) {
+      jumpTo(
+        this.shown
+          ? Math.hypot(target.x - this.shown.x, target.y - this.shown.y)
+          : 0,
+      );
       return;
     }
     const path = this.pathTo(target, targetS);
-    if (!path || pathLength(path) > this.opts.teleportMetres) {
-      // No walkable connection (or a relocalisation across the building): jump, do not draw a walk.
-      this.shown = { ...target };
-      this.routeS = targetS;
-      this.path = [];
+    const length = path ? pathLength(path) : Infinity;
+    if (
+      !path ||
+      length > this.opts.teleportMetres ||
+      // A long correction no step explains: a jump, not a sprint through the corridors.
+      (!walked && length > this.opts.fadeJumpMetres)
+    ) {
+      jumpTo(
+        Number.isFinite(length)
+          ? length
+          : Math.hypot(target.x - this.shown.x, target.y - this.shown.y),
+      );
       return;
     }
     this.path = path;
@@ -272,5 +302,6 @@ export class DisplayPose {
     this.pendingS = null;
     this.lastWalkAt = -Infinity;
     this.candidate = null;
+    this.jumped = null;
   }
 }

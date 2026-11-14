@@ -21,3 +21,4 @@ Use sequential ADR IDs. Accepted decisions remain in history; supersede rather t
 - [ADR-0016: room blocks and a camera director for the 3D map](0016-map-look-and-camera-director.md)
 - [ADR-0017: floors from a belief over barometer, beacons and the route](0017-floor-belief.md)
 - [ADR-0018: offers are decided on the phone](0018-offers-decided-on-the-phone.md)
+- [ADR-0019: two start hypotheses, compass doubt and lost-position recovery](0019-start-hypotheses-and-recovery.md)

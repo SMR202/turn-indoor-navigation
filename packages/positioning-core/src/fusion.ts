@@ -97,6 +97,13 @@ export type FusionEstimate = {
   /** Circular spread of the heading corrections (rad); large while the heading is still unknown. */
   headingBiasSpread: number;
   stepScale: number;
+  /**
+   * Weight (0–1) of a second hypothesis that is not reported: the walker facing the opposite way
+   * at the start. 0 once the evidence has settled it.
+   */
+  alternativeWeight: number;
+  /** The reported hypothesis is the "started facing the other way" one. */
+  flipped: boolean;
 };
 
 function mulberry32(seed: number) {
@@ -184,6 +191,17 @@ export class ParticleFusion {
   private y: Float64Array;
   private bias: Float64Array;
   private scale: Float64Array;
+  /**
+   * Which start hypothesis a particle descends from: 0 as told, 1 facing the opposite way.
+   * A walk that starts 180° wrong cannot be bent back by small heading corrections; a second
+   * family of particles can simply win (Plan 005 §7.2).
+   */
+  private mode: Uint8Array;
+  private activeMode = 0;
+  /** Metres walked since the opposite-way family was created; it is dropped after a while. */
+  private ambiguousMetres = 0;
+  /** Extra heading noise while the compass is disturbed (1 = calm). */
+  private headingNoiseFactor = 1;
   /** The shared RSSI offset that best explained the last radio update, and how many readings. */
   lastOffset: { db: number; readings: number } | null = null;
   private w: Float64Array;
@@ -207,6 +225,7 @@ export class ParticleFusion {
     this.y = new Float64Array(this.n);
     this.bias = new Float64Array(this.n);
     this.scale = new Float64Array(this.n).fill(1);
+    this.mode = new Uint8Array(this.n);
     this.w = new Float64Array(this.n).fill(1 / this.n);
     this.rand = mulberry32(this.config.seed);
     for (const b of beacons) this.beacons.set(b.tag, b);
@@ -242,14 +261,45 @@ export class ParticleFusion {
     return this.map.walls.some((w) => segmentsIntersect(a, b, w.from, w.to));
   }
 
-  /** Start from a known position with Gaussian uncertainty (QR, confirmed fingerprint, user tap). */
-  reset(x: number, y: number, sigma = 0.8, biasSigma = 0.1) {
+  /**
+   * Start from a known position with Gaussian uncertainty (QR, confirmed fingerprint, user tap).
+   * `flipShare` (0–0.5) of the particles start as "the walker faces the opposite way": used when
+   * the start heading is an assumption (the route's direction) or a compass reading, not when the
+   * walker marked it.
+   */
+  reset(x: number, y: number, sigma = 0.8, biasSigma = 0.1, flipShare = 0) {
     this.biasLimit = limitFor(biasSigma);
+    // A full-circle start already covers every direction.
+    const flipped =
+      this.biasLimit >= Math.PI
+        ? 0
+        : Math.round(this.n * Math.max(0, Math.min(0.5, flipShare)));
+    this.activeMode = 0;
+    this.ambiguousMetres = 0;
     for (let i = 0; i < this.n; i++) {
       this.placeNear(i, x, y, sigma);
-      this.bias[i] = this.randn() * biasSigma;
+      // Spread the flipped family evenly through the array.
+      const flip =
+        flipped > 0 &&
+        Math.floor(((i + 1) * flipped) / this.n) >
+          Math.floor((i * flipped) / this.n);
+      this.mode[i] = flip ? 1 : 0;
+      this.bias[i] = (flip ? Math.PI : 0) + this.randn() * biasSigma;
       this.scale[i] = 1 + this.randn() * 0.05;
     }
+  }
+  /** How much less the heading is trusted right now (1 calm … 4 heavy magnetic disturbance). */
+  setHeadingNoiseFactor(factor: number) {
+    this.headingNoiseFactor = Math.max(1, Math.min(4, factor));
+  }
+  /** Widens every hypothesis's heading by a random amount (rad): the compass start was doubtful. */
+  spreadHeading(sigma: number) {
+    if (!(sigma > 0)) return;
+    for (let i = 0; i < this.n; i++)
+      this.bias[i] = this.clampBias(
+        this.bias[i]! + this.randn() * sigma,
+        this.mode[i]!,
+      );
   }
   /**
    * A trusted correction of where the walker is (a tap on the map): positions restart around it,
@@ -301,7 +351,9 @@ export class ParticleFusion {
       this.bias[i] = this.randn() * biasSigma;
       this.scale[i] = 1 + this.randn() * 0.05;
       this.w[i] = 1 / this.n;
+      this.mode[i] = 0;
     }
+    this.activeMode = 0;
     this.biasLimit = limitFor(biasSigma);
     this.updateRssi(usable);
     // One more resampling pass spreads out the survivors a little (roughening).
@@ -314,11 +366,15 @@ export class ParticleFusion {
     const len = Math.hypot(dx, dy);
     if (len < 1e-4) return;
     const base = Math.atan2(dy, dx);
-    const { stepNoise, headingNoise, biasWalk, scaleWalk } = this.config;
+    const { stepNoise, scaleWalk } = this.config;
+    const headingNoise = this.config.headingNoise * this.headingNoiseFactor;
+    const biasWalk = this.config.biasWalk * this.headingNoiseFactor;
     const sq = Math.sqrt(len);
+    this.ambiguousMetres += len;
     for (let i = 0; i < this.n; i++) {
       this.bias[i] = this.clampBias(
         this.bias[i]! + this.randn() * biasWalk * len,
+        this.mode[i]!,
       );
       this.scale[i] = Math.max(
         0.6,
@@ -345,7 +401,7 @@ export class ParticleFusion {
         if (l2 < 0.05 || !this.tryMove(i, heading + d, l2)) continue;
         this.w[i] =
           this.w[i]! * Math.exp(-(d * d) / (2 * SLIDE_SIGMA * SLIDE_SIGMA));
-        this.bias[i] = this.clampBias(this.bias[i]! + 0.25 * d);
+        this.bias[i] = this.clampBias(this.bias[i]! + 0.25 * d, this.mode[i]!);
         slid = true;
         break;
       }
@@ -353,11 +409,42 @@ export class ParticleFusion {
       if (!slid) this.w[i] = this.w[i]! * 0.02;
     }
     this.normalize();
+    this.settleAmbiguity();
     this.maybeResample();
   }
-  private clampBias(b: number) {
+  /** Keeps a heading correction within its limit, around 0 or around the opposite direction. */
+  private clampBias(b: number, mode = 0) {
     if (this.biasLimit >= Math.PI) return Math.atan2(Math.sin(b), Math.cos(b));
-    return Math.max(-this.biasLimit, Math.min(this.biasLimit, b));
+    const centre = mode ? Math.PI : 0;
+    const off = Math.atan2(Math.sin(b - centre), Math.cos(b - centre));
+    return centre + Math.max(-this.biasLimit, Math.min(this.biasLimit, off));
+  }
+  /** Total weight of the opposite-way family. */
+  private flippedWeight() {
+    let w = 0;
+    for (let i = 0; i < this.n; i++) if (this.mode[i]) w += this.w[i]!;
+    return w;
+  }
+  /**
+   * Decides between the two start hypotheses: the reported one changes only on a clear majority
+   * (so it cannot flap), and a family that is still the minority after 25 m of walking is dropped.
+   */
+  private settleAmbiguity() {
+    const flipped = this.flippedWeight();
+    if (flipped <= 0 || flipped >= 1) {
+      if (flipped >= 1) this.activeMode = 1;
+      return;
+    }
+    if (this.activeMode === 0 && flipped > 0.62) this.activeMode = 1;
+    else if (this.activeMode === 1 && flipped < 0.38) this.activeMode = 0;
+    const minority = this.activeMode === 1 ? 1 - flipped : flipped;
+    if (minority < 0.02 || this.ambiguousMetres > 25) {
+      // Settled: the losing family goes; its particles are replaced at the next resampling.
+      const lose = this.activeMode === 1 ? 0 : 1;
+      for (let i = 0; i < this.n; i++) if (this.mode[i] === lose) this.w[i] = 0;
+      this.normalize();
+      this.resample(0.12);
+    }
   }
   private tryMove(i: number, heading: number, l: number) {
     const nx = this.x[i]! + l * Math.cos(heading);
@@ -384,7 +471,102 @@ export class ParticleFusion {
       const d = distanceToPolyline(this.x[i]!, this.y[i]!, path);
       logw[i] = Math.max(lf, -(d * d) / (2 * sigma * sigma));
     }
+    // "People follow the route" must not decide which way the walker set off: while both start
+    // hypotheses are alive, the pull acts inside each family and their shares stay as they were.
+    const before = this.flippedWeight();
+    if (before > 0 && before < 1) {
+      for (let i = 0; i < this.n; i++)
+        this.w[i] = this.w[i]! * Math.exp(logw[i]!);
+      const after = this.flippedWeight();
+      let rest = 0;
+      for (let i = 0; i < this.n; i++) if (!this.mode[i]) rest += this.w[i]!;
+      for (let i = 0; i < this.n; i++)
+        this.w[i] = this.mode[i]
+          ? after > 0
+            ? (this.w[i]! / after) * before
+            : 0
+          : rest > 0
+            ? (this.w[i]! / rest) * (1 - before)
+            : 0;
+      this.normalize();
+      this.maybeResample();
+      return;
+    }
     this.applyLogWeights(logw);
+  }
+
+  private usable(readings: { tag: string; rssi: number }[]) {
+    return readings.filter(
+      (r) =>
+        this.beacons.has(r.tag) &&
+        r.rssi >= this.config.minRssi &&
+        Number.isFinite(r.rssi),
+    );
+  }
+  /**
+   * How well a point explains the readings (log-likelihood, heavy-tailed), with the best shared
+   * offset for that point: a phone-and-body level shift c ~ N(prior, offsetSigma²). Its best value
+   * given the residuals is a shrunk mean, so one reading alone keeps most of its range information.
+   */
+  private fitAt(px: number, py: number, used: { tag: string; rssi: number }[]) {
+    const {
+      rssiSigmaDb: sigma,
+      studentDf: df,
+      rssiOffsetSigmaDb: offsetSigma,
+      rssiOffsetPriorDb: prior,
+    } = this.config;
+    const shrink = Number.isFinite(offsetSigma)
+      ? (sigma * sigma) / (offsetSigma * offsetSigma)
+      : null;
+    let sum = 0;
+    const residuals = new Array<number>(used.length);
+    for (let j = 0; j < used.length; j++) {
+      const r = used[j]!;
+      const b = this.beacons.get(r.tag)!;
+      const d = Math.max(0.5, Math.hypot(px - b.x, py - b.y));
+      residuals[j] = r.rssi - (b.refRssi - 10 * b.exponent * Math.log10(d));
+      sum += residuals[j]!;
+    }
+    const offset =
+      shrink === null ? 0 : (sum + shrink * prior) / (used.length + shrink);
+    let ll =
+      shrink === null
+        ? 0
+        : -((offset - prior) * (offset - prior)) /
+          (2 * offsetSigma * offsetSigma);
+    for (let j = 0; j < used.length; j++) {
+      const residual = residuals[j]! - offset;
+      ll +=
+        (-(df + 1) / 2) *
+        Math.log(1 + (residual * residual) / (df * sigma * sigma));
+    }
+    return { ll, offset };
+  }
+  /** How well the best hypothesis explained the latest readings (log-likelihood). */
+  lastRssiFit: number | null = null;
+  private lattice: FusionPoint[] | null = null;
+  /**
+   * How well the best spot anywhere on the floor would explain the readings. When that is much
+   * better than what the cloud manages, update after update, the cloud is in the wrong place.
+   */
+  bestFitOnFloor(readings: { tag: string; rssi: number }[]): number | null {
+    const used = this.usable(readings);
+    if (used.length < 2) return null;
+    if (!this.lattice) {
+      const { minX, maxX, minY, maxY } = this.bounds;
+      const step = Math.max(
+        1,
+        Math.sqrt(((maxX - minX) * (maxY - minY)) / 400),
+      );
+      this.lattice = [];
+      for (let x = minX + step / 2; x < maxX; x += step)
+        for (let y = minY + step / 2; y < maxY; y += step)
+          if (this.walkable(x, y)) this.lattice.push({ x, y });
+    }
+    let best = -Infinity;
+    for (const q of this.lattice)
+      best = Math.max(best, this.fitAt(q.x, q.y, used).ll);
+    return Number.isFinite(best) ? best : null;
   }
 
   /** Probabilistic multilateration: weight particles by how well they explain the RSSI readings. */
@@ -392,54 +574,23 @@ export class ParticleFusion {
     const {
       rssiSigmaDb: sigma,
       studentDf: df,
-      minRssi,
       rssiTemper,
       rssiGateSigmas,
-      rssiOffsetSigmaDb: offsetSigma,
-      rssiOffsetPriorDb: prior,
     } = this.config;
-    const used = readings.filter(
-      (r) =>
-        this.beacons.has(r.tag) && r.rssi >= minRssi && Number.isFinite(r.rssi),
-    );
+    const used = this.usable(readings);
     if (used.length === 0) return false;
     const logw = new Float64Array(this.n);
-    const residuals = new Float64Array(used.length);
-    // Shared offset c ~ N(0, offsetSigma²): its best value given the residuals is their sum over
-    // (n + sigma²/offsetSigma²), a shrunk mean; one reading alone keeps most of its range information.
-    const shrink = Number.isFinite(offsetSigma)
-      ? (sigma * sigma) / (offsetSigma * offsetSigma)
-      : null;
     let best = -Infinity;
     let bestOffset = 0;
     for (let i = 0; i < this.n; i++) {
-      let sum = 0;
-      for (let j = 0; j < used.length; j++) {
-        const r = used[j]!;
-        const b = this.beacons.get(r.tag)!;
-        const d = Math.max(0.5, Math.hypot(this.x[i]! - b.x, this.y[i]! - b.y));
-        const predicted = b.refRssi - 10 * b.exponent * Math.log10(d);
-        residuals[j] = r.rssi - predicted;
-        sum += residuals[j]!;
-      }
-      const c =
-        shrink === null ? 0 : (sum + shrink * prior) / (used.length + shrink);
-      let ll =
-        shrink === null
-          ? 0
-          : -((c - prior) * (c - prior)) / (2 * offsetSigma * offsetSigma);
-      for (let j = 0; j < used.length; j++) {
-        const residual = residuals[j]! - c;
-        ll +=
-          (-(df + 1) / 2) *
-          Math.log(1 + (residual * residual) / (df * sigma * sigma));
-      }
-      logw[i] = ll;
-      if (ll > best) {
-        best = ll;
-        bestOffset = c;
+      const fit = this.fitAt(this.x[i]!, this.y[i]!, used);
+      logw[i] = fit.ll;
+      if (fit.ll > best) {
+        best = fit.ll;
+        bestOffset = fit.offset;
       }
     }
+    this.lastRssiFit = best;
     this.lastOffset = { db: bestOffset, readings: used.length };
     // Innovation gate: when no hypothesis explains the readings (shadowed body, moved beacon),
     // the readings are the outlier, not the position.
@@ -454,6 +605,51 @@ export class ParticleFusion {
     if (rssiTemper !== 1)
       for (let i = 0; i < this.n; i++) logw[i] = logw[i]! * rssiTemper;
     this.applyLogWeights(logw);
+    return true;
+  }
+
+  /**
+   * The readings keep contradicting every hypothesis: then the position is wrong, not the
+   * readings (the walker was carried somewhere else by a lift, a missed floor, a long pause in
+   * the pocket). Part of the cloud is spread over the whole floor again and the readings choose,
+   * so a correct cloud survives and a wrong one is replaced. Heading and stride are kept.
+   */
+  recoverFromRssi(
+    readings: { tag: string; rssi: number }[],
+    share = 0.5,
+    /** How many contradicted updates led here: the readings count that many times over. */
+    strength = 1,
+  ): boolean {
+    const used = this.usable(readings);
+    if (used.length < 2) return false;
+    const replace = Math.round(this.n * Math.max(0.1, Math.min(0.9, share)));
+    const { minX, maxX, minY, maxY } = this.bounds;
+    for (let i = 0; i < this.n; i++) {
+      this.w[i] = 1 / this.n;
+      const fresh =
+        Math.floor(((i + 1) * replace) / this.n) >
+        Math.floor((i * replace) / this.n);
+      if (!fresh) continue;
+      for (let t = 0; t < 200; t++) {
+        const px = minX + this.rand() * (maxX - minX);
+        const py = minY + this.rand() * (maxY - minY);
+        if (!this.walkable(px, py)) continue;
+        this.x[i] = px;
+        this.y[i] = py;
+        break;
+      }
+      // Heading and stride come from a hypothesis that walked this far.
+      const donor = Math.floor(this.rand() * this.n);
+      this.bias[i] = this.bias[donor]!;
+      this.scale[i] = this.scale[donor]!;
+      this.mode[i] = this.mode[donor]!;
+    }
+    const logw = new Float64Array(this.n);
+    const k = Math.max(1, strength);
+    for (let i = 0; i < this.n; i++)
+      logw[i] = k * this.fitAt(this.x[i]!, this.y[i]!, used).ll;
+    this.applyLogWeights(logw);
+    this.resample(0.4);
     return true;
   }
 
@@ -517,6 +713,7 @@ export class ParticleFusion {
       sum += this.w[i]!;
     }
     for (let i = 0; i < this.n; i++) this.w[i] = this.w[i]! / sum;
+    this.settleAmbiguity();
     this.maybeResample();
   }
   private normalize() {
@@ -541,6 +738,7 @@ export class ParticleFusion {
       ny = new Float64Array(this.n),
       nb = new Float64Array(this.n),
       ns = new Float64Array(this.n);
+    const nm = new Uint8Array(this.n);
     const step = 1 / this.n;
     let u = this.rand() * step;
     let c = this.w[0]!;
@@ -564,28 +762,39 @@ export class ParticleFusion {
       ny[k] = py;
       nb[k] = this.bias[i]! + (jitter > 0 ? this.randn() * 0.01 : 0);
       ns[k] = this.scale[i]!;
+      nm[k] = this.mode[i]!;
       u += step;
     }
     this.x = nx;
     this.y = ny;
     this.bias = nb;
     this.scale = ns;
+    this.mode = nm;
     this.w.fill(1 / this.n);
     this.resampled++;
   }
 
   estimate(): FusionEstimate {
+    // With two start hypotheses alive, report the leading one: their average is a place nobody is.
+    const flipped = this.flippedWeight();
+    const split = flipped > 0 && flipped < 1;
+    const active = this.activeMode;
+    const share = split ? (active === 1 ? flipped : 1 - flipped) : 1;
+    const use = (i: number) =>
+      split ? (this.mode[i] === active ? this.w[i]! / share : 0) : this.w[i]!;
     let mx = 0,
       my = 0,
       bs = 0,
       bc = 0,
       ms = 0;
     for (let i = 0; i < this.n; i++) {
-      mx += this.w[i]! * this.x[i]!;
-      my += this.w[i]! * this.y[i]!;
-      bs += this.w[i]! * Math.sin(this.bias[i]!);
-      bc += this.w[i]! * Math.cos(this.bias[i]!);
-      ms += this.w[i]! * this.scale[i]!;
+      const w = use(i);
+      if (w === 0) continue;
+      mx += w * this.x[i]!;
+      my += w * this.y[i]!;
+      bs += w * Math.sin(this.bias[i]!);
+      bc += w * Math.cos(this.bias[i]!);
+      ms += w * this.scale[i]!;
     }
     const mb = Math.atan2(bs, bc);
     const concentration = Math.min(1, Math.hypot(bs, bc));
@@ -594,6 +803,7 @@ export class ParticleFusion {
       let best = 0,
         bd = Infinity;
       for (let i = 0; i < this.n; i++) {
+        if (use(i) === 0) continue;
         const d = (this.x[i]! - mx) ** 2 + (this.y[i]! - my) ** 2;
         if (d < bd) {
           bd = d;
@@ -605,7 +815,7 @@ export class ParticleFusion {
     }
     let v = 0;
     for (let i = 0; i < this.n; i++)
-      v += this.w[i]! * ((this.x[i]! - mx) ** 2 + (this.y[i]! - my) ** 2);
+      v += use(i) * ((this.x[i]! - mx) ** 2 + (this.y[i]! - my) ** 2);
     return {
       x: mx,
       y: my,
@@ -616,16 +826,26 @@ export class ParticleFusion {
         -2 * Math.log(Math.max(1e-9, concentration)),
       ),
       stepScale: ms,
+      alternativeWeight: split ? 1 - share : 0,
+      flipped: split ? active === 1 : flipped >= 1,
     };
   }
   /** Number of resampling events so far (diagnostic). */
   /** Every hypothesis with its normalised weight (copies; for summaries such as room belief). */
   weightedPoints(): { x: number; y: number; w: number }[] {
+    const flipped = this.flippedWeight();
+    const split = flipped > 0 && flipped < 1;
     let total = 0;
-    for (let i = 0; i < this.n; i++) total += this.w[i]!;
+    for (let i = 0; i < this.n; i++)
+      if (!split || this.mode[i] === this.activeMode) total += this.w[i]!;
     const out: { x: number; y: number; w: number }[] = [];
     for (let i = 0; i < this.n; i++)
-      out.push({ x: this.x[i]!, y: this.y[i]!, w: this.w[i]! / (total || 1) });
+      if (!split || this.mode[i] === this.activeMode)
+        out.push({
+          x: this.x[i]!,
+          y: this.y[i]!,
+          w: this.w[i]! / (total || 1),
+        });
     return out;
   }
 

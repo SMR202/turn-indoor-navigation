@@ -193,7 +193,10 @@ export function useLiveSession(
         !h ||
         h.northOffset === null ||
         h.spreadRad > 0.25 ||
-        h.walkedMetres < 8
+        h.walkedMetres < 8 ||
+        // Not while "started facing the other way" is still possible, nor near steel.
+        h.ambiguity > 0.02 ||
+        h.magneticDisturbance > 0.3
       )
         return;
       learnNorth(h.northOffset, 0.15);

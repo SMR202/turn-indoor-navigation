@@ -224,7 +224,8 @@ export function RoughLocationChip({
   const { c, dark } = useTheme();
   const [snap, setSnap] = useState<DotSnapshot>(() => dot.snapshot());
   useEffect(() => dot.watch(setSnap), [dot]);
-  if (!snap.visible || !snap.live || snap.sigma < 2.5) return null;
+  if (!snap.visible || (!snap.live && !snap.lost) || snap.sigma < 2.5)
+    return null;
   return (
     <Animated.View
       entering={FadeIn.duration(250)}
@@ -232,7 +233,11 @@ export function RoughLocationChip({
     >
       <Tap
         onPress={onPress}
-        accessibilityLabel="Location is rough. Tap to fix it."
+        accessibilityLabel={
+          snap.lost
+            ? 'TURN is not sure where you are. Tap to set your position.'
+            : 'Location is rough. Tap to fix it.'
+        }
         style={[
           {
             alignSelf: 'center',
@@ -251,7 +256,9 @@ export function RoughLocationChip({
       >
         <Icon name="locate" size={14} color={c.warning} />
         <T v="caption" weight="600" lines={1}>
-          {`Location rough · ±${Math.round(snap.sigma)} m`}
+          {snap.lost
+            ? 'Not sure where you are'
+            : `Location rough · ±${Math.round(snap.sigma)} m`}
         </T>
         <T v="caption" weight="700" color={c.accent}>
           Fix

@@ -15,6 +15,10 @@ vi.mock('react-native', () => ({
   PermissionsAndroid: { PERMISSIONS: {}, requestMultiple: vi.fn() },
 }));
 vi.mock('expo', () => ({ requireOptionalNativeModule: () => null }));
+// The magnetometer is a phone sensor: tests run without it (no disturbance is reported).
+vi.mock('./sensors/magnetometer', () => ({
+  watchMagneticField: async () => () => undefined,
+}));
 vi.mock('./sensors/motion-source', () => ({
   startMotionSource: async (
     id: string,
